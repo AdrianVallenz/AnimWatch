@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,13 +54,13 @@ fun AnimWatchCrestLogo(
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(Color(0xFF211A0E), Color(0xFF0B0B0F))
+                    colors = listOf(Color(0xFF211A0E), Color(0xFF0F0F14))
                 )
             )
-            .border(1.dp, GoldPrimary.copy(alpha = 0.7f), RoundedCornerShape(10.dp)),
+            .border(1.2.dp, GoldPrimary.copy(alpha = 0.78f), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
@@ -145,6 +146,13 @@ fun AnimePosterArtwork(
                     )
             )
         }
+
+        // Subtle Cassette Futurism CRT scanlines
+        CrtScanlineOverlay(
+            modifier = Modifier.fillMaxSize(),
+            lineAlpha = 0.08f,
+            stepPx = 6f
+        )
     }
 }
 
@@ -231,25 +239,43 @@ fun AnimatedStreamingSceneCanvas(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.35f),
+                        0f to ObsidianVoid.copy(alpha = 0.35f),
                         0.2f to Color.Transparent,
                         0.8f to Color.Transparent,
-                        1f to Color.Black.copy(alpha = 0.55f)
+                        1f to ObsidianVoid.copy(alpha = 0.55f)
                     )
                 )
         )
 
-        // Subtle crest watermark in corner like premium broadcast
-        Text(
-            text = "ANIMWATCH • ${artTheme.kanjiCrest}",
-            color = TextPrimary.copy(alpha = 0.22f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.4.sp,
+        // CRT Scanline texture across live video viewport
+        CrtScanlineOverlay(
+            modifier = Modifier.fillMaxSize(),
+            lineAlpha = 0.10f,
+            stepPx = 5f
+        )
+
+        // Analog broadcast corner watermark + blinking REC indicator
+        Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(14.dp)
-        )
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            LedStatusDot(
+                color = if (isPlaying) GoldBright else TextPrimary.copy(alpha = 0.3f),
+                pulsing = isPlaying,
+                size = 6.dp
+            )
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(6.dp))
+            Text(
+                text = "ANIMWATCH // ${artTheme.kanjiCrest}",
+                color = TextPrimary.copy(alpha = 0.28f),
+                fontFamily = com.gows.animwatch.ui.theme.MonoFont,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp
+            )
+        }
     }
 }
 
@@ -421,7 +447,7 @@ private fun DrawScope.drawArtMotif(
                 style = Stroke(width = 3.5f)
             )
             drawCircle(
-                color = Color(0xFF070709),
+                color = ObsidianVoid,
                 radius = r * 0.88f,
                 center = Offset(cx, cy)
             )

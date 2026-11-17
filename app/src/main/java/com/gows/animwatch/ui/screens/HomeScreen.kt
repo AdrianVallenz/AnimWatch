@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +64,7 @@ import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.ui.components.AnimWatchCrestLogo
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.AnimePosterCard
+import com.gows.animwatch.ui.components.CassetteTelemetryStrip
 import com.gows.animwatch.ui.components.ContinueWatchingCard
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
@@ -76,13 +78,13 @@ import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
-import com.gows.animwatch.ui.theme.TextTertiary
 import kotlinx.coroutines.delay
 
 @Composable
@@ -115,7 +117,7 @@ fun HomeScreen(
             .background(ObsidianVoid),
         contentPadding = PaddingValues(bottom = bottomInsetPadding)
     ) {
-        // 1. Top Header Bar
+        // 1. Top Hardware Header Bar
         item {
             HomeTopBar(
                 unreadNotifications = uiState.unreadNotificationCount,
@@ -126,8 +128,16 @@ fun HomeScreen(
             )
         }
 
-        // 2. Hero Featured Carousel
+        // 2. Telemetry Strip + Hero Featured Carousel
         item {
+            CassetteTelemetryStrip(
+                code = "CH-01 // SIARAN UTAMA",
+                statusText = "${uiState.allAnime.size} ANIME • SUB INDO",
+                ledColor = GoldBright,
+                pulsing = true,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             HeroCarouselSection(
                 featuredAnime = featuredList,
                 watchlist = uiState.watchlist.keys,
@@ -137,9 +147,9 @@ fun HomeScreen(
             )
         }
 
-        // 3. Quick Discovery Shortcuts
+        // 3. Quick Discovery Tactile Keys
         item {
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             QuickShortcutStrip(
                 onScheduleClick = onOpenSchedule,
                 onOngoingClick = { onOpenCatalog(CatalogPreset.ONGOING, "Sedang Tayang") },
@@ -149,14 +159,15 @@ fun HomeScreen(
             )
         }
 
-        // 4. Continue Watching
+        // 4. Continue Watching Deck
         if (uiState.watchHistory.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(24.dp))
                 SectionHeader(
+                    channelCode = "CH-02 // TAPE DECK",
                     title = "Lanjutkan Menonton",
                     subtitle = "Lanjutkan tepat dari menit terakhir",
-                    actionLabel = "Riwayat",
+                    actionLabel = "RIWAYAT",
                     onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Baru Ditonton") }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -184,8 +195,9 @@ fun HomeScreen(
         item {
             Spacer(modifier = Modifier.height(26.dp))
             SectionHeader(
+                channelCode = "CH-03 // SIARAN BARU",
                 title = "Rilis Episode Terbaru",
-                subtitle = "Update Sub Indo tercepat minggu ini",
+                subtitle = "Update Sub Indo terbaru minggu ini",
                 onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Rilis Episode Terbaru") }
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -208,6 +220,7 @@ fun HomeScreen(
         item {
             Spacer(modifier = Modifier.height(28.dp))
             SectionHeader(
+                channelCode = "CH-04 // PERINGKAT",
                 title = "Top 10 Peringkat",
                 subtitle = "Koleksi terbaik dengan skor tertinggi",
                 onActionClick = onOpenRanking
@@ -231,8 +244,9 @@ fun HomeScreen(
         item {
             Spacer(modifier = Modifier.height(28.dp))
             SectionHeader(
+                channelCode = "CH-05 // POPULER",
                 title = "Sedang Hangat",
-                subtitle = "Paling sering ditonton komunitas AnimWatch",
+                subtitle = "Paling sering diputar di AnimWatch",
                 onActionClick = { onOpenCatalog(CatalogPreset.TRENDING, "Sedang Hangat") }
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -255,6 +269,7 @@ fun HomeScreen(
         item {
             Spacer(modifier = Modifier.height(28.dp))
             SectionHeader(
+                channelCode = "CH-06 // ARSIP LENGKAP",
                 title = "Siap Maraton (Tamat)",
                 subtitle = "Semua episode lengkap dari awal hingga akhir",
                 onActionClick = { onOpenCatalog(CatalogPreset.COMPLETED, "Anime Tamat — Siap Maraton") }
@@ -279,8 +294,9 @@ fun HomeScreen(
         item {
             Spacer(modifier = Modifier.height(28.dp))
             SectionHeader(
+                channelCode = "CH-07 // LAYAR LEBAR",
                 title = "Film & Spesial Pilihan",
-                subtitle = "Pengalaman layar lebar kualitas 4K",
+                subtitle = "Tontonan layar lebar kualitas sinematik",
                 onActionClick = { onOpenCatalog(CatalogPreset.MOVIES, "Film & OVA Pilihan") }
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -324,21 +340,23 @@ private fun HomeTopBar(
                 Text(
                     text = buildAnnotatedString {
                         withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.ExtraBold)) {
-                            append("Anim")
+                            append("ANIM")
                         }
                         withStyle(SpanStyle(color = GoldBright, fontWeight = FontWeight.ExtraBold)) {
-                            append("Watch")
+                            append("WATCH")
                         }
                     },
-                    fontSize = 20.sp,
-                    letterSpacing = (-0.3).sp
+                    fontFamily = MonoFont,
+                    fontSize = 18.sp,
+                    letterSpacing = 0.8.sp
                 )
                 Text(
-                    text = "ROYAL STREAMING EDITION",
+                    text = "CASSETTE DECK // GOLD",
+                    fontFamily = MonoFont,
                     color = GoldPrimary,
-                    fontSize = 8.5.sp,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.6.sp
+                    letterSpacing = 1.2.sp
                 )
             }
         }
@@ -351,15 +369,15 @@ private fun HomeTopBar(
                 onClick = onSearchClick,
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianCard)
-                    .border(1.dp, GoldSubtleBorder, CircleShape)
+                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Search,
                     contentDescription = "Cari Anime",
                     tint = TextPrimary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
 
@@ -368,15 +386,15 @@ private fun HomeTopBar(
                     onClick = onNotificationClick,
                     modifier = Modifier
                         .size(38.dp)
-                        .clip(CircleShape)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(ObsidianCard)
-                        .border(1.dp, GoldSubtleBorder, CircleShape)
+                        .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Notifications,
                         contentDescription = "Notifikasi",
                         tint = if (unreadNotifications > 0) GoldBright else TextPrimary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(19.dp)
                     )
                 }
                 if (unreadNotifications > 0) {
@@ -390,7 +408,8 @@ private fun HomeTopBar(
                     ) {
                         Text(
                             text = "$unreadNotifications",
-                            color = Color.White,
+                            fontFamily = MonoFont,
+                            color = TextPrimary,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -401,13 +420,15 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .size(38.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(GoldGradientBrush)
+                    .border(1.dp, GoldBright, RoundedCornerShape(8.dp))
                     .clickable(onClick = onProfileClick),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = avatarEmblem,
+                    fontFamily = MonoFont,
                     color = TextOnGold,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Black
@@ -449,9 +470,9 @@ private fun HeroCarouselSection(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(358.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .border(1.2.dp, GoldBorder, RoundedCornerShape(22.dp))
+                    .height(352.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.5.dp, GoldBorder, RoundedCornerShape(8.dp))
                     .clickable { onAnimeClick(anime.id) }
             ) {
                 AnimePosterArtwork(
@@ -468,26 +489,26 @@ private fun HeroCarouselSection(
                         .background(
                             Brush.verticalGradient(
                                 0.0f to Color.Transparent,
-                                0.36f to ObsidianVoid.copy(alpha = 0.25f),
-                                0.68f to ObsidianVoid.copy(alpha = 0.85f),
+                                0.38f to ObsidianVoid.copy(alpha = 0.25f),
+                                0.68f to ObsidianVoid.copy(alpha = 0.88f),
                                 1.0f to ObsidianVoid
                             )
                         )
                 )
 
-                // Top badges
+                // Top bezel badges
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
+                        .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(4.dp))
                             .background(GoldGradientBrush)
-                            .padding(horizontal = 9.dp, vertical = 4.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -499,6 +520,7 @@ private fun HeroCarouselSection(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = anime.posterTag,
+                            fontFamily = MonoFont,
                             color = TextOnGold,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
@@ -506,28 +528,37 @@ private fun HeroCarouselSection(
                         )
                     }
 
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(ObsidianVoid.copy(alpha = 0.82f))
-                            .border(0.75.dp, GoldBorder, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(ObsidianVoid.copy(alpha = 0.88f))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "★ ${anime.rating} • ${anime.releasedEpisodes}/${anime.totalEpisodes} EP",
+                            text = "${anime.rating} // EP ${anime.releasedEpisodes}/${anime.totalEpisodes}",
+                            fontFamily = MonoFont,
                             color = GoldBright,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                // Bottom hero info & CTAs
+                // Bottom hero info & tactile buttons
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
-                        .padding(16.dp)
+                        .padding(14.dp)
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         anime.genres.take(3).forEach { genre ->
@@ -537,7 +568,7 @@ private fun HeroCarouselSection(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = anime.title,
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.headlineSmall,
                         color = TextPrimary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -556,10 +587,10 @@ private fun HeroCarouselSection(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         GoldGradientButton(
-                            text = "Tonton Sekarang",
+                            text = "Tonton",
                             icon = Icons.Rounded.PlayArrow,
                             onClick = { onPlayClick(anime) },
-                            modifier = Modifier.weight(1.35f)
+                            modifier = Modifier.weight(1.25f)
                         )
                         GoldOutlinedButton(
                             text = if (isSaved) "Tersimpan" else "Koleksi",
@@ -573,9 +604,9 @@ private fun HeroCarouselSection(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Pager Indicator Dots
+        // LED Segment Pager Indicators
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
@@ -586,9 +617,9 @@ private fun HeroCarouselSection(
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 3.dp)
-                        .height(6.dp)
-                        .width(if (selected) 24.dp else 6.dp)
-                        .clip(CircleShape)
+                        .height(5.dp)
+                        .width(if (selected) 26.dp else 10.dp)
+                        .clip(RoundedCornerShape(2.dp))
                         .background(if (selected) GoldBright else GoldPrimary.copy(alpha = 0.28f))
                 )
             }
@@ -610,11 +641,11 @@ private fun QuickShortcutStrip(
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        QuickActionPill(Icons.Rounded.CalendarMonth, "Jadwal", onScheduleClick)
-        QuickActionPill(Icons.Rounded.LiveTv, "Ongoing", onOngoingClick)
-        QuickActionPill(Icons.Rounded.EmojiEvents, "Top 10", onRankingClick)
-        QuickActionPill(Icons.Rounded.Movie, "Movie", onMoviesClick)
-        QuickActionPill(Icons.Rounded.Shuffle, "Acak!", onRandomClick)
+        QuickActionPill(Icons.Rounded.CalendarMonth, "JADWAL", onScheduleClick)
+        QuickActionPill(Icons.Rounded.LiveTv, "ONGOING", onOngoingClick)
+        QuickActionPill(Icons.Rounded.EmojiEvents, "TOP 10", onRankingClick)
+        QuickActionPill(Icons.Rounded.Movie, "MOVIE", onMoviesClick)
+        QuickActionPill(Icons.Rounded.Shuffle, "ACAK", onRandomClick)
     }
 }
 
@@ -627,29 +658,31 @@ private fun QuickActionPill(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 4.dp)
     ) {
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(GoldTint)
-                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp)),
+                .border(1.dp, GoldBorder, RoundedCornerShape(8.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = GoldBright,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(21.dp)
             )
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            fontFamily = MonoFont,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
             color = TextSecondary,
             maxLines = 1
         )

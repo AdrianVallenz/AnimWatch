@@ -23,11 +23,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -62,11 +61,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +82,7 @@ import com.gows.animwatch.ui.components.AnimePosterCard
 import com.gows.animwatch.ui.components.CompactAnimeRowCard
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldTagChip
+import com.gows.animwatch.ui.components.LedStatusDot
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.state.ExploreFilterState
 import com.gows.animwatch.ui.state.ExploreMode
@@ -92,12 +92,13 @@ import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
-import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
+import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
@@ -137,22 +138,20 @@ fun ExploreScreen(
             .background(ObsidianVoid)
             .statusBarsPadding()
     ) {
-        // Header Title + Mode Switcher
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text(
-                text = "Jelajah Anime",
+                text = "JELAJAH // DATABASE",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary
             )
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Mode Segmented Pill
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianElevated)
-                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -161,7 +160,7 @@ fun ExploreScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(
                                 if (selected) GoldGradientBrush
                                 else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
@@ -171,9 +170,12 @@ fun ExploreScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = mode.label,
+                            text = mode.label.uppercase(),
+                            fontFamily = MonoFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
                             color = if (selected) TextOnGold else TextSecondary,
-                            style = MaterialTheme.typography.labelLarge
+                            letterSpacing = 0.5.sp
                         )
                     }
                 }
@@ -261,9 +263,20 @@ private fun CatalogExploreContent(
 ) {
     val focusManager = LocalFocusManager.current
     val filter = uiState.exploreFilter
+    var searchFocused by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Search Box + Filter & Layout Buttons
+        // Static label above search input (Cassette Futurism input spec)
+        Text(
+            text = "KATA KUNCI PENCARIAN",
+            fontFamily = MonoFont,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (searchFocused) GoldBright else TextTertiary,
+            letterSpacing = 0.8.sp,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+        )
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -275,9 +288,13 @@ private fun CatalogExploreContent(
                 modifier = Modifier
                     .weight(1f)
                     .height(46.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianCard)
-                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                    .border(
+                        width = if (searchFocused) 2.dp else 1.dp,
+                        color = if (searchFocused) GoldBright else GoldBorder,
+                        shape = RoundedCornerShape(8.dp)
+                    )
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -285,13 +302,13 @@ private fun CatalogExploreContent(
                     imageVector = Icons.Rounded.Search,
                     contentDescription = null,
                     tint = GoldPrimary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (filter.query.isEmpty()) {
                         Text(
-                            text = "Cari judul, studio, atau genre...",
+                            text = "Judul, studio, atau genre...",
                             color = TextTertiary,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
@@ -311,7 +328,9 @@ private fun CatalogExploreContent(
                                 focusManager.clearFocus()
                             }
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { searchFocused = it.isFocused }
                     )
                 }
                 if (filter.query.isNotEmpty()) {
@@ -329,18 +348,17 @@ private fun CatalogExploreContent(
                 }
             }
 
-            // Filter Button with active badge
             Box {
                 IconButton(
                     onClick = onOpenFilterSheet,
                     modifier = Modifier
                         .size(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(if (filter.activeFilterCount > 0) GoldTintStrong else ObsidianCard)
                         .border(
                             1.dp,
-                            if (filter.activeFilterCount > 0) GoldBright else GoldSubtleBorder,
-                            RoundedCornerShape(14.dp)
+                            if (filter.activeFilterCount > 0) GoldBright else GoldBorder,
+                            RoundedCornerShape(8.dp)
                         )
                 ) {
                     Icon(
@@ -354,12 +372,13 @@ private fun CatalogExploreContent(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .size(18.dp)
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(4.dp))
                             .background(GoldBright),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${filter.activeFilterCount}",
+                            fontFamily = MonoFont,
                             color = TextOnGold,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black
@@ -368,14 +387,13 @@ private fun CatalogExploreContent(
                 }
             }
 
-            // Grid/List Switch
             IconButton(
                 onClick = onToggleGridView,
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianCard)
-                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
             ) {
                 Icon(
                     imageVector = if (filter.isGridView) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
@@ -393,23 +411,20 @@ private fun CatalogExploreContent(
             item {
                 val allSelected = filter.selectedGenres.isEmpty()
                 GenrePillChip(
-                    label = "Semua",
+                    label = "SEMUA",
                     selected = allSelected,
-                    onClick = {
-                        if (!allSelected) onResetFilters()
-                    }
+                    onClick = { if (!allSelected) onResetFilters() }
                 )
             }
             items(uiState.genres) { genre ->
                 GenrePillChip(
-                    label = genre,
+                    label = genre.uppercase(),
                     selected = genre in filter.selectedGenres,
                     onClick = { onToggleGenre(genre) }
                 )
             }
         }
 
-        // Search History Strip when query is empty and filters inactive
         if (filter.query.isEmpty() && filter.activeFilterCount == 0 && uiState.searchHistory.isNotEmpty()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Row(
@@ -426,17 +441,17 @@ private fun CatalogExploreContent(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Pencarian Terakhir",
+                            text = "RIWAYAT CARI",
                             style = MaterialTheme.typography.labelMedium,
                             color = TextSecondary
                         )
                     }
                     Text(
-                        text = "Hapus Semua",
+                        text = "HAPUS SEMUA",
                         style = MaterialTheme.typography.labelSmall,
                         color = GoldPrimary,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(4.dp))
                             .clickable(onClick = onClearSearchHistory)
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
@@ -449,16 +464,17 @@ private fun CatalogExploreContent(
                     uiState.searchHistory.forEach { term ->
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(ObsidianCard)
-                                .border(0.75.dp, DividerSubtle, RoundedCornerShape(20.dp))
+                                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                                 .clickable { onQueryChange(term) }
                                 .padding(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = term,
-                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = MonoFont,
+                                fontSize = 11.sp,
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -477,7 +493,6 @@ private fun CatalogExploreContent(
             }
         }
 
-        // Result summary bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -486,17 +501,17 @@ private fun CatalogExploreContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${filteredAnime.size} Judul Ditemukan • ${filter.sortOption.label}",
+                text = "${filteredAnime.size} HASIL // ${filter.sortOption.label.uppercase()}",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextTertiary
             )
             if (filter.activeFilterCount > 0 || filter.query.isNotEmpty()) {
                 Text(
-                    text = "Reset Filter",
+                    text = "RESET FILTER",
                     style = MaterialTheme.typography.labelMedium,
                     color = GoldBright,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(4.dp))
                         .clickable(onClick = onResetFilters)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
@@ -519,44 +534,64 @@ private fun CatalogExploreContent(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Anime tidak ditemukan",
-                        style = MaterialTheme.typography.titleLarge,
+                        text = "ANIME TIDAK DITEMUKAN",
+                        fontFamily = MonoFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
                         color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Coba ubah kata kunci pencarian atau reset filter genre yang aktif.",
+                        text = "Ubah kata kunci pencarian atau reset filter genre yang sedang aktif.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     GoldGradientButton(
-                        text = "Reset Semua Filter",
+                        text = "Reset Filter",
                         icon = Icons.Rounded.RestartAlt,
                         onClick = onResetFilters
                     )
                 }
             }
         } else if (filter.isGridView) {
+            // Asymmetric 2-column Bento layout (every 5th item spans 2 cols as wide spotlight deck; no 3-equal-columns)
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
                     top = 8.dp,
                     bottom = bottomInsetPadding
                 ),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                items(filteredAnime, key = { it.id }) { anime ->
-                    AnimePosterCard(
-                        anime = anime,
-                        isBookmarked = anime.id in uiState.watchlist,
-                        onClick = { onAnimeClick(anime.id) },
-                        onBookmarkClick = { onBookmarkClick(anime.id) },
-                        cardWidth = null
-                    )
+                itemsIndexed(
+                    items = filteredAnime,
+                    key = { _, anime -> anime.id },
+                    span = { index, _ ->
+                        GridItemSpan(if (index % 5 == 0) 2 else 1)
+                    }
+                ) { index, anime ->
+                    if (index % 5 == 0) {
+                        CompactAnimeRowCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onPlayClick = { onPlayAnime(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) },
+                            trailingBadge = "SOROTAN"
+                        )
+                    } else {
+                        AnimePosterCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) },
+                            cardWidth = null
+                        )
+                    }
                 }
             }
         } else {
@@ -601,7 +636,6 @@ private fun ScheduleExploreContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Day Strip Selector
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -611,16 +645,16 @@ private fun ScheduleExploreContent(
                 val isToday = day == today
                 Column(
                     modifier = Modifier
-                        .width(64.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .width(66.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(
                             if (selected) GoldGradientBrush
                             else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
                         )
                         .border(
                             1.dp,
-                            if (selected) Color.Transparent else if (isToday) GoldBright else GoldSubtleBorder,
-                            RoundedCornerShape(14.dp)
+                            if (selected) GoldBright else if (isToday) GoldBright else GoldSubtleBorder,
+                            RoundedCornerShape(8.dp)
                         )
                         .clickable { onSelectDay(day) }
                         .padding(vertical = 10.dp),
@@ -628,16 +662,18 @@ private fun ScheduleExploreContent(
                 ) {
                     Text(
                         text = day.shortLabel.uppercase(),
+                        fontFamily = MonoFont,
                         color = if (selected) TextOnGold else TextPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = if (isToday) "Hari Ini" else "${allAnime.count { it.releaseDay == day }} Ep",
+                        text = if (isToday) "TODAY" else "${allAnime.count { it.releaseDay == day }} EP",
+                        fontFamily = MonoFont,
                         color = if (selected) TextOnGold.copy(alpha = 0.85f) else if (isToday) GoldBright else TextTertiary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -664,7 +700,7 @@ private fun ScheduleExploreContent(
                         color = TextPrimary
                     )
                     Text(
-                        text = "Pilih hari lain di atas untuk melihat anime mingguan.",
+                        text = "Pilih hari lain di atas untuk melihat siaran mingguan.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
@@ -682,9 +718,12 @@ private fun ScheduleExploreContent(
             ) {
                 item {
                     Text(
-                        text = "Jadwal Rilis Hari ${selectedDay.label}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = GoldBright
+                        text = "SIARAN HARI ${selectedDay.label.uppercase()}",
+                        fontFamily = MonoFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = GoldBright,
+                        letterSpacing = 0.8.sp
                     )
                 }
                 items(dayAnime, key = { it.id }) { anime ->
@@ -692,27 +731,29 @@ private fun ScheduleExploreContent(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                             .clickable { onAnimeClick(anime.id) }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.width(58.dp)
+                            modifier = Modifier.width(56.dp)
                         ) {
                             Text(
                                 text = (anime.releaseTimeWib ?: "20:00").substringBefore(" "),
+                                fontFamily = MonoFont,
                                 color = GoldBright,
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Black
                             )
                             Text(
                                 text = "WIB",
+                                fontFamily = MonoFont,
                                 color = TextTertiary,
-                                fontSize = 10.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -727,8 +768,9 @@ private fun ScheduleExploreContent(
 
                         Box(
                             modifier = Modifier
-                                .size(width = 52.dp, height = 72.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(width = 50.dp, height = 70.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                         ) {
                             AnimePosterArtwork(
                                 artTheme = anime.artTheme,
@@ -741,12 +783,20 @@ private fun ScheduleExploreContent(
                         Spacer(modifier = Modifier.width(12.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            GoldTagChip(
-                                text = if (anime.status == AnimeStatus.ONGOING)
-                                    "EP ${anime.releasedEpisodes + 1} SEGERA"
-                                else "TAMAT",
-                                highlighted = anime.status == AnimeStatus.ONGOING
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (anime.status == AnimeStatus.ONGOING) {
+                                    LedStatusDot(color = StatusLive, pulsing = true, size = 6.dp)
+                                }
+                                GoldTagChip(
+                                    text = if (anime.status == AnimeStatus.ONGOING)
+                                        "EP ${anime.releasedEpisodes + 1} SEGERA"
+                                    else "TAMAT",
+                                    highlighted = anime.status == AnimeStatus.ONGOING
+                                )
+                            }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = anime.title,
@@ -756,8 +806,9 @@ private fun ScheduleExploreContent(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = anime.genres.take(2).joinToString(" • "),
-                                style = MaterialTheme.typography.bodySmall,
+                                text = anime.genres.take(2).joinToString(" / "),
+                                fontFamily = MonoFont,
+                                fontSize = 10.sp,
                                 color = TextTertiary
                             )
                         }
@@ -766,23 +817,28 @@ private fun ScheduleExploreContent(
                             IconButton(
                                 onClick = { onToggleReminder(anime.id) },
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(if (hasReminder) GoldTintStrong else ObsidianCardAlt)
+                                    .border(
+                                        1.dp,
+                                        if (hasReminder) GoldBright else GoldSubtleBorder,
+                                        RoundedCornerShape(6.dp)
+                                    )
                             ) {
                                 Icon(
                                     imageVector = if (hasReminder) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
                                     contentDescription = "Pengingat",
                                     tint = if (hasReminder) GoldBright else TextSecondary,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             IconButton(
                                 onClick = { onPlayAnime(anime.id) },
                                 modifier = Modifier
                                     .size(34.dp)
-                                    .clip(CircleShape)
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(GoldGradientBrush)
                             ) {
                                 Icon(
@@ -824,12 +880,15 @@ private fun RankingExploreContent(
     ) {
         item {
             Text(
-                text = "Peringkat Teratas Komunitas",
-                style = MaterialTheme.typography.titleMedium,
-                color = GoldBright
+                text = "PERINGKAT // SKOR TERTINGGI",
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = GoldBright,
+                letterSpacing = 0.8.sp
             )
             Text(
-                text = "Berdasarkan skor ulasan, konsistensi episode, dan total tayangan",
+                text = "Berdasarkan rating komunitas, konsistensi rilis, dan total tayangan",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )
@@ -857,24 +916,26 @@ private fun GenrePillChip(
 ) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(
                 if (selected) GoldGradientBrush
                 else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
             )
             .border(
                 1.dp,
-                if (selected) Color.Transparent else GoldSubtleBorder,
-                RoundedCornerShape(20.dp)
+                if (selected) GoldBright else GoldSubtleBorder,
+                RoundedCornerShape(6.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Text(
             text = label,
+            fontFamily = MonoFont,
             color = if (selected) TextOnGold else TextSecondary,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.4.sp
         )
     }
 }
@@ -897,7 +958,8 @@ private fun ExploreFilterBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = ObsidianElevated,
-        contentColor = TextPrimary
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
     ) {
         Column(
             modifier = Modifier
@@ -912,24 +974,25 @@ private fun ExploreFilterBottomSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Filter & Urutkan",
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = "FILTER & URUTKAN",
+                    fontFamily = MonoFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
                     color = GoldBright
                 )
                 TextButton(onClick = onReset) {
-                    Text("Reset", color = GoldPrimary)
+                    Text("RESET", fontFamily = MonoFont, color = GoldPrimary)
                 }
             }
 
             HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(vertical = 8.dp))
 
-            // Sort
-            Text("Urutkan Berdasarkan", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text("URUTKAN", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SortOption.entries.forEach { sort ->
                     GenrePillChip(
-                        label = sort.label,
+                        label = sort.label.uppercase(),
                         selected = filter.sortOption == sort,
                         onClick = { onSortChange(sort) }
                     )
@@ -938,35 +1001,32 @@ private fun ExploreFilterBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Status
-            Text("Status Tayang", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text("STATUS TAYANG", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GenrePillChip("Semua", filter.statusFilter == null) { onStatusChange(null) }
+                GenrePillChip("SEMUA", filter.statusFilter == null) { onStatusChange(null) }
                 AnimeStatus.entries.forEach { status ->
-                    GenrePillChip(status.label, filter.statusFilter == status) { onStatusChange(status) }
+                    GenrePillChip(status.label.uppercase(), filter.statusFilter == status) { onStatusChange(status) }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Type
-            Text("Format Rilis", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text("FORMAT RILIS", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GenrePillChip("Semua", filter.typeFilter == null) { onTypeChange(null) }
+                GenrePillChip("SEMUA", filter.typeFilter == null) { onTypeChange(null) }
                 AnimeType.entries.forEach { type ->
-                    GenrePillChip(type.label, filter.typeFilter == type) { onTypeChange(type) }
+                    GenrePillChip(type.label.uppercase(), filter.typeFilter == type) { onTypeChange(type) }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Year
-            Text("Tahun Rilis", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text("TAHUN RILIS", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GenrePillChip("Semua", filter.yearFilter == null) { onYearChange(null) }
+                GenrePillChip("SEMUA", filter.yearFilter == null) { onYearChange(null) }
                 listOf(2026, 2025, 2024).forEach { yr ->
                     GenrePillChip("$yr", filter.yearFilter == yr) { onYearChange(yr) }
                 }
@@ -974,12 +1034,11 @@ private fun ExploreFilterBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Genres
-            Text("Genre (Multi-pilih)", style = MaterialTheme.typography.titleSmall, color = TextPrimary)
+            Text("GENRE (MULTI-PILIH)", style = MaterialTheme.typography.labelLarge, color = TextPrimary)
             Spacer(modifier = Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 genres.forEach { g ->
-                    GenrePillChip(g, g in filter.selectedGenres) { onToggleGenre(g) }
+                    GenrePillChip(g.uppercase(), g in filter.selectedGenres) { onToggleGenre(g) }
                 }
             }
 

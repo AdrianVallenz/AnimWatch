@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -45,17 +43,12 @@ import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -76,23 +70,25 @@ import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.DownloadTask
 import com.gows.animwatch.data.model.Episode
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.AnimePosterCard
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldTagChip
 import com.gows.animwatch.ui.components.RatingDialog
+import com.gows.animwatch.ui.components.TactileInputField
+import com.gows.animwatch.ui.components.TapeReelSpinner
 import com.gows.animwatch.ui.components.WatchlistCategorySheet
 import com.gows.animwatch.ui.components.formatTimeSeconds
 import com.gows.animwatch.ui.state.AnimWatchUiState
-import com.gows.animwatch.ui.theme.DividerSubtle
 import com.gows.animwatch.ui.theme.GoldBorder
 import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
-import com.gows.animwatch.ui.theme.GoldHorizontalBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianVoid
@@ -163,7 +159,7 @@ fun AnimeDetailScreen(
             .background(ObsidianVoid),
         contentPadding = PaddingValues(bottom = bottomInsetPadding)
     ) {
-        // 1. Cinematic Header Backdrop
+        // 1. CRT Monitor Backdrop Header
         item {
             Box(
                 modifier = Modifier
@@ -182,7 +178,7 @@ fun AnimeDetailScreen(
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                0.0f to ObsidianVoid.copy(alpha = 0.55f),
+                                0.0f to ObsidianVoid.copy(alpha = 0.58f),
                                 0.45f to ObsidianVoid.copy(alpha = 0.35f),
                                 0.80f to ObsidianVoid.copy(alpha = 0.90f),
                                 1.0f to ObsidianVoid
@@ -190,7 +186,7 @@ fun AnimeDetailScreen(
                         )
                 )
 
-                // Top Nav Overlay
+                // Top Nav Controls
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -203,9 +199,9 @@ fun AnimeDetailScreen(
                         onClick = onBack,
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(CircleShape)
-                            .background(ObsidianVoid.copy(alpha = 0.72f))
-                            .border(1.dp, GoldSubtleBorder, CircleShape)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(ObsidianVoid.copy(alpha = 0.82f))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -220,9 +216,9 @@ fun AnimeDetailScreen(
                                 onClick = { onToggleReminder(anime.id) },
                                 modifier = Modifier
                                     .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(ObsidianVoid.copy(alpha = 0.72f))
-                                    .border(1.dp, if (hasReminder) GoldBright else GoldSubtleBorder, CircleShape)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(ObsidianVoid.copy(alpha = 0.82f))
+                                    .border(1.dp, if (hasReminder) GoldBright else GoldBorder, RoundedCornerShape(8.dp))
                             ) {
                                 Icon(
                                     imageVector = if (hasReminder) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
@@ -236,9 +232,9 @@ fun AnimeDetailScreen(
                             onClick = { onShareClick(anime.title) },
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(CircleShape)
-                                .background(ObsidianVoid.copy(alpha = 0.72f))
-                                .border(1.dp, GoldSubtleBorder, CircleShape)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(ObsidianVoid.copy(alpha = 0.82f))
+                                .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Share,
@@ -259,10 +255,10 @@ fun AnimeDetailScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .width(108.dp)
+                            .width(106.dp)
                             .aspectRatio(0.70f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(1.5.dp, GoldBorder, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.5.dp, GoldBorder, RoundedCornerShape(8.dp))
                     ) {
                         AnimePosterArtwork(
                             artTheme = anime.artTheme,
@@ -279,7 +275,7 @@ fun AnimeDetailScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             GoldTagChip(
-                                text = anime.status.label.uppercase(),
+                                text = anime.status.label,
                                 highlighted = anime.status == AnimeStatus.ONGOING
                             )
                             GoldTagChip(text = anime.type.label)
@@ -316,21 +312,24 @@ fun AnimeDetailScreen(
                                 Spacer(modifier = Modifier.width(3.dp))
                                 Text(
                                     text = "${anime.rating}",
+                                    fontFamily = MonoFont,
                                     color = GoldBright,
                                     fontWeight = FontWeight.Black,
                                     fontSize = 14.sp
                                 )
                                 Text(
                                     text = " (${anime.ratingCountLabel})",
+                                    fontFamily = MonoFont,
                                     color = TextTertiary,
-                                    fontSize = 11.5.sp
+                                    fontSize = 11.sp
                                 )
                             }
                             if (userRating > 0) {
                                 Text(
-                                    text = "• Nilaimu: $userRating",
+                                    text = "// KAMU: $userRating",
+                                    fontFamily = MonoFont,
                                     color = GoldBright,
-                                    fontSize = 11.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -340,20 +339,20 @@ fun AnimeDetailScreen(
             }
         }
 
-        // 2. Studio, Year, Episode Count Strip + Main Action Buttons
+        // 2. Metadata Strip & Primary Actions
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(
-                    text = "${anime.studio} • ${anime.season} • ${anime.releasedEpisodes}/${anime.totalEpisodes} Episode (${anime.durationMinutes} mnt)",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "${anime.studio.uppercase()} // ${anime.season.uppercase()} // ${anime.releasedEpisodes}/${anime.totalEpisodes} EP (${anime.durationMinutes}M)",
+                    fontFamily = MonoFont,
+                    fontSize = 10.5.sp,
                     color = TextSecondary
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Primary Play / Continue CTA
                 val playLabel = if (watchProgress != null) {
-                    "Lanjutkan Ep. ${watchProgress.episodeNumber} • ${formatTimeSeconds(watchProgress.positionSeconds)}"
+                    "Lanjutkan Ep ${watchProgress.episodeNumber} (${formatTimeSeconds(watchProgress.positionSeconds)})"
                 } else {
                     "Tonton Episode 1"
                 }
@@ -368,7 +367,6 @@ fun AnimeDetailScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Secondary Action Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -402,21 +400,24 @@ fun AnimeDetailScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Synopsis
+                // Synopsis Panel
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(ObsidianCard)
-                        .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                        .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
                         .clickable { synopsisExpanded = !synopsisExpanded }
                         .animateContentSize()
                         .padding(14.dp)
                 ) {
                     Text(
-                        text = "Sinopsis",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = GoldBright
+                        text = "RINGKASAN CERITA",
+                        fontFamily = MonoFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = GoldBright,
+                        letterSpacing = 0.8.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -428,16 +429,16 @@ fun AnimeDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = if (synopsisExpanded) "Tutup sinopsis ▲" else "Baca selengkapnya ▼",
+                        text = if (synopsisExpanded) "[ TUTUP SINOPSIS ]" else "[ BACA SELENGKAPNYA ]",
+                        fontFamily = MonoFont,
                         color = GoldPrimary,
-                        fontSize = 11.5.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Clickable Genres
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -445,17 +446,18 @@ fun AnimeDetailScreen(
                     anime.genres.forEach { genre ->
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(GoldTint)
-                                .border(0.75.dp, GoldBorder, RoundedCornerShape(20.dp))
+                                .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
                                 .clickable { onGenreClick(genre) }
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
                         ) {
                             Text(
-                                text = genre,
+                                text = genre.uppercase(),
+                                fontFamily = MonoFont,
                                 color = GoldBright,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -463,16 +465,16 @@ fun AnimeDetailScreen(
             }
         }
 
-        // 3. Detail Tabs Header
+        // 3. Detail Tabs Selector
         item {
             Spacer(modifier = Modifier.height(18.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianCard)
-                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -486,7 +488,7 @@ fun AnimeDetailScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(
                                 if (selected) GoldGradientBrush
                                 else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
@@ -496,9 +498,10 @@ fun AnimeDetailScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${tab.label}$suffix",
+                            text = "${tab.label.uppercase()}$suffix",
+                            fontFamily = MonoFont,
                             color = if (selected) TextOnGold else TextSecondary,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -521,16 +524,18 @@ fun AnimeDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Daftar Episode (${anime.episodes.size})",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "DAFTAR EPISODE (${anime.episodes.size})",
+                            fontFamily = MonoFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
                             color = TextPrimary
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(ObsidianCard)
-                                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(10.dp))
+                                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                                     .clickable { sortDescending = !sortDescending }
                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -543,18 +548,19 @@ fun AnimeDetailScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (sortDescending) "Terbaru" else "Ep 1→N",
+                                    text = if (sortDescending) "TERBARU" else "EP 1->N",
+                                    fontFamily = MonoFont,
                                     color = TextSecondary,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
 
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(6.dp))
                                     .background(ObsidianCard)
-                                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(10.dp))
+                                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                                     .clickable { episodeGridMode = !episodeGridMode }
                                     .padding(6.dp)
                             ) {
@@ -583,13 +589,13 @@ fun AnimeDetailScreen(
                                 val isWatched = watchProgress?.episodeId == ep.id
                                 Box(
                                     modifier = Modifier
-                                        .width(66.dp)
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .width(72.dp)
+                                        .clip(RoundedCornerShape(8.dp))
                                         .background(if (isWatched) GoldGradientBrush else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard)))
                                         .border(
                                             1.dp,
-                                            if (isWatched) Color.Transparent else GoldSubtleBorder,
-                                            RoundedCornerShape(10.dp)
+                                            if (isWatched) GoldBright else GoldSubtleBorder,
+                                            RoundedCornerShape(8.dp)
                                         )
                                         .clickable { onPlayEpisode(anime.id, ep.id) }
                                         .padding(vertical = 12.dp),
@@ -597,6 +603,7 @@ fun AnimeDetailScreen(
                                 ) {
                                     Text(
                                         text = "EP ${ep.number}",
+                                        fontFamily = MonoFont,
                                         color = if (isWatched) TextOnGold else TextPrimary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp
@@ -640,21 +647,22 @@ fun AnimeDetailScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 5.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(ObsidianCard)
-                                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(GoldGradientBrush),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = charRole.emblem,
+                                    fontFamily = MonoFont,
                                     color = TextOnGold,
                                     fontWeight = FontWeight.Black,
                                     fontSize = 18.sp
@@ -669,13 +677,14 @@ fun AnimeDetailScreen(
                                 )
                                 Text(
                                     text = charRole.role,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = MonoFont,
+                                    fontSize = 11.sp,
                                     color = GoldPrimary
                                 )
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = "Seiyuu",
+                                    text = "SEIYUU",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = TextTertiary
                                 )
@@ -725,24 +734,18 @@ fun AnimeDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                             .padding(12.dp)
                     ) {
-                        OutlinedTextField(
+                        TactileInputField(
+                            label = "Tulis Komentar",
                             value = commentDraft,
                             onValueChange = { commentDraft = it },
-                            placeholder = { Text("Tulis pendapatmu tentang anime ini...", color = TextTertiary, fontSize = 13.sp) },
-                            maxLines = 3,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = GoldBright,
-                                unfocusedBorderColor = DividerSubtle,
-                                focusedTextColor = TextPrimary,
-                                unfocusedTextColor = TextPrimary,
-                                cursorColor = GoldBright
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            placeholder = "Tulis pendapatmu tentang anime ini...",
+                            singleLine = false,
+                            maxLines = 3
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(
@@ -763,7 +766,12 @@ fun AnimeDetailScreen(
                                         checkmarkColor = TextOnGold
                                     )
                                 )
-                                Text("Tandai Spoiler", color = TextSecondary, fontSize = 12.sp)
+                                Text(
+                                    "TANDAI SPOILER",
+                                    fontFamily = MonoFont,
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
                             }
                             GoldGradientButton(
                                 text = "Kirim",
@@ -829,7 +837,7 @@ fun AnimeDetailScreen(
 
 @Composable
 private fun DetailQuickAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     active: Boolean,
     onClick: () -> Unit,
@@ -837,9 +845,9 @@ private fun DetailQuickAction(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(if (active) GoldTintStrong else ObsidianCard)
-            .border(1.dp, if (active) GoldBright else GoldSubtleBorder, RoundedCornerShape(12.dp))
+            .border(1.dp, if (active) GoldBright else GoldSubtleBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -848,14 +856,15 @@ private fun DetailQuickAction(
             imageVector = icon,
             contentDescription = label,
             tint = if (active) GoldBright else GoldPrimary,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(19.dp)
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = label,
+            text = label.uppercase(),
+            fontFamily = MonoFont,
             color = if (active) GoldBright else TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -875,19 +884,19 @@ private fun EpisodeRowItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(ObsidianCard)
-            .border(1.dp, if (watchFraction > 0f) GoldBorder else GoldSubtleBorder, RoundedCornerShape(14.dp))
+            .border(1.dp, if (watchFraction > 0f) GoldBorder else GoldSubtleBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onPlayClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .width(104.dp)
+                .width(102.dp)
                 .aspectRatio(16f / 10f)
-                .clip(RoundedCornerShape(10.dp))
-                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(6.dp))
+                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
         ) {
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
@@ -898,34 +907,18 @@ private fun EpisodeRowItem(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .background(ObsidianVoid.copy(alpha = 0.78f))
-                    .border(1.dp, GoldBright, CircleShape),
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(ObsidianVoid.copy(alpha = 0.85f))
+                    .border(1.dp, GoldBright, RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = "Putar",
                     tint = GoldBright,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(17.dp)
                 )
-            }
-            if (watchFraction > 0f) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(3.dp)
-                        .background(Color.White.copy(alpha = 0.2f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(watchFraction.coerceIn(0.05f, 1f))
-                            .fillMaxHeight()
-                            .background(GoldHorizontalBrush)
-                    )
-                }
             }
         }
 
@@ -937,18 +930,20 @@ private fun EpisodeRowItem(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "Episode ${episode.number}",
+                    text = "EPISODE ${episode.number}",
+                    fontFamily = MonoFont,
                     color = GoldBright,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
                 if (episode.isFiller) {
                     GoldTagChip(text = "FILLER")
                 }
                 Text(
-                    text = "• ${episode.durationSeconds / 60} mnt",
+                    text = "// ${episode.durationSeconds / 60}M",
+                    fontFamily = MonoFont,
                     color = TextTertiary,
-                    fontSize = 11.sp
+                    fontSize = 10.sp
                 )
             }
             Spacer(modifier = Modifier.height(3.dp))
@@ -959,12 +954,21 @@ private fun EpisodeRowItem(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = episode.releaseDate,
-                style = MaterialTheme.typography.labelSmall,
-                color = TextTertiary
-            )
+            if (watchFraction > 0f) {
+                Spacer(modifier = Modifier.height(5.dp))
+                AnalogMeterGauge(
+                    progress = watchFraction.coerceIn(0.06f, 1f),
+                    segments = 12,
+                    height = 5.dp
+                )
+            } else {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = episode.releaseDate.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextTertiary
+                )
+            }
         }
 
         Spacer(modifier = Modifier.width(6.dp))
@@ -981,16 +985,21 @@ private fun EpisodeRowItem(
             }
 
             DownloadStatus.DOWNLOADING -> {
-                Box(
-                    modifier = Modifier.size(40.dp),
-                    contentAlignment = Alignment.Center
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(onClick = onDownloadClick)
+                        .padding(4.dp)
                 ) {
-                    CircularProgressIndicator(
-                        progress = { downloadTask.progress },
+                    TapeReelSpinner(isSpinning = true, size = 22.dp, tint = GoldBright)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${(downloadTask.progress * 100).toInt()}%",
+                        fontFamily = MonoFont,
+                        fontSize = 9.sp,
                         color = GoldBright,
-                        trackColor = ObsidianCardAlt,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(26.dp)
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -1019,9 +1028,9 @@ fun CommentCardItem(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(ObsidianCard)
-            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
             .padding(12.dp)
     ) {
         Row(
@@ -1033,12 +1042,14 @@ fun CommentCardItem(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(GoldTintStrong),
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(GoldTintStrong)
+                        .border(0.75.dp, GoldBorder, RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = comment.author.take(1).uppercase(),
+                        fontFamily = MonoFont,
                         color = GoldBright,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Black
@@ -1055,7 +1066,8 @@ fun CommentCardItem(
             }
             Text(
                 text = comment.timeAgo,
-                style = MaterialTheme.typography.labelSmall,
+                fontFamily = MonoFont,
+                fontSize = 10.sp,
                 color = TextTertiary
             )
         }
@@ -1066,9 +1078,9 @@ fun CommentCardItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(ObsidianCardAlt)
-                    .border(1.dp, StatusLive.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                    .border(1.dp, StatusLive.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
                     .clickable(onClick = onRevealSpoiler)
                     .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1082,9 +1094,10 @@ fun CommentCardItem(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Mengandung Spoiler — Ketuk untuk melihat",
+                    text = "MENGANDUNG SPOILER // KETUK UNTUK BUKA",
+                    fontFamily = MonoFont,
                     color = StatusLive,
-                    fontSize = 12.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -1105,8 +1118,9 @@ fun CommentCardItem(
         ) {
             if (comment.episodeNumber != null) {
                 Text(
-                    text = "Episode ${comment.episodeNumber}",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = "EPISODE ${comment.episodeNumber}",
+                    fontFamily = MonoFont,
+                    fontSize = 10.sp,
                     color = GoldPrimary
                 )
             } else {
@@ -1115,8 +1129,13 @@ fun CommentCardItem(
 
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .background(if (comment.isLiked) GoldTintStrong else ObsidianCardAlt)
+                    .border(
+                        0.75.dp,
+                        if (comment.isLiked) GoldBright else GoldSubtleBorder,
+                        RoundedCornerShape(6.dp)
+                    )
                     .clickable(onClick = onLikeClick)
                     .padding(horizontal = 10.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1125,13 +1144,14 @@ fun CommentCardItem(
                     imageVector = Icons.Rounded.ThumbUp,
                     contentDescription = "Suka",
                     tint = if (comment.isLiked) GoldBright else TextTertiary,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(13.dp)
                 )
                 Spacer(modifier = Modifier.width(5.dp))
                 Text(
                     text = "${comment.likes}",
+                    fontFamily = MonoFont,
                     color = if (comment.isLiked) GoldBright else TextSecondary,
-                    fontSize = 11.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }

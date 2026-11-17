@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,17 +20,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BookmarkBorder
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,8 +57,10 @@ import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.DownloadTask
 import com.gows.animwatch.data.model.WatchProgress
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.GoldTagChip
+import com.gows.animwatch.ui.components.TapeReelSpinner
 import com.gows.animwatch.ui.components.WatchlistCategorySheet
 import com.gows.animwatch.ui.components.formatTimeSeconds
 import com.gows.animwatch.ui.state.AnimWatchUiState
@@ -68,12 +68,11 @@ import com.gows.animwatch.ui.state.LibraryTab
 import com.gows.animwatch.ui.theme.GoldBorder
 import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
-import com.gows.animwatch.ui.theme.GoldHorizontalBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
-import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusEmerald
@@ -109,7 +108,7 @@ fun LibraryScreen(
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
             Text(
-                text = "Koleksiku",
+                text = "KOLEKSI // ARSIP TAPE",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary
             )
@@ -118,9 +117,9 @@ fun LibraryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianElevated)
-                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -134,7 +133,7 @@ fun LibraryScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(6.dp))
                             .background(
                                 if (selected) GoldGradientBrush
                                 else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
@@ -144,9 +143,10 @@ fun LibraryScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "${tab.label} ($count)",
+                            text = "${tab.label.uppercase()} ($count)",
+                            fontFamily = MonoFont,
                             color = if (selected) TextOnGold else TextSecondary,
-                            fontSize = 11.5.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -224,7 +224,7 @@ private fun WatchlistContent(
         ) {
             item {
                 FilterChipPill(
-                    text = "Semua (${uiState.watchlist.size})",
+                    text = "SEMUA (${uiState.watchlist.size})",
                     selected = uiState.selectedWatchlistFilter == null,
                     onClick = { onSelectFilter(null) }
                 )
@@ -232,7 +232,7 @@ private fun WatchlistContent(
             items(WatchlistCategory.entries) { cat ->
                 val count = uiState.watchlist.values.count { it == cat }
                 FilterChipPill(
-                    text = "${cat.label} ($count)",
+                    text = "${cat.label.uppercase()} ($count)",
                     selected = uiState.selectedWatchlistFilter == cat,
                     onClick = { onSelectFilter(cat) }
                 )
@@ -243,7 +243,7 @@ private fun WatchlistContent(
             EmptyLibraryState(
                 icon = Icons.Rounded.BookmarkBorder,
                 title = "Daftar tonton masih kosong",
-                subtitle = "Simpan anime favoritmu dari Beranda atau halaman Detail untuk melacak progres menonton."
+                subtitle = "Simpan anime favorit dari Beranda atau Detail untuk melacak progres tontonan."
             )
         } else {
             LazyColumn(
@@ -259,19 +259,19 @@ private fun WatchlistContent(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                             .clickable { onAnimeClick(anime.id) }
                             .padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .width(66.dp)
+                                .width(64.dp)
                                 .aspectRatio(0.72f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .border(0.75.dp, GoldBorder, RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
                         ) {
                             AnimePosterArtwork(
                                 artTheme = anime.artTheme,
@@ -286,29 +286,40 @@ private fun WatchlistContent(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(4.dp))
                                         .background(GoldTint)
-                                        .border(0.75.dp, GoldBorder, RoundedCornerShape(6.dp))
+                                        .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
                                         .clickable { onEditCategory(anime) }
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        .padding(horizontal = 7.dp, vertical = 3.dp)
                                 ) {
                                     Text(
-                                        text = "${category.label} ▾",
+                                        text = "${category.label.uppercase()} [UBAH]",
+                                        fontFamily = MonoFont,
                                         color = GoldBright,
-                                        fontSize = 10.sp,
+                                        fontSize = 9.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
-                                Text(
-                                    text = "★ ${anime.rating}",
-                                    color = GoldPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Star,
+                                        contentDescription = null,
+                                        tint = GoldBright,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = "${anime.rating}",
+                                        fontFamily = MonoFont,
+                                        color = GoldPrimary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                             Spacer(modifier = Modifier.height(5.dp))
                             Text(
@@ -320,8 +331,9 @@ private fun WatchlistContent(
                             )
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = "${anime.releasedEpisodes}/${anime.totalEpisodes} Episode • ${anime.studio}",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "EP ${anime.releasedEpisodes}/${anime.totalEpisodes} // ${anime.studio}",
+                                fontFamily = MonoFont,
+                                fontSize = 10.sp,
                                 color = TextTertiary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -332,7 +344,7 @@ private fun WatchlistContent(
                             onClick = { onPlayClick(anime) },
                             modifier = Modifier
                                 .size(38.dp)
-                                .clip(CircleShape)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(GoldGradientBrush)
                         ) {
                             Icon(
@@ -362,7 +374,7 @@ private fun HistoryContent(
         EmptyLibraryState(
             icon = Icons.Rounded.History,
             title = "Belum ada riwayat tonton",
-            subtitle = "Episode yang kamu putar akan muncul di sini agar mudah dilanjutkan kapan saja."
+            subtitle = "Episode yang kamu putar akan tercatat di sini agar mudah dilanjutkan."
         )
     } else {
         LazyColumn(
@@ -381,12 +393,18 @@ private fun HistoryContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${history.size} Anime terakhir ditonton",
+                        text = "${history.size} ANIME TERAKHIR DITONTON",
                         style = MaterialTheme.typography.labelMedium,
                         color = TextSecondary
                     )
                     TextButton(onClick = onClearAll) {
-                        Text("Bersihkan Semua", color = StatusLive, fontSize = 12.sp)
+                        Text(
+                            "BERSIHKAN SEMUA",
+                            fontFamily = MonoFont,
+                            color = StatusLive,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -395,19 +413,19 @@ private fun HistoryContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(ObsidianCard)
-                        .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                        .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                         .clickable { onResumeClick(progress) }
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .width(106.dp)
+                            .width(104.dp)
                             .aspectRatio(16f / 10f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(0.75.dp, GoldBorder, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
                     ) {
                         AnimePosterArtwork(
                             artTheme = anime.artTheme,
@@ -418,30 +436,17 @@ private fun HistoryContent(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(ObsidianVoid.copy(alpha = 0.78f)),
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(ObsidianVoid.copy(alpha = 0.85f))
+                                .border(1.dp, GoldBright, RoundedCornerShape(6.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.PlayArrow,
                                 contentDescription = "Lanjut",
                                 tint = GoldBright,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .fillMaxWidth()
-                                .height(3.dp)
-                                .background(Color.White.copy(alpha = 0.2f))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(progress.progressFraction.coerceAtLeast(0.05f))
-                                    .fillMaxHeight()
-                                    .background(GoldHorizontalBrush)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -459,7 +464,7 @@ private fun HistoryContent(
                         ) {
                             GoldTagChip(text = "EP ${progress.episodeNumber}", highlighted = true)
                             Text(
-                                text = progress.updatedAtLabel,
+                                text = progress.updatedAtLabel.uppercase(),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = TextTertiary
                             )
@@ -472,9 +477,17 @@ private fun HistoryContent(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        AnalogMeterGauge(
+                            progress = progress.progressFraction.coerceAtLeast(0.06f),
+                            segments = 14,
+                            height = 6.dp
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
                             text = "${formatTimeSeconds(progress.positionSeconds)} / ${formatTimeSeconds(progress.durationSeconds)}",
-                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = MonoFont,
+                            fontSize = 10.5.sp,
                             color = GoldPrimary
                         )
                     }
@@ -515,14 +528,13 @@ private fun DownloadsContent(
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Storage Card
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianCard)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(16.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                     .padding(14.dp)
             ) {
                 Row(
@@ -535,12 +547,14 @@ private fun DownloadsContent(
                             imageVector = Icons.Rounded.Storage,
                             contentDescription = null,
                             tint = GoldBright,
-                            modifier = Modifier.size(19.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Penyimpanan Offline",
-                            style = MaterialTheme.typography.titleSmall,
+                            text = "PENYIMPANAN TAPE OFFLINE",
+                            fontFamily = MonoFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
                             color = TextPrimary
                         )
                     }
@@ -551,21 +565,11 @@ private fun DownloadsContent(
                     )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(7.dp)
-                        .clip(CircleShape)
-                        .background(ObsidianCardAlt)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth((totalUsedMb.toFloat() / maxBudgetMb).coerceIn(0.02f, 1f))
-                            .fillMaxHeight()
-                            .clip(CircleShape)
-                            .background(GoldHorizontalBrush)
-                    )
-                }
+                AnalogMeterGauge(
+                    progress = (totalUsedMb.toFloat() / maxBudgetMb).coerceIn(0.02f, 1f),
+                    segments = 24,
+                    height = 9.dp
+                )
             }
         }
 
@@ -574,7 +578,7 @@ private fun DownloadsContent(
                 EmptyLibraryState(
                     icon = Icons.Rounded.DownloadDone,
                     title = "Belum ada unduhan offline",
-                    subtitle = "Unduh episode dari halaman Detail atau Player untuk menonton tanpa koneksi internet."
+                    subtitle = "Unduh episode dari halaman Detail atau Player untuk ditonton tanpa internet."
                 )
             }
         } else {
@@ -582,9 +586,9 @@ private fun DownloadsContent(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(ObsidianCard)
-                        .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                        .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
                         .clickable {
                             if (task.status == DownloadStatus.COMPLETED) onPlayOffline(task)
                             else onAnimeClick(task.animeId)
@@ -594,9 +598,10 @@ private fun DownloadsContent(
                 ) {
                     Box(
                         modifier = Modifier
-                            .width(62.dp)
+                            .width(60.dp)
                             .aspectRatio(0.76f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(6.dp))
+                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                     ) {
                         AnimePosterArtwork(
                             artTheme = task.artTheme,
@@ -614,16 +619,17 @@ private fun DownloadsContent(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             GoldTagChip(
-                                text = "EP ${task.episodeNumber} • ${task.qualityLabel}",
+                                text = "EP ${task.episodeNumber} // ${task.qualityLabel}",
                                 highlighted = task.status == DownloadStatus.COMPLETED
                             )
                             Text(
                                 text = when (task.status) {
                                     DownloadStatus.COMPLETED -> "${task.totalMb} MB"
                                     DownloadStatus.DOWNLOADING -> "${(task.progress * 100).toInt()}%"
-                                    DownloadStatus.PAUSED -> "Dijeda • ${(task.progress * 100).toInt()}%"
+                                    DownloadStatus.PAUSED -> "PAUSE ${(task.progress * 100).toInt()}%"
                                 },
-                                fontSize = 11.sp,
+                                fontFamily = MonoFont,
+                                fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (task.status == DownloadStatus.COMPLETED) StatusEmerald else GoldBright
                             )
@@ -646,21 +652,11 @@ private fun DownloadsContent(
 
                         if (task.status != DownloadStatus.COMPLETED) {
                             Spacer(modifier = Modifier.height(7.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(5.dp)
-                                    .clip(CircleShape)
-                                    .background(ObsidianCardAlt)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(task.progress.coerceIn(0.02f, 1f))
-                                        .fillMaxHeight()
-                                        .clip(CircleShape)
-                                        .background(GoldHorizontalBrush)
-                                )
-                            }
+                            AnalogMeterGauge(
+                                progress = task.progress.coerceIn(0.02f, 1f),
+                                segments = 14,
+                                height = 6.dp
+                            )
                         }
                     }
 
@@ -672,7 +668,7 @@ private fun DownloadsContent(
                                 onClick = { onPlayOffline(task) },
                                 modifier = Modifier
                                     .size(36.dp)
-                                    .clip(CircleShape)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(GoldGradientBrush)
                             ) {
                                 Icon(
@@ -688,15 +684,11 @@ private fun DownloadsContent(
                                 onClick = { onPause(task.episodeId) },
                                 modifier = Modifier
                                     .size(36.dp)
-                                    .clip(CircleShape)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(GoldTint)
+                                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Pause,
-                                    contentDescription = "Jeda",
-                                    tint = GoldBright,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                TapeReelSpinner(isSpinning = true, size = 18.dp, tint = GoldBright)
                             }
                         }
 
@@ -705,8 +697,9 @@ private fun DownloadsContent(
                                 onClick = { onResume(task.episodeId) },
                                 modifier = Modifier
                                     .size(36.dp)
-                                    .clip(CircleShape)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .background(GoldTint)
+                                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                             ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Downloading,
@@ -740,19 +733,20 @@ private fun FilterChipPill(
 ) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(
                 if (selected) GoldGradientBrush
                 else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
             )
-            .border(1.dp, if (selected) Color.Transparent else GoldSubtleBorder, RoundedCornerShape(20.dp))
+            .border(1.dp, if (selected) GoldBright else GoldSubtleBorder, RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 7.dp)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Text(
             text = text,
+            fontFamily = MonoFont,
             color = if (selected) TextOnGold else TextSecondary,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold
         )
     }
@@ -774,9 +768,9 @@ private fun EmptyLibraryState(
             Box(
                 modifier = Modifier
                     .size(64.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(GoldTint)
-                    .border(1.dp, GoldBorder, CircleShape),
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

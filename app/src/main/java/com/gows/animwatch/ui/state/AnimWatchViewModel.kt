@@ -762,6 +762,28 @@ class AnimWatchViewModel(
     // Offline Downloads Simulation
     // ====================
 
+    fun handleEpisodeDownloadAction(
+        anime: Anime,
+        episode: Episode,
+        qualityLabel: String = _uiState.value.settings.defaultQuality
+    ) {
+        val existing = _uiState.value.downloads.find { it.episodeId == episode.id }
+        when (existing?.status) {
+            DownloadStatus.DOWNLOADING -> {
+                pauseDownload(episode.id)
+                emitMessage("Unduhan Ep ${episode.number} dijeda")
+            }
+            DownloadStatus.PAUSED -> {
+                resumeDownload(episode.id)
+                emitMessage("Melanjutkan unduhan Ep ${episode.number}")
+            }
+            DownloadStatus.COMPLETED -> {
+                emitMessage("Episode ${episode.number} sudah tersimpan offline")
+            }
+            null -> startEpisodeDownload(anime, episode, qualityLabel)
+        }
+    }
+
     fun startEpisodeDownload(anime: Anime, episode: Episode, qualityLabel: String = _uiState.value.settings.defaultQuality) {
         val existing = _uiState.value.downloads.find { it.episodeId == episode.id }
         if (existing != null) {

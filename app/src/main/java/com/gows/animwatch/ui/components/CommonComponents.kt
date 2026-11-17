@@ -1,9 +1,15 @@
 package com.gows.animwatch.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +17,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -60,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -80,19 +86,16 @@ import com.gows.animwatch.ui.theme.DividerSubtle
 import com.gows.animwatch.ui.theme.GoldBorder
 import com.gows.animwatch.ui.theme.GoldBorderBrush
 import com.gows.animwatch.ui.theme.GoldBright
-import com.gows.animwatch.ui.theme.GoldDeep
 import com.gows.animwatch.ui.theme.GoldGradientBrush
-import com.gows.animwatch.ui.theme.GoldHorizontalBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
-import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianGlass
 import com.gows.animwatch.ui.theme.ObsidianVoid
-import com.gows.animwatch.ui.theme.StatusEmerald
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
@@ -105,7 +108,7 @@ fun formatTimeSeconds(totalSeconds: Int): String {
     val minutes = (safe % 3600) / 60
     val seconds = safe % 60
     return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
+        String.format("%02d:%02d:%02d", hours, minutes, seconds)
     } else {
         String.format("%02d:%02d", minutes, seconds)
     }
@@ -119,13 +122,33 @@ fun GoldGradientButton(
     icon: ImageVector? = null,
     height: Dp = 44.dp
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val offsetY by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else 0.dp,
+        animationSpec = spring(stiffness = 120f, dampingRatio = Spring.DampingRatioNoBouncy),
+        label = "btn_press_y"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.985f else 1f,
+        animationSpec = spring(stiffness = 120f, dampingRatio = Spring.DampingRatioNoBouncy),
+        label = "btn_press_scale"
+    )
+
     Box(
         modifier = modifier
+            .offset(y = offsetY)
+            .scale(scale)
             .height(height)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(GoldGradientBrush)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp),
+            .border(1.dp, GoldBright.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -137,14 +160,17 @@ fun GoldGradientButton(
                     imageVector = icon,
                     contentDescription = null,
                     tint = TextOnGold,
-                    modifier = Modifier.size(19.dp)
+                    modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
             }
             Text(
-                text = text,
+                text = text.uppercase(),
                 color = TextOnGold,
-                style = MaterialTheme.typography.labelLarge,
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                letterSpacing = 0.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -161,18 +187,30 @@ fun GoldOutlinedButton(
     isActive: Boolean = false,
     height: Dp = 44.dp
 ) {
-    val bgColor = if (isActive) GoldTintStrong else ObsidianCard.copy(alpha = 0.85f)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val offsetY by animateDpAsState(
+        targetValue = if (isPressed) 1.dp else 0.dp,
+        animationSpec = spring(stiffness = 120f, dampingRatio = Spring.DampingRatioNoBouncy),
+        label = "out_btn_y"
+    )
+    val bgColor = if (isActive) GoldTintStrong else ObsidianCard
     val borderColor = if (isActive) GoldBright else GoldBorder
     val contentColor = if (isActive) GoldBright else TextPrimary
 
     Box(
         modifier = modifier
+            .offset(y = offsetY)
             .height(height)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .border(1.5.dp, borderColor, RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -184,14 +222,17 @@ fun GoldOutlinedButton(
                     imageVector = icon,
                     contentDescription = null,
                     tint = if (isActive) GoldBright else GoldPrimary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(17.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
             }
             Text(
-                text = text,
+                text = text.uppercase(),
                 color = contentColor,
-                style = MaterialTheme.typography.labelLarge,
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.5.sp,
+                letterSpacing = 0.5.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -204,7 +245,8 @@ fun SectionHeader(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    actionLabel: String? = "Lihat Semua",
+    channelCode: String? = null,
+    actionLabel: String? = "SEMUA",
     onActionClick: (() -> Unit)? = null
 ) {
     Row(
@@ -227,6 +269,16 @@ fun SectionHeader(
             )
             Spacer(modifier = Modifier.width(10.dp))
             Column {
+                if (channelCode != null) {
+                    Text(
+                        text = channelCode,
+                        fontFamily = MonoFont,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldPrimary,
+                        letterSpacing = 1.sp
+                    )
+                }
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
@@ -248,21 +300,26 @@ fun SectionHeader(
         if (onActionClick != null && actionLabel != null) {
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(ObsidianCard)
+                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                     .clickable(onClick = onActionClick)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = actionLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = GoldPrimary
+                    text = actionLabel.uppercase(),
+                    fontFamily = MonoFont,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GoldBright,
+                    letterSpacing = 0.6.sp
                 )
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = null,
-                    tint = GoldPrimary,
-                    modifier = Modifier.size(16.dp)
+                    tint = GoldBright,
+                    modifier = Modifier.size(14.dp)
                 )
             }
         }
@@ -277,20 +334,22 @@ fun GoldTagChip(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(4.dp))
             .background(if (highlighted) GoldGradientBrush else Brush.linearGradient(listOf(GoldTint, GoldTint)))
             .border(
-                width = 0.75.dp,
-                color = if (highlighted) Color.Transparent else GoldBorder,
-                shape = RoundedCornerShape(6.dp)
+                width = 1.dp,
+                color = if (highlighted) GoldBright else GoldBorder,
+                shape = RoundedCornerShape(4.dp)
             )
-            .padding(horizontal = 7.dp, vertical = 3.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         Text(
-            text = text,
+            text = text.uppercase(),
+            fontFamily = MonoFont,
             color = if (highlighted) TextOnGold else GoldBright,
-            fontSize = 10.sp,
+            fontSize = 9.5.sp,
             fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
             maxLines = 1
         )
     }
@@ -303,21 +362,21 @@ fun AnimePosterCard(
     onClick: () -> Unit,
     onBookmarkClick: () -> Unit,
     modifier: Modifier = Modifier,
-    cardWidth: Dp? = 142.dp
+    cardWidth: Dp? = 148.dp
 ) {
     val widthMod = if (cardWidth != null) modifier.width(cardWidth) else modifier.fillMaxWidth()
 
     Column(
         modifier = widthMod
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.70f)
-                .clip(RoundedCornerShape(14.dp))
-                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                .aspectRatio(0.72f)
+                .clip(RoundedCornerShape(8.dp))
+                .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
         ) {
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
@@ -325,20 +384,20 @@ fun AnimePosterCard(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Top row: Tag & Rating
+            // Top row: Rating & Bookmark Switch
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(7.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.82f))
-                        .border(0.75.dp, GoldBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(ObsidianVoid.copy(alpha = 0.88f))
+                        .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -350,8 +409,9 @@ fun AnimePosterCard(
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = anime.rating.toString(),
+                            fontFamily = MonoFont,
                             color = TextPrimary,
-                            fontSize = 10.5.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -359,49 +419,52 @@ fun AnimePosterCard(
 
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(ObsidianVoid.copy(alpha = 0.78f))
-                        .border(0.75.dp, if (isBookmarked) GoldBright else DividerSubtle, CircleShape)
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(ObsidianVoid.copy(alpha = 0.85f))
+                        .border(1.dp, if (isBookmarked) GoldBright else GoldSubtleBorder, RoundedCornerShape(6.dp))
                         .clickable(onClick = onBookmarkClick),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
-                        contentDescription = "Watchlist",
+                        contentDescription = "Simpan ke Daftar Tonton",
                         tint = if (isBookmarked) GoldBright else TextSecondary,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
 
-            // Bottom overlay inside poster: Status + Episode pill
-            Column(
+            // Bottom telemetry inside bezel
+            Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(8.dp)
+                    .background(ObsidianVoid.copy(alpha = 0.72f))
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     if (anime.status == AnimeStatus.ONGOING) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(StatusLive)
-                        )
+                        LedStatusDot(color = StatusLive, pulsing = true, size = 6.dp)
+                        Spacer(modifier = Modifier.width(5.dp))
                     }
                     Text(
-                        text = if (anime.type.label == "Movie") "MOVIE • 4K"
+                        text = if (anime.type.label == "Movie") "MOVIE // 4K"
                         else "EP ${anime.releasedEpisodes}/${anime.totalEpisodes}",
+                        fontFamily = MonoFont,
                         color = GoldBright,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
+                Text(
+                    text = "${anime.year}",
+                    fontFamily = MonoFont,
+                    color = TextTertiary,
+                    fontSize = 9.5.sp
+                )
             }
         }
 
@@ -416,8 +479,9 @@ fun AnimePosterCard(
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
-            text = anime.genres.take(2).joinToString(" • "),
-            style = MaterialTheme.typography.labelSmall,
+            text = anime.genres.take(2).joinToString(" / "),
+            fontFamily = MonoFont,
+            fontSize = 10.sp,
             color = TextTertiary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -436,10 +500,10 @@ fun ContinueWatchingCard(
 ) {
     Column(
         modifier = modifier
-            .width(236.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .width(244.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(ObsidianCard)
-            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onPlayClick)
     ) {
         Box(
@@ -454,32 +518,33 @@ fun ContinueWatchingCard(
                 showKanjiWatermark = false
             )
 
-            // Center Play Pill
+            // Center Play Key
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(ObsidianVoid.copy(alpha = 0.78f))
-                    .border(1.5.dp, GoldBright, CircleShape),
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(ObsidianVoid.copy(alpha = 0.85f))
+                    .border(1.5.dp, GoldBright, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = "Lanjutkan",
                     tint = GoldBright,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            // Remove button top right
+            // Remove key top right
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(ObsidianVoid.copy(alpha = 0.75f))
+                    .size(24.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(ObsidianVoid.copy(alpha = 0.82f))
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(5.dp))
                     .clickable(onClick = onRemoveClick),
                 contentAlignment = Alignment.Center
             ) {
@@ -487,67 +552,56 @@ fun ContinueWatchingCard(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Hapus",
                     tint = TextSecondary,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(13.dp)
                 )
             }
 
-            // Remaining badge bottom left
+            // Remaining telemetry badge bottom left
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(ObsidianVoid.copy(alpha = 0.85f))
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(ObsidianVoid.copy(alpha = 0.90f))
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(4.dp))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "EP ${progress.episodeNumber} • Sisa ${progress.remainingMinutes}m",
+                    text = "EP ${progress.episodeNumber} // -${progress.remainingMinutes}M",
+                    fontFamily = MonoFont,
                     color = GoldBright,
-                    fontSize = 10.sp,
+                    fontSize = 9.5.sp,
                     fontWeight = FontWeight.Bold
-                )
-            }
-
-            // Gold progress track at bottom edge
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(Color.White.copy(alpha = 0.16f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress.progressFraction.coerceAtLeast(0.05f))
-                        .fillMaxHeight()
-                        .background(GoldHorizontalBrush)
                 )
             }
         }
 
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onDetailClick)
-                .padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = anime.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = progress.episodeTitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            AnalogMeterGauge(
+                progress = progress.progressFraction.coerceAtLeast(0.06f),
+                segments = 16,
+                height = 6.dp
+            )
+            Spacer(modifier = Modifier.height(7.dp))
+            Text(
+                text = anime.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = progress.episodeTitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -561,10 +615,9 @@ fun TopRankedCard(
 ) {
     Box(
         modifier = modifier
-            .width(158.dp)
+            .width(164.dp)
             .clickable(onClick = onClick)
     ) {
-        // Poster offset slightly right so metallic rank badge overlaps dramatically
         Column(
             modifier = Modifier
                 .padding(start = 18.dp)
@@ -574,8 +627,8 @@ fun TopRankedCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.72f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.dp, GoldBorder, RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
             ) {
                 AnimePosterArtwork(
                     artTheme = anime.artTheme,
@@ -585,17 +638,28 @@ fun TopRankedCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.85f))
+                        .padding(7.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(ObsidianVoid.copy(alpha = 0.88f))
+                        .border(0.75.dp, GoldBorder, RoundedCornerShape(4.dp))
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text(
-                        text = "★ ${anime.rating}",
-                        color = GoldBright,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "${anime.rating}",
+                            fontFamily = MonoFont,
+                            color = GoldBright,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(6.dp))
@@ -607,25 +671,33 @@ fun TopRankedCard(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "${anime.viewsLabel} Tayangan",
-                style = MaterialTheme.typography.labelSmall,
+                text = "${anime.viewsLabel} VIEWS",
+                fontFamily = MonoFont,
+                fontSize = 10.sp,
                 color = TextTertiary
             )
         }
 
-        // Giant Metallic Gold Rank Number
-        Text(
-            text = "$rank",
-            style = TextStyle(
-                fontSize = 54.sp,
-                fontWeight = FontWeight.Black,
-                brush = GoldGradientBrush,
-                letterSpacing = (-2).sp
-            ),
+        // Cassette Rank Number Stamp
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .offset(x = 0.dp, y = (-34).dp)
-        )
+                .offset(x = 0.dp, y = (-42).dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(ObsidianVoid)
+                .border(1.2.dp, GoldBright, RoundedCornerShape(6.dp))
+                .padding(horizontal = 7.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = String.format("#%02d", rank),
+                style = TextStyle(
+                    fontFamily = MonoFont,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Black,
+                    brush = GoldGradientBrush
+                )
+            )
+        }
     }
 }
 
@@ -643,33 +715,34 @@ fun CompactAnimeRowCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(ObsidianCard)
-            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (rankNumber != null) {
             Text(
-                text = "#$rankNumber",
+                text = String.format("#%02d", rankNumber),
                 style = TextStyle(
-                    fontSize = 18.sp,
+                    fontFamily = MonoFont,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Black,
                     brush = if (rankNumber <= 3) GoldGradientBrush else Brush.linearGradient(
                         listOf(TextSecondary, TextTertiary)
                     )
                 ),
-                modifier = Modifier.width(36.dp)
+                modifier = Modifier.width(38.dp)
             )
         }
 
         Box(
             modifier = Modifier
-                .width(68.dp)
+                .width(66.dp)
                 .aspectRatio(0.72f)
-                .clip(RoundedCornerShape(10.dp))
-                .border(0.75.dp, GoldBorder, RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(6.dp))
+                .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
         ) {
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
@@ -690,16 +763,27 @@ fun CompactAnimeRowCard(
                     text = trailingBadge ?: anime.status.label,
                     highlighted = anime.status == AnimeStatus.ONGOING
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Star,
+                        contentDescription = null,
+                        tint = GoldBright,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = "${anime.rating}",
+                        fontFamily = MonoFont,
+                        color = GoldBright,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
-                    text = "★ ${anime.rating}",
-                    color = GoldBright,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "• ${anime.year}",
+                    text = "// ${anime.year}",
+                    fontFamily = MonoFont,
                     color = TextTertiary,
-                    fontSize = 11.sp
+                    fontSize = 10.5.sp
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -712,8 +796,9 @@ fun CompactAnimeRowCard(
             )
             Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = "${anime.genres.take(3).joinToString(" • ")} • ${anime.releasedEpisodes}/${anime.totalEpisodes} Ep",
-                style = MaterialTheme.typography.bodySmall,
+                text = "${anime.genres.take(2).joinToString(" / ")} • EP ${anime.releasedEpisodes}/${anime.totalEpisodes}",
+                fontFamily = MonoFont,
+                fontSize = 10.5.sp,
                 color = TextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -730,7 +815,7 @@ fun CompactAnimeRowCard(
                 onClick = onPlayClick,
                 modifier = Modifier
                     .size(34.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(GoldGradientBrush)
             ) {
                 Icon(
@@ -766,16 +851,16 @@ fun FloatingGoldBottomNav(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(22.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(10.dp),
         color = ObsidianGlass,
-        shadowElevation = 14.dp
+        shadowElevation = 10.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, GoldBorderBrush, RoundedCornerShape(22.dp))
-                .padding(horizontal = 8.dp, vertical = 7.dp),
+                .border(1.2.dp, GoldBorderBrush, RoundedCornerShape(10.dp))
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -799,10 +884,14 @@ fun FloatingGoldBottomNav(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(bgColor)
+                        .then(
+                            if (selected) Modifier.border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+                            else Modifier
+                        )
                         .clickable { onSelectTab(tab) }
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 7.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -811,35 +900,47 @@ fun FloatingGoldBottomNav(
                                 imageVector = icon,
                                 contentDescription = tab.label,
                                 tint = tint,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             if (tab == MainTab.LIBRARY && libraryBadgeCount > 0) {
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .offset(x = 6.dp, y = (-3).dp)
-                                        .size(15.dp)
+                                        .size(14.dp)
                                         .clip(CircleShape)
                                         .background(GoldBright),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = "$libraryBadgeCount",
+                                        fontFamily = MonoFont,
                                         color = TextOnGold,
-                                        fontSize = 9.sp,
+                                        fontSize = 8.5.sp,
                                         fontWeight = FontWeight.Black
                                     )
                                 }
                             }
                         }
                         Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = tab.label,
-                            color = tint,
-                            fontSize = 10.5.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            if (selected) {
+                                LedStatusDot(color = GoldBright, pulsing = false, size = 4.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = tab.label.uppercase(),
+                                fontFamily = MonoFont,
+                                color = tint,
+                                fontSize = 9.5.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -864,11 +965,12 @@ fun MiniPlayerBar(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(ObsidianElevated)
-            .border(1.dp, GoldBorder, RoundedCornerShape(16.dp))
+            .border(1.2.dp, GoldBorder, RoundedCornerShape(8.dp))
             .clickable(onClick = onExpand)
+            .padding(bottom = 4.dp)
     ) {
         Row(
             modifier = Modifier
@@ -878,10 +980,10 @@ fun MiniPlayerBar(
         ) {
             Box(
                 modifier = Modifier
-                    .width(64.dp)
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(0.75.dp, GoldBorder, RoundedCornerShape(8.dp))
+                    .width(58.dp)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
             ) {
                 AnimePosterArtwork(
                     artTheme = anime.artTheme,
@@ -891,7 +993,15 @@ fun MiniPlayerBar(
                 )
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+
+            TapeReelSpinner(
+                isSpinning = session.isPlaying,
+                size = 22.dp,
+                tint = GoldBright
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -902,51 +1012,45 @@ fun MiniPlayerBar(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Ep ${session.episodeNumber} • ${formatTimeSeconds(session.positionSeconds)} / ${formatTimeSeconds(session.durationSeconds)}",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "EP ${session.episodeNumber} // ${formatTimeSeconds(session.positionSeconds)} - ${formatTimeSeconds(session.durationSeconds)}",
+                    fontFamily = MonoFont,
+                    fontSize = 10.5.sp,
                     color = GoldPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            IconButton(onClick = onTogglePlay, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onTogglePlay, modifier = Modifier.size(34.dp)) {
                 Icon(
                     imageVector = if (session.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = "Putar/Jeda",
                     tint = GoldBright
                 )
             }
-            IconButton(onClick = onNextEpisode, modifier = Modifier.size(34.dp)) {
+            IconButton(onClick = onNextEpisode, modifier = Modifier.size(32.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.SkipNext,
                     contentDescription = "Episode Berikutnya",
                     tint = TextPrimary
                 )
             }
-            IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Tutup Mini Player",
                     tint = TextTertiary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(17.dp)
                 )
             }
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(2.5.dp)
-                .background(ObsidianCardAlt)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .fillMaxHeight()
-                    .background(GoldHorizontalBrush)
-            )
-        }
+        AnalogMeterGauge(
+            progress = progress,
+            segments = 24,
+            height = 5.dp,
+            modifier = Modifier.padding(horizontal = 10.dp)
+        )
     }
 }
 
@@ -963,7 +1067,8 @@ fun WatchlistCategorySheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = ObsidianElevated,
-        contentColor = TextPrimary
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
     ) {
         Column(
             modifier = Modifier
@@ -972,9 +1077,12 @@ fun WatchlistCategorySheet(
                 .padding(bottom = 28.dp)
         ) {
             Text(
-                text = "Simpan ke Koleksi",
-                style = MaterialTheme.typography.headlineSmall,
-                color = GoldBright
+                text = "SIMPAN KE KOLEKSI",
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = GoldBright,
+                letterSpacing = 0.8.sp
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -992,12 +1100,12 @@ fun WatchlistCategorySheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(if (selected) GoldTintStrong else ObsidianCard)
                         .border(
                             1.dp,
                             if (selected) GoldBright else GoldSubtleBorder,
-                            RoundedCornerShape(12.dp)
+                            RoundedCornerShape(8.dp)
                         )
                         .clickable {
                             onSelectCategory(category)
@@ -1027,9 +1135,9 @@ fun WatchlistCategorySheet(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(StatusLive.copy(alpha = 0.14f))
-                        .border(1.dp, StatusLive.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .border(1.dp, StatusLive.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                         .clickable {
                             onSelectCategory(null)
                             onDismiss()
@@ -1046,8 +1154,10 @@ fun WatchlistCategorySheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Hapus dari Daftar Tonton",
-                        style = MaterialTheme.typography.labelLarge,
+                        text = "HAPUS DARI DAFTAR TONTON",
+                        fontFamily = MonoFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
                         color = StatusLive
                     )
                 }
@@ -1068,12 +1178,15 @@ fun RatingDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
+        shape = RoundedCornerShape(10.dp),
         titleContentColor = GoldBright,
         textContentColor = TextPrimary,
         title = {
             Text(
-                text = "Beri Penilaian",
-                style = MaterialTheme.typography.headlineSmall
+                text = "SKOR PENILAIAN",
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
             )
         },
         text = {
@@ -1085,21 +1198,21 @@ fun RatingDialog(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
                 Text(
                     text = "$score / 10",
                     style = TextStyle(
-                        fontSize = 32.sp,
+                        fontFamily = MonoFont,
+                        fontSize = 30.sp,
                         fontWeight = FontWeight.Black,
                         brush = GoldGradientBrush
                     )
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    (1..10).chunked(5).let { _ -> }
                     (1..5).forEach { s ->
                         val active = s * 2 <= score
                         IconButton(onClick = { score = s * 2 }) {
@@ -1107,7 +1220,7 @@ fun RatingDialog(
                                 imageVector = if (active) Icons.Rounded.Star else Icons.Rounded.StarOutline,
                                 contentDescription = "$s",
                                 tint = if (active) GoldBright else TextTertiary,
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(30.dp)
                             )
                         }
                     }
@@ -1120,14 +1233,15 @@ fun RatingDialog(
                         val selected = score == exact
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .background(if (selected) GoldGradientBrush else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard)))
-                                .border(1.dp, if (selected) Color.Transparent else GoldSubtleBorder, RoundedCornerShape(8.dp))
+                                .border(1.dp, if (selected) GoldBright else GoldSubtleBorder, RoundedCornerShape(6.dp))
                                 .clickable { score = exact }
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 text = "$exact",
+                                fontFamily = MonoFont,
                                 color = if (selected) TextOnGold else TextSecondary,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
@@ -1139,17 +1253,17 @@ fun RatingDialog(
         },
         confirmButton = {
             GoldGradientButton(
-                text = "Simpan Rating",
+                text = "Simpan",
                 onClick = {
                     onConfirm(score)
                     onDismiss()
                 },
-                height = 40.dp
+                height = 38.dp
             )
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Batal", color = TextSecondary)
+                Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
             }
         }
     )
@@ -1168,7 +1282,8 @@ fun NotificationsBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = ObsidianElevated,
-        contentColor = TextPrimary
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1189,13 +1304,20 @@ fun NotificationsBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Notifikasi",
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = "LOG NOTIFIKASI",
+                        fontFamily = MonoFont,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
                         color = TextPrimary
                     )
                 }
                 TextButton(onClick = onMarkAllRead) {
-                    Text("Tandai Semua Dibaca", color = GoldPrimary, fontSize = 12.sp)
+                    Text(
+                        "TANDAI DIBACA",
+                        fontFamily = MonoFont,
+                        color = GoldPrimary,
+                        fontSize = 11.sp
+                    )
                 }
             }
 
@@ -1219,23 +1341,22 @@ fun NotificationsBottomSheet(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(if (item.isRead) ObsidianCard else GoldTint)
                                 .border(
                                     1.dp,
                                     if (item.isRead) DividerSubtle else GoldBorder,
-                                    RoundedCornerShape(12.dp)
+                                    RoundedCornerShape(8.dp)
                                 )
                                 .clickable { onNotificationClick(item) }
                                 .padding(12.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 4.dp)
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (item.isRead) TextTertiary else GoldBright)
+                            LedStatusDot(
+                                color = if (item.isRead) TextTertiary else GoldBright,
+                                pulsing = !item.isRead,
+                                size = 8.dp,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -1247,7 +1368,8 @@ fun NotificationsBottomSheet(
                                     GoldTagChip(text = item.tag, highlighted = !item.isRead)
                                     Text(
                                         text = item.timeAgo,
-                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = MonoFont,
+                                        fontSize = 10.sp,
                                         color = TextTertiary
                                     )
                                 }

@@ -3,6 +3,7 @@ package com.gows.animwatch.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -52,6 +53,7 @@ import com.gows.animwatch.ui.state.MainTab
 import com.gows.animwatch.ui.theme.AnimWatchTheme
 import com.gows.animwatch.ui.theme.GoldBorder
 import com.gows.animwatch.ui.theme.GoldBright
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
 
@@ -99,7 +101,12 @@ fun AnimWatchApp(
         // 1. Main Route Content
         AnimatedContent(
             targetState = uiState.currentRoute,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            transitionSpec = {
+                (fadeIn(animationSpec = tween(300)) + slideInVertically(
+                    animationSpec = tween(300),
+                    initialOffsetY = { it / 28 }
+                )) togetherWith fadeOut(animationSpec = tween(220))
+            },
             label = "app_route"
         ) { route ->
             when (route) {
@@ -198,7 +205,7 @@ fun AnimWatchApp(
                             onSelectWatchlist = viewModel::setWatchlistCategory,
                             onRateAnime = viewModel::rateAnime,
                             onToggleReminder = viewModel::toggleAnimeReminder,
-                            onDownloadEpisode = { a, ep -> viewModel.startEpisodeDownload(a, ep) },
+                            onDownloadEpisode = { a, ep -> viewModel.handleEpisodeDownloadAction(a, ep) },
                             onGenreClick = viewModel::openExploreWithGenre,
                             onRelatedAnimeClick = viewModel::openAnimeDetail,
                             onBookmarkClick = viewModel::toggleQuickBookmark,
@@ -307,7 +314,7 @@ fun AnimWatchApp(
                     onToggleFullscreen = { viewModel.setPlayerFullscreen(!activeSession.isFullscreen) },
                     onToggleLike = viewModel::toggleEpisodeLike,
                     onSelectWatchlist = viewModel::setWatchlistCategory,
-                    onDownloadEpisode = viewModel::startEpisodeDownload,
+                    onDownloadEpisode = viewModel::handleEpisodeDownloadAction,
                     onPostComment = viewModel::postComment,
                     onToggleCommentLike = viewModel::toggleCommentLike,
                     onOpenAnimeDetail = { animeId ->
@@ -332,13 +339,14 @@ fun AnimWatchApp(
                 )
         ) { data ->
             Snackbar(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(8.dp),
                 containerColor = ObsidianElevated,
                 contentColor = GoldBright,
-                modifier = Modifier.border(1.dp, GoldBorder, RoundedCornerShape(14.dp))
+                modifier = Modifier.border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
             ) {
                 Text(
                     text = data.visuals.message,
+                    fontFamily = MonoFont,
                     color = GoldBright,
                     fontWeight = FontWeight.SemiBold
                 )

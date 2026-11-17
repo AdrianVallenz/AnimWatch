@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -38,8 +37,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -52,7 +49,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +59,8 @@ import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.data.model.SubtitleSizeOption
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldTagChip
+import com.gows.animwatch.ui.components.LedStatusDot
+import com.gows.animwatch.ui.components.TactileInputField
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.theme.DividerSubtle
 import com.gows.animwatch.ui.theme.GoldBorder
@@ -73,6 +71,7 @@ import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianGoldCardBrush
@@ -118,21 +117,21 @@ fun ProfileScreen(
     ) {
         item {
             Text(
-                text = "Profil & Pengaturan",
+                text = "PROFIL // KONFIGURASI",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary
             )
         }
 
-        // Luxury Royal Black & Gold Member Card
+        // Luxury Royal Black & Gold Member Cassette Card
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianGoldCardBrush)
-                    .border(1.2.dp, GoldBorderBrush, RoundedCornerShape(22.dp))
-                    .padding(18.dp)
+                    .border(1.5.dp, GoldBorderBrush, RoundedCornerShape(8.dp))
+                    .padding(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -140,16 +139,17 @@ fun ProfileScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
-                            .clip(CircleShape)
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(GoldGradientBrush)
-                            .border(2.dp, ObsidianVoid, CircleShape),
+                            .border(1.5.dp, GoldBright, RoundedCornerShape(8.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = profile.avatarEmblem,
+                            fontFamily = MonoFont,
                             color = TextOnGold,
-                            fontSize = 22.sp,
+                            fontSize = 21.sp,
                             fontWeight = FontWeight.Black
                         )
                     }
@@ -157,12 +157,7 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.width(14.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            GoldTagChip(text = profile.memberTier, highlighted = true)
-                        }
+                        GoldTagChip(text = profile.memberTier, highlighted = true)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = profile.displayName,
@@ -171,7 +166,8 @@ fun ProfileScreen(
                         )
                         Text(
                             text = profile.handle,
-                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = MonoFont,
+                            fontSize = 11.sp,
                             color = GoldPrimary
                         )
                     }
@@ -179,9 +175,9 @@ fun ProfileScreen(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .clip(CircleShape)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(GoldTint)
-                            .border(1.dp, GoldBorder, CircleShape)
+                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
                             .clickable { showEditProfileDialog = true },
                         contentAlignment = Alignment.Center
                     ) {
@@ -212,17 +208,17 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
-                    ProfileStatItem("${profile.watchedHours}j", "Jam Tonton")
-                    ProfileStatItem("${uiState.watchlist.size}", "Koleksi")
-                    ProfileStatItem("${uiState.downloads.size}", "Unduhan")
-                    ProfileStatItem("${profile.completedAnimeCount}", "Tamat")
+                    ProfileStatItem("${profile.watchedHours}J", "JAM TONTON")
+                    ProfileStatItem("${uiState.watchlist.size}", "KOLEKSI")
+                    ProfileStatItem("${uiState.downloads.size}", "UNDUHAN")
+                    ProfileStatItem("${profile.completedAnimeCount}", "TAMAT")
                 }
             }
         }
 
         // Playback Preferences
         item {
-            SettingsGroupCard(title = "Preferensi Streaming") {
+            SettingsGroupCard(title = "PREFERENSI STREAMING") {
                 SettingRowItem(
                     icon = Icons.Rounded.HighQuality,
                     title = "Kualitas Video Default",
@@ -275,7 +271,7 @@ fun ProfileScreen(
 
         // Downloads & Notifications
         item {
-            SettingsGroupCard(title = "Unduhan & Notifikasi") {
+            SettingsGroupCard(title = "UNDUHAN & NOTIFIKASI") {
                 SettingSwitchItem(
                     icon = Icons.Rounded.Wifi,
                     title = "Unduh Hanya via Wi-Fi",
@@ -298,15 +294,15 @@ fun ProfileScreen(
             }
         }
 
-        // API Readiness Card
+        // Command-line style API Readiness Console Card
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(ObsidianCard)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(18.dp))
-                    .padding(16.dp)
+                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+                    .padding(14.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -318,46 +314,67 @@ fun ProfileScreen(
                             imageVector = Icons.Rounded.Api,
                             contentDescription = null,
                             tint = GoldBright,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Koneksi API Streaming",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "TERMINAL KONEKSI API",
+                            fontFamily = MonoFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
                             color = TextPrimary
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(StatusEmerald)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
+                        LedStatusDot(color = StatusEmerald, pulsing = true, size = 7.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "UI Preview",
+                            text = "SYS.RDY",
+                            fontFamily = MonoFont,
                             color = StatusEmerald,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Saat ini menggunakan MockAnimeRepository untuk pratinjau penuh UI/UX. Arsitektur repository sudah siap disambungkan ke REST API animeindo-api.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(ObsidianVoid)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "> PROVIDER : MockAnimeRepository (Lokal)",
+                        fontFamily = MonoFont,
+                        fontSize = 10.5.sp,
+                        color = GoldBright
+                    )
+                    Text(
+                        text = "> TARGET   : animeindo-api REST Adapter",
+                        fontFamily = MonoFont,
+                        fontSize = 10.5.sp,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "> STATUS   : Menunggu integrasi endpoint",
+                        fontFamily = MonoFont,
+                        fontSize = 10.5.sp,
+                        color = TextTertiary
+                    )
+                }
             }
         }
 
         // Storage & About
         item {
-            SettingsGroupCard(title = "Aplikasi & Penyimpanan") {
+            SettingsGroupCard(title = "SISTEM & PENYIMPANAN") {
                 SettingRowItem(
                     icon = Icons.Rounded.CleaningServices,
-                    title = "Bersihkan Cache Gambar & Buffer",
+                    title = "Bersihkan Cache Buffer",
                     value = "${uiState.cacheSizeMb} MB",
                     onClick = onClearCache
                 )
@@ -365,7 +382,7 @@ fun ProfileScreen(
                 SettingRowItem(
                     icon = Icons.Rounded.Info,
                     title = "Tentang AnimWatch",
-                    value = "v1.0.0 Royal",
+                    value = "v1.0.0 DECK",
                     onClick = { showAboutDialog = true }
                 )
             }
@@ -384,7 +401,7 @@ fun ProfileScreen(
 
     if (showQualityDialog) {
         OptionPickerDialog(
-            title = "Pilih Kualitas Default",
+            title = "KUALITAS DEFAULT",
             options = listOf("1080p", "720p", "480p", "360p"),
             selected = settings.defaultQuality,
             onSelect = { q -> onUpdateSettings { it.copy(defaultQuality = q) } },
@@ -394,7 +411,7 @@ fun ProfileScreen(
 
     if (showServerDialog) {
         OptionPickerDialog(
-            title = "Pilih Server Default",
+            title = "SERVER DEFAULT",
             options = listOf("SankaStream", "KuroCDN", "DriveMirror", "VidFast HLS"),
             selected = settings.defaultServer,
             onSelect = { srv -> onUpdateSettings { it.copy(defaultServer = srv) } },
@@ -404,7 +421,7 @@ fun ProfileScreen(
 
     if (showSubtitleLangDialog) {
         OptionPickerDialog(
-            title = "Bahasa Subtitle Default",
+            title = "BAHASA SUBTITLE",
             options = listOf("Indonesia", "English", "Nonaktif"),
             selected = settings.defaultSubtitle,
             onSelect = { sub -> onUpdateSettings { it.copy(defaultSubtitle = sub) } },
@@ -414,7 +431,7 @@ fun ProfileScreen(
 
     if (showSubtitleSizeDialog) {
         OptionPickerDialog(
-            title = "Ukuran Teks Subtitle",
+            title = "UKURAN SUBTITLE",
             options = SubtitleSizeOption.entries.map { it.label },
             selected = settings.subtitleSize.label,
             onSelect = { label ->
@@ -428,23 +445,29 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
             containerColor = ObsidianElevated,
+            shape = RoundedCornerShape(10.dp),
             titleContentColor = GoldBright,
             textContentColor = TextSecondary,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = GoldBright)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("AnimWatch Royal Edition")
+                    Text(
+                        "ANIMWATCH // CASSETTE GOLD",
+                        fontFamily = MonoFont,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             },
             text = {
                 Text(
-                    "AnimWatch adalah aplikasi streaming anime modern bertema Obsidian Black & Champagne Gold. Dibangun dengan Jetpack Compose dan arsitektur modular yang siap diintegrasikan dengan backend REST API."
+                    "AnimWatch adalah aplikasi streaming anime bergaya Cassette Futurism dengan palet Charcoal Black & Royal Gold. Dibangun dengan arsitektur Compose modular yang siap disambungkan ke backend REST API animeindo-api."
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showAboutDialog = false }) {
-                    Text("Tutup", color = GoldBright)
+                    Text("TUTUP", fontFamily = MonoFont, color = GoldBright)
                 }
             }
         )
@@ -456,14 +479,16 @@ private fun ProfileStatItem(value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
+            fontFamily = MonoFont,
             color = GoldBright,
-            fontSize = 18.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.ExtraBold
         )
         Text(
             text = label,
+            fontFamily = MonoFont,
             color = TextSecondary,
-            fontSize = 11.sp
+            fontSize = 9.5.sp
         )
     }
 }
@@ -475,9 +500,10 @@ private fun SettingsGroupCard(
 ) {
     Column {
         Text(
-            text = title.uppercase(),
+            text = title,
+            fontFamily = MonoFont,
             color = GoldPrimary,
-            fontSize = 11.sp,
+            fontSize = 10.5.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.2.sp,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
@@ -485,9 +511,9 @@ private fun SettingsGroupCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(8.dp))
                 .background(ObsidianCard)
-                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
         ) {
             content()
         }
@@ -505,14 +531,14 @@ private fun SettingRowItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = GoldPrimary,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(19.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
@@ -526,7 +552,9 @@ private fun SettingRowItem(
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.labelLarge,
+            fontFamily = MonoFont,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
             color = GoldBright
         )
         Icon(
@@ -550,14 +578,14 @@ private fun SettingSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = GoldPrimary,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(19.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -589,7 +617,7 @@ private fun SettingSwitchItem(
 
 @Composable
 private fun SettingDivider() {
-    HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
+    HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 14.dp))
 }
 
 @Composable
@@ -603,8 +631,16 @@ private fun OptionPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
+        shape = RoundedCornerShape(10.dp),
         titleContentColor = GoldBright,
-        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        title = {
+            Text(
+                title,
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 options.forEach { option ->
@@ -612,12 +648,12 @@ private fun OptionPickerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) GoldTintStrong else ObsidianCard)
                             .border(
                                 1.dp,
                                 if (isSelected) GoldBright else GoldSubtleBorder,
-                                RoundedCornerShape(12.dp)
+                                RoundedCornerShape(8.dp)
                             )
                             .clickable {
                                 onSelect(option)
@@ -629,16 +665,12 @@ private fun OptionPickerDialog(
                     ) {
                         Text(
                             text = option,
+                            fontFamily = MonoFont,
                             color = if (isSelected) GoldBright else TextPrimary,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                         )
                         if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(GoldBright)
-                            )
+                            LedStatusDot(color = GoldBright, pulsing = false, size = 7.dp)
                         }
                     }
                 }
@@ -646,7 +678,7 @@ private fun OptionPickerDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Tutup", color = TextSecondary)
+                Text("TUTUP", fontFamily = MonoFont, color = TextSecondary)
             }
         }
     )
@@ -663,47 +695,46 @@ private fun EditProfileDialog(
     var name by remember { mutableStateOf(currentName) }
     var bio by remember { mutableStateOf(currentBio) }
     var emblem by remember { mutableStateOf(currentEmblem) }
-
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = GoldBright,
-        unfocusedBorderColor = GoldBorder,
-        focusedTextColor = TextPrimary,
-        unfocusedTextColor = TextPrimary,
-        focusedLabelColor = GoldBright,
-        unfocusedLabelColor = TextSecondary,
-        cursorColor = GoldBright
-    )
+    var nameError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
+        shape = RoundedCornerShape(10.dp),
         titleContentColor = GoldBright,
-        title = { Text("Edit Profil") },
+        title = {
+            Text(
+                "EDIT PROFIL",
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                TactileInputField(
+                    label = "Nama Tampilan",
                     value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Tampilan") },
-                    singleLine = true,
-                    colors = fieldColors,
-                    modifier = Modifier.fillMaxWidth()
+                    onValueChange = {
+                        name = it
+                        nameError = if (it.isBlank()) "Nama tampilan wajib diisi" else null
+                    },
+                    placeholder = "Masukkan nama...",
+                    errorText = nameError
                 )
-                OutlinedTextField(
+                TactileInputField(
+                    label = "Inisial Avatar (Maks 2 Huruf)",
                     value = emblem,
                     onValueChange = { if (it.length <= 2) emblem = it.uppercase() },
-                    label = { Text("Inisial Avatar (2 huruf)") },
-                    singleLine = true,
-                    colors = fieldColors,
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = "AV"
                 )
-                OutlinedTextField(
+                TactileInputField(
+                    label = "Bio Singkat",
                     value = bio,
                     onValueChange = { bio = it },
-                    label = { Text("Bio Singkat") },
-                    maxLines = 3,
-                    colors = fieldColors,
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = "Tuliskan deskripsi singkat...",
+                    singleLine = false,
+                    maxLines = 3
                 )
             }
         },
@@ -711,15 +742,19 @@ private fun EditProfileDialog(
             GoldGradientButton(
                 text = "Simpan",
                 onClick = {
-                    onSave(name, bio, emblem)
-                    onDismiss()
+                    if (name.isBlank()) {
+                        nameError = "Nama tampilan wajib diisi"
+                    } else {
+                        onSave(name, bio, emblem)
+                        onDismiss()
+                    }
                 },
                 height = 40.dp
             )
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Batal", color = TextSecondary)
+                Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
             }
         }
     )
