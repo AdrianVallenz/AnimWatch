@@ -1,0 +1,475 @@
+package com.gows.animwatch.ui.components
+
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.gows.animwatch.data.model.AnimeArtTheme
+import com.gows.animwatch.data.model.ArtMotif
+import com.gows.animwatch.ui.theme.GoldBright
+import com.gows.animwatch.ui.theme.GoldDeep
+import com.gows.animwatch.ui.theme.GoldPrimary
+import com.gows.animwatch.ui.theme.ObsidianVoid
+import com.gows.animwatch.ui.theme.TextPrimary
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+@Composable
+fun AnimWatchCrestLogo(
+    size: Dp = 32.dp,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(Color(0xFF211A0E), Color(0xFF0B0B0F))
+                )
+            )
+            .border(1.dp, GoldPrimary.copy(alpha = 0.7f), RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
+            val w = this.size.width
+            val h = this.size.height
+            val diamond = Path().apply {
+                moveTo(w * 0.5f, 0f)
+                lineTo(w, h * 0.5f)
+                lineTo(w * 0.5f, h)
+                lineTo(0f, h * 0.5f)
+                close()
+            }
+            drawPath(
+                path = diamond,
+                brush = Brush.linearGradient(listOf(GoldBright, GoldPrimary, GoldDeep)),
+                style = Stroke(width = 2.2f)
+            )
+            val playTriangle = Path().apply {
+                moveTo(w * 0.40f, h * 0.30f)
+                lineTo(w * 0.70f, h * 0.50f)
+                lineTo(w * 0.40f, h * 0.70f)
+                close()
+            }
+            drawPath(
+                path = playTriangle,
+                brush = Brush.linearGradient(listOf(GoldBright, GoldPrimary))
+            )
+        }
+    }
+}
+
+@Composable
+fun AnimePosterArtwork(
+    artTheme: AnimeArtTheme,
+    title: String,
+    modifier: Modifier = Modifier,
+    showKanjiWatermark: Boolean = true,
+    showVignette: Boolean = true
+) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, ObsidianVoid)
+                )
+            )
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawArtMotif(
+                motif = artTheme.motif,
+                glow = artTheme.accentGlow,
+                phase = 0f,
+                isWide = size.width > size.height * 1.15f
+            )
+        }
+
+        if (showKanjiWatermark) {
+            Text(
+                text = artTheme.kanjiCrest,
+                color = artTheme.accentGlow.copy(alpha = 0.14f),
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 10.dp, end = 10.dp)
+            )
+        }
+
+        if (showVignette) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.Transparent,
+                                0.55f to Color.Transparent,
+                                1.0f to ObsidianVoid.copy(alpha = 0.92f)
+                            )
+                        )
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+fun AnimatedStreamingSceneCanvas(
+    artTheme: AnimeArtTheme,
+    isPlaying: Boolean,
+    positionSeconds: Int,
+    playbackSpeed: Float,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "stream_scene")
+    val ambientPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = (6500 / playbackSpeed).toInt().coerceIn(2200, 12000),
+                easing = LinearEasing
+            ),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ambient_phase"
+    )
+
+    val effectivePhase = if (isPlaying) {
+        (ambientPhase + (positionSeconds % 30) / 30f) % 1f
+    } else {
+        (positionSeconds % 30) / 30f
+    }
+
+    Box(
+        modifier = modifier.background(
+            Brush.radialGradient(
+                colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, ObsidianVoid),
+                radius = 900f
+            )
+        )
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            // Cinematic horizontal camera pan accent lines
+            val barCount = 14
+            for (i in 0 until barCount) {
+                val seed = (i * 0.173f + effectivePhase) % 1f
+                val y = ((i + 0.5f) / barCount) * h
+                val xStart = (1f - seed) * w * 1.2f - w * 0.2f
+                val lineLen = 40f + (i % 4) * 38f
+                drawLine(
+                    color = artTheme.accentGlow.copy(alpha = if (isPlaying) 0.14f else 0.05f),
+                    start = Offset(xStart, y),
+                    end = Offset(xStart + lineLen, y),
+                    strokeWidth = if (i % 3 == 0) 2.5f else 1.2f,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Main motif animated gently
+            drawArtMotif(
+                motif = artTheme.motif,
+                glow = artTheme.accentGlow,
+                phase = effectivePhase,
+                isWide = true
+            )
+
+            // Floating golden dust / energy motes
+            for (p in 0 until 18) {
+                val px = ((p * 0.237f + effectivePhase * 0.4f) % 1f) * w
+                val py = ((p * 0.413f - effectivePhase * 0.25f + 1f) % 1f) * h
+                val radius = 1.6f + (p % 3) * 1.3f
+                drawCircle(
+                    color = GoldBright.copy(alpha = 0.30f + (p % 4) * 0.10f),
+                    radius = radius,
+                    center = Offset(px, py)
+                )
+            }
+        }
+
+        // Subtle widescreen letterbox feel & dark contrast edge
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.35f),
+                        0.2f to Color.Transparent,
+                        0.8f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.55f)
+                    )
+                )
+        )
+
+        // Subtle crest watermark in corner like premium broadcast
+        Text(
+            text = "ANIMWATCH • ${artTheme.kanjiCrest}",
+            color = TextPrimary.copy(alpha = 0.22f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.4.sp,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(14.dp)
+        )
+    }
+}
+
+private fun DrawScope.drawArtMotif(
+    motif: ArtMotif,
+    glow: Color,
+    phase: Float,
+    isWide: Boolean
+) {
+    val w = size.width
+    val h = size.height
+    val cx = w * 0.5f
+    val cy = h * if (isWide) 0.46f else 0.40f
+    val minDim = minOf(w, h)
+    val pulse = 1f + 0.05f * sin(phase * 2f * PI.toFloat())
+
+    // Ambient central radial halo
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                glow.copy(alpha = 0.26f),
+                glow.copy(alpha = 0.06f),
+                Color.Transparent
+            ),
+            center = Offset(cx, cy),
+            radius = minDim * 0.68f * pulse
+        ),
+        radius = minDim * 0.68f * pulse,
+        center = Offset(cx, cy)
+    )
+
+    when (motif) {
+        ArtMotif.KATANA_SLASH -> {
+            // Sweeping crimson/gold slash arcs
+            for (i in 0..2) {
+                val offset = i * 16f
+                drawLine(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color.Transparent, glow, GoldBright, Color.Transparent),
+                        start = Offset(w * 0.1f, h * 0.72f - offset),
+                        end = Offset(w * 0.92f, h * 0.22f - offset)
+                    ),
+                    start = Offset(w * 0.1f, h * 0.72f - offset),
+                    end = Offset(w * 0.92f, h * 0.22f - offset),
+                    strokeWidth = (4.5f - i * 1.1f),
+                    cap = StrokeCap.Round
+                )
+            }
+            drawCircle(
+                color = glow.copy(alpha = 0.35f),
+                radius = minDim * 0.22f * pulse,
+                center = Offset(cx, cy),
+                style = Stroke(width = 2f)
+            )
+        }
+
+        ArtMotif.MAGIC_RING -> {
+            val r = minDim * 0.30f * pulse
+            rotate(degrees = phase * 360f, pivot = Offset(cx, cy)) {
+                drawCircle(
+                    color = glow.copy(alpha = 0.45f),
+                    radius = r,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.2f)
+                )
+                drawCircle(
+                    color = glow.copy(alpha = 0.22f),
+                    radius = r * 0.72f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.4f)
+                )
+                val starPoints = 6
+                for (i in 0 until starPoints) {
+                    val a1 = (i * 60f) * (PI / 180f).toFloat()
+                    val a2 = ((i + 2) * 60f) * (PI / 180f).toFloat()
+                    drawLine(
+                        color = glow.copy(alpha = 0.38f),
+                        start = Offset(cx + cos(a1) * r, cy + sin(a1) * r),
+                        end = Offset(cx + cos(a2) * r, cy + sin(a2) * r),
+                        strokeWidth = 1.5f
+                    )
+                }
+            }
+        }
+
+        ArtMotif.CROWN_MONOLITH -> {
+            // Obsidian monolith pillars + hovering royal gold crown arc
+            val pillarW = w * 0.12f
+            drawRect(
+                brush = Brush.verticalGradient(listOf(glow.copy(alpha = 0.22f), Color.Transparent)),
+                topLeft = Offset(cx - pillarW * 1.4f, h * 0.28f),
+                size = Size(pillarW * 0.7f, h * 0.52f)
+            )
+            drawRect(
+                brush = Brush.verticalGradient(listOf(glow.copy(alpha = 0.36f), Color.Transparent)),
+                topLeft = Offset(cx - pillarW * 0.5f, h * 0.18f),
+                size = Size(pillarW, h * 0.65f)
+            )
+            drawRect(
+                brush = Brush.verticalGradient(listOf(glow.copy(alpha = 0.20f), Color.Transparent)),
+                topLeft = Offset(cx + pillarW * 0.7f, h * 0.32f),
+                size = Size(pillarW * 0.7f, h * 0.48f)
+            )
+            drawCircle(
+                color = GoldBright.copy(alpha = 0.5f),
+                radius = minDim * 0.18f * pulse,
+                center = Offset(cx, cy * 0.85f),
+                style = Stroke(width = 2.4f)
+            )
+        }
+
+        ArtMotif.MECHA_GRID -> {
+            val step = minDim * 0.14f
+            for (i in -3..3) {
+                drawLine(
+                    color = glow.copy(alpha = 0.12f),
+                    start = Offset(cx + i * step, 0f),
+                    end = Offset(cx + i * step * 1.6f, h),
+                    strokeWidth = 1f
+                )
+            }
+            val hexR = minDim * 0.26f * pulse
+            val hex = Path().apply {
+                for (i in 0 until 6) {
+                    val angle = (i * 60f - 30f) * (PI / 180f).toFloat()
+                    val x = cx + cos(angle) * hexR
+                    val y = cy + sin(angle) * hexR
+                    if (i == 0) moveTo(x, y) else lineTo(x, y)
+                }
+                close()
+            }
+            drawPath(hex, color = glow.copy(alpha = 0.55f), style = Stroke(width = 2.5f))
+            drawCircle(color = glow.copy(alpha = 0.35f), radius = hexR * 0.32f, center = Offset(cx, cy))
+        }
+
+        ArtMotif.TORII_MOON -> {
+            // Crescent/full golden moon + stylized gate silhouette
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(GoldBright.copy(alpha = 0.55f), glow.copy(alpha = 0.18f), Color.Transparent),
+                    center = Offset(cx, cy * 0.92f),
+                    radius = minDim * 0.28f
+                ),
+                radius = minDim * 0.24f * pulse,
+                center = Offset(cx, cy * 0.92f)
+            )
+            // Gate lintels
+            drawLine(
+                color = glow.copy(alpha = 0.55f),
+                start = Offset(cx - minDim * 0.28f, cy + minDim * 0.08f),
+                end = Offset(cx + minDim * 0.28f, cy + minDim * 0.08f),
+                strokeWidth = 4f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = glow.copy(alpha = 0.40f),
+                start = Offset(cx - minDim * 0.20f, cy + minDim * 0.16f),
+                end = Offset(cx + minDim * 0.20f, cy + minDim * 0.16f),
+                strokeWidth = 2.5f
+            )
+        }
+
+        ArtMotif.SOLAR_ECLIPSE -> {
+            val r = minDim * 0.25f * pulse
+            drawCircle(
+                color = glow.copy(alpha = 0.65f),
+                radius = r,
+                center = Offset(cx, cy),
+                style = Stroke(width = 3.5f)
+            )
+            drawCircle(
+                color = Color(0xFF070709),
+                radius = r * 0.88f,
+                center = Offset(cx, cy)
+            )
+            // Alchemy triangle
+            val tri = Path().apply {
+                moveTo(cx, cy - r * 0.72f)
+                lineTo(cx + r * 0.62f, cy + r * 0.42f)
+                lineTo(cx - r * 0.62f, cy + r * 0.42f)
+                close()
+            }
+            drawPath(tri, color = glow.copy(alpha = 0.45f), style = Stroke(width = 1.8f))
+        }
+
+        ArtMotif.COMPASS_STAR -> {
+            val r = minDim * 0.28f * pulse
+            rotate(degrees = sin(phase * 2f * PI.toFloat()) * 14f, pivot = Offset(cx, cy)) {
+                val compass = Path().apply {
+                    moveTo(cx, cy - r)
+                    lineTo(cx + r * 0.22f, cy - r * 0.22f)
+                    lineTo(cx + r, cy)
+                    lineTo(cx + r * 0.22f, cy + r * 0.22f)
+                    lineTo(cx, cy + r)
+                    lineTo(cx - r * 0.22f, cy + r * 0.22f)
+                    lineTo(cx - r, cy)
+                    lineTo(cx - r * 0.22f, cy - r * 0.22f)
+                    close()
+                }
+                drawPath(compass, color = glow.copy(alpha = 0.55f), style = Stroke(width = 2.2f))
+                drawCircle(color = glow.copy(alpha = 0.25f), radius = r * 0.62f, center = Offset(cx, cy), style = Stroke(1.4f))
+            }
+        }
+
+        ArtMotif.HOURGLASS_SIGIL -> {
+            val r = minDim * 0.26f * pulse
+            val hourglass = Path().apply {
+                moveTo(cx - r * 0.65f, cy - r * 0.8f)
+                lineTo(cx + r * 0.65f, cy - r * 0.8f)
+                lineTo(cx - r * 0.65f, cy + r * 0.8f)
+                lineTo(cx + r * 0.65f, cy + r * 0.8f)
+                close()
+            }
+            drawPath(hourglass, color = glow.copy(alpha = 0.50f), style = Stroke(width = 2.2f))
+            drawCircle(
+                color = glow.copy(alpha = 0.24f),
+                radius = r * 0.95f,
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.5f)
+            )
+        }
+    }
+}

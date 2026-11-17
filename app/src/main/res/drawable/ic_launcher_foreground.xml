@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Gold Diamond Crest Frame -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,24 L84,54 L54,84 L24,54 Z"
+        android:strokeWidth="4.2"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:endX="84"
+                android:endY="84"
+                android:startX="24"
+                android:startY="24"
+                android:type="linear">
+                <item
+                    android:color="#FFF8D477"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FFE5B84B"
+                    android:offset="0.5" />
+                <item
+                    android:color="#FFA67819"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Gold Play Triangle -->
+    <path android:pathData="M46,41 L69,54 L46,67 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="69"
+                android:endY="67"
+                android:startX="46"
+                android:startY="41"
+                android:type="linear">
+                <item
+                    android:color="#FFF8D477"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FFE5B84B"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
