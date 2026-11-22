@@ -4,7 +4,9 @@ import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.AnimeArtTheme
 import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.AnimeType
+import com.gows.animwatch.data.model.CharacterRole
 import com.gows.animwatch.data.model.Episode
+import com.gows.animwatch.data.model.ReleaseDay
 import com.gows.animwatch.data.model.StreamServer
 import com.gows.animwatch.data.model.SubtitleTrack
 import com.gows.animwatch.data.model.VideoQuality
@@ -15,8 +17,8 @@ object KumanimeMapper {
     private const val UPSTREAM_SITE_HOST = "https://anime-indo.biz"
 
     private val defaultServers = listOf(
-        StreamServer("kumanime", "Kumanime Embed", "ID-MAIN", latencyMs = 28, isRecommended = true),
-        StreamServer("gdrive", "DriveMirror", "Global", latencyMs = 45, isRecommended = false)
+        StreamServer("kumanime", "Kumanime Embed", "ID-MAIN", latencyMs = 24, isRecommended = true),
+        StreamServer("gdrive", "DriveMirror", "Global", latencyMs = 42, isRecommended = false)
     )
 
     private val defaultQualities = listOf(
@@ -26,7 +28,8 @@ object KumanimeMapper {
     )
 
     private val defaultSubtitles = listOf(
-        SubtitleTrack("id", "Bahasa Indonesia (Hardsub)", "ID"),
+        SubtitleTrack("id", "Bahasa Indonesia", "ID"),
+        SubtitleTrack("en", "English", "EN"),
         SubtitleTrack("off", "Nonaktif", "OFF")
     )
 
@@ -56,9 +59,30 @@ object KumanimeMapper {
         val lower = rawType?.lowercase().orEmpty()
         return when {
             "movie" in lower -> AnimeType.MOVIE
-            "ova" in lower -> AnimeType.OVA
+            "ova" in lower || "special" in lower -> AnimeType.OVA
             "ona" in lower -> AnimeType.ONA
             else -> AnimeType.TV_SERIES
+        }
+    }
+
+    private fun parseAnimeStatus(rawStatus: String?, fallback: AnimeStatus): AnimeStatus {
+        return when (rawStatus?.trim()?.uppercase()) {
+            "ONGOING", "RELEASING", "UPCOMING", "NOT_YET_RELEASED" -> AnimeStatus.ONGOING
+            "COMPLETED", "FINISHED" -> AnimeStatus.COMPLETED
+            else -> fallback
+        }
+    }
+
+    private fun parseReleaseDay(rawDay: String?): ReleaseDay? {
+        return when (rawDay?.trim()?.uppercase()) {
+            "MONDAY", "SENIN" -> ReleaseDay.SENIN
+            "TUESDAY", "SELASA" -> ReleaseDay.SELASA
+            "WEDNESDAY", "RABU" -> ReleaseDay.RABU
+            "THURSDAY", "KAMIS" -> ReleaseDay.KAMIS
+            "FRIDAY", "JUMAT" -> ReleaseDay.JUMAT
+            "SATURDAY", "SABTU" -> ReleaseDay.SABTU
+            "SUNDAY", "MINGGU" -> ReleaseDay.MINGGU
+            else -> null
         }
     }
 
@@ -67,17 +91,26 @@ object KumanimeMapper {
         val title = dto.title?.trim().orEmpty()
         if (slug.isEmpty() || title.isEmpty()) return null
 
-        val epNumber = extractNumber(dto.episode, fallback = 1)
+        val epNumber = dto.releasedEpisodes?.takeIf { it > 0 } ?: extractNumber(dto.episode, fallback = 1)
+        val totalEpisodes = dto.totalEpisodes?.takeIf { it > 0 } ?: maxOf(epNumber, 12)
         val poster = normalizeUrl(dto.poster)
+        val banner = normalizeUrl(dto.banner).ifEmpty { poster }
+        val hasCanonicalSlug = !dto.latestEpsSlug.isNullOrBlank()
+        val latestEpSlug = dto.latestEpsSlug?.trim()?.takeIf { it.isNotEmpty() } ?: slug
+        val genres = dto.genres?.map { it.trim() }?.filter { it.isNotEmpty() }
+            ?.ifEmpty { listOf("Sub Indo", "Ongoing") }
+            ?: listOf("Sub Indo", "Ongoing")
+
         val ep = Episode(
-            id = "remote_ep_$slug",
+            id = "remote_ep_$latestEpSlug",
             animeId = slug,
             number = epNumber,
             title = "Episode $epNumber",
-            durationSeconds = 24 * 60,
+            durationSeconds = (dto.durationMinutes ?: 24) * 60,
             releaseDate = "Rilis Terbaru",
-            synopsis = "Streaming anime Sub Indo melalui Kumanime API.",
-            slug = slug,
+            synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Streaming anime melalui Kumanime API." },
+            slug = latestEpSlug,
+            streamUrl = normalizeUrl(dto.trailerUrl),
             servers = defaultServers,
             qualities = defaultQualities,
             subtitles = defaultSubtitles
@@ -87,79 +120,96 @@ object KumanimeMapper {
             id = slug,
             slug = slug,
             title = title,
-            japaneseTitle = "Kumanime Live Release",
-            synopsis = "Episode $epNumber baru saja dirilis di AnimeIndo (Kumanime API). Ketuk untuk memuat sinopsis lengkap dan daftar seluruh episode.",
-            rating = 8.6,
-            ratingCountLabel = "LIVE",
-            totalEpisodes = epNumber,
+            japaneseTitle = dto.japaneseTitle?.trim().orEmpty().ifEmpty { "Rilis Terbaru" },
+            synopsis = dto.synopsis?.trim().orEmpty().ifEmpty {
+                "Episode $epNumber baru saja dirilis. Ketuk untuk memuat sinopsis lengkap dan seluruh episode."
+            },
+            rating = dto.rating?.coerceIn(1.0, 10.0) ?: 8.5,
+            ratingCountLabel = dto.ratingCount?.trim().orEmpty().ifEmpty { "Live" },
+            totalEpisodes = totalEpisodes,
             releasedEpisodes = epNumber,
-            durationMinutes = 24,
-            year = 2026,
-            season = "Ongoing",
-            studio = "Kumanime API",
-            status = AnimeStatus.ONGOING,
-            type = AnimeType.TV_SERIES,
+            durationMinutes = dto.durationMinutes ?: 24,
+            year = dto.year?.takeIf { it in 1970..2035 } ?: 2026,
+            season = dto.season?.trim().orEmpty().ifEmpty { "Ongoing" },
+            studio = dto.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            status = parseAnimeStatus(dto.status, AnimeStatus.ONGOING),
+            type = parseAnimeType(dto.type),
             ageRating = "13+",
-            genres = listOf("Sub Indo", "Ongoing"),
-            releaseDay = null,
-            releaseTimeWib = null,
-            viewsLabel = "LIVE",
+            genres = genres,
+            releaseDay = parseReleaseDay(dto.airingDay),
+            releaseTimeWib = dto.airingTime?.trim()?.takeIf { it.isNotEmpty() },
+            viewsLabel = dto.viewsLabel?.trim().orEmpty().ifEmpty { "Live" },
             popularityRank = index + 1,
             isFeatured = index < 3,
             isTrending = index < 6,
             isNewRelease = true,
             artTheme = pickArtTheme(slug),
-            posterTag = "EP $epNumber BARU",
+            posterTag = "Ep $epNumber Baru",
             posterUrl = poster,
-            bannerUrl = poster,
+            bannerUrl = banner,
             isRemote = true,
-            isEpisodeEntry = true,
-            latestEpisodeSlug = slug,
+            isEpisodeEntry = !hasCanonicalSlug,
+            latestEpisodeSlug = latestEpSlug,
             episodes = listOf(ep)
         )
     }
 
-    fun mapPopularItem(dto: PopularItemDto, index: Int): Anime? {
+    fun mapPopularItem(
+        dto: PopularItemDto,
+        index: Int,
+        defaultStatus: AnimeStatus = AnimeStatus.ONGOING,
+        markTrending: Boolean = true,
+        markFeatured: Boolean = true
+    ): Anime? {
         val slug = dto.slug?.trim().orEmpty()
         val title = dto.title?.trim().orEmpty()
         if (slug.isEmpty() || title.isEmpty()) return null
 
         val poster = normalizeUrl(dto.poster)
+        val banner = normalizeUrl(dto.banner).ifEmpty { poster }
         val genres = dto.genres
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
             ?.ifEmpty { listOf("Anime", "Sub Indo") }
             ?: listOf("Anime", "Sub Indo")
 
+        val status = parseAnimeStatus(dto.status, defaultStatus)
+        val totalEpisodes = dto.totalEpisodes?.takeIf { it > 0 } ?: 12
+        val releasedEpisodes = dto.releasedEpisodes?.takeIf { it > 0 } ?: totalEpisodes
+        val computedRating = dto.rating?.coerceIn(1.0, 10.0)
+            ?: (9.3 - (index * 0.08)).coerceAtLeast(8.0).let { Math.round(it * 10.0) / 10.0 }
+
         return Anime(
             id = slug,
             slug = slug,
             title = title,
-            japaneseTitle = "Popular Series",
-            synopsis = "Serial populer pilihan penonton Sub Indo dari Kumanime API. Ketuk untuk melihat sinopsis dan seluruh episode.",
-            rating = (9.3 - (index * 0.08)).coerceAtLeast(8.0).let { Math.round(it * 10.0) / 10.0 },
-            ratingCountLabel = "POPULER",
-            totalEpisodes = 12,
-            releasedEpisodes = 12,
-            durationMinutes = 24,
-            year = 2026,
-            season = "Popular",
-            studio = "Kumanime API",
-            status = AnimeStatus.ONGOING,
-            type = AnimeType.TV_SERIES,
+            japaneseTitle = dto.japaneseTitle?.trim().orEmpty().ifEmpty { "Serial Populer" },
+            synopsis = dto.synopsis?.trim().orEmpty().ifEmpty {
+                "Serial populer pilihan penonton. Ketuk untuk melihat sinopsis lengkap dan seluruh episode."
+            },
+            rating = computedRating,
+            ratingCountLabel = dto.ratingCount?.trim().orEmpty().ifEmpty { "Populer" },
+            totalEpisodes = totalEpisodes,
+            releasedEpisodes = releasedEpisodes,
+            durationMinutes = dto.durationMinutes ?: 24,
+            year = dto.year?.takeIf { it in 1970..2035 } ?: 2026,
+            season = dto.season?.trim().orEmpty().ifEmpty { if (status == AnimeStatus.COMPLETED) "Tamat" else "Populer" },
+            studio = dto.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            status = status,
+            type = parseAnimeType(dto.type),
             ageRating = "13+",
             genres = genres,
-            releaseDay = null,
-            releaseTimeWib = null,
-            viewsLabel = "POPULER",
+            releaseDay = parseReleaseDay(dto.airingDay),
+            releaseTimeWib = dto.airingTime?.trim()?.takeIf { it.isNotEmpty() },
+            viewsLabel = dto.viewsLabel?.trim().orEmpty().ifEmpty { "Populer" },
             popularityRank = index + 1,
-            isFeatured = index < 4,
-            isTrending = true,
-            isNewRelease = false,
+            isFeatured = markFeatured && index < 4,
+            isTrending = markTrending,
+            isNewRelease = status == AnimeStatus.ONGOING && index < 6,
             artTheme = pickArtTheme(slug),
-            posterTag = "POPULER #${index + 1}",
+            posterTag = if (status == AnimeStatus.COMPLETED) "Tamat • $computedRating" else "Populer #${index + 1}",
             posterUrl = poster,
-            bannerUrl = poster,
+            bannerUrl = banner,
             isRemote = true,
             isEpisodeEntry = false,
             episodes = emptyList()
@@ -172,41 +222,55 @@ object KumanimeMapper {
         if (slug.isEmpty() || title.isEmpty()) return null
 
         val poster = normalizeUrl(dto.poster)
+        val banner = normalizeUrl(dto.banner).ifEmpty { poster }
         val type = if (isMovieList) AnimeType.MOVIE else parseAnimeType(dto.type)
-        val durationMin = extractNumber(dto.duration, fallback = if (type == AnimeType.MOVIE) 105 else 24)
-        val year = extractNumber(dto.release, fallback = 2025).let { if (it in 1970..2030) it else 2025 }
+        val durationMin = dto.durationMinutes?.takeIf { it > 0 }
+            ?: extractNumber(dto.duration, fallback = if (type == AnimeType.MOVIE) 105 else 24)
+        val year = dto.year?.takeIf { it in 1970..2035 }
+            ?: extractNumber(dto.release, fallback = 2025).let { if (it in 1970..2035) it else 2025 }
+        val genres = dto.genres?.map { it.trim() }?.filter { it.isNotEmpty() }
+            ?.ifEmpty { listOf(type.label, "Sub Indo") }
+            ?: listOf(type.label, "Sub Indo")
+        val status = parseAnimeStatus(
+            dto.status,
+            if (type == AnimeType.MOVIE) AnimeStatus.COMPLETED else AnimeStatus.ONGOING
+        )
+        val totalEpisodes = dto.totalEpisodes?.takeIf { it > 0 } ?: if (type == AnimeType.MOVIE) 1 else 12
+        val releasedEpisodes = dto.releasedEpisodes?.takeIf { it > 0 } ?: totalEpisodes
 
         return Anime(
             id = slug,
             slug = slug,
             title = title,
-            japaneseTitle = dto.type?.trim().orEmpty().ifEmpty { type.label },
+            japaneseTitle = dto.japaneseTitle?.trim().orEmpty().ifEmpty {
+                dto.type?.trim().orEmpty().ifEmpty { type.label }
+            },
             synopsis = dto.synopsis?.trim().orEmpty().ifEmpty {
                 "Ketuk untuk memuat informasi lengkap dan daftar episode dari Kumanime API."
             },
-            rating = 8.5,
-            ratingCountLabel = "API",
-            totalEpisodes = if (type == AnimeType.MOVIE) 1 else 12,
-            releasedEpisodes = if (type == AnimeType.MOVIE) 1 else 12,
+            rating = dto.rating?.coerceIn(1.0, 10.0) ?: 8.5,
+            ratingCountLabel = dto.ratingCount?.trim().orEmpty().ifEmpty { "Live" },
+            totalEpisodes = totalEpisodes,
+            releasedEpisodes = releasedEpisodes,
             durationMinutes = durationMin,
             year = year,
-            season = if (type == AnimeType.MOVIE) "Movie $year" else "$year",
-            studio = "Kumanime API",
-            status = if (type == AnimeType.MOVIE) AnimeStatus.COMPLETED else AnimeStatus.ONGOING,
+            season = dto.season?.trim().orEmpty().ifEmpty { if (type == AnimeType.MOVIE) "Movie $year" else "$year" },
+            studio = dto.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            status = status,
             type = type,
             ageRating = "13+",
-            genres = listOf(type.label, "Sub Indo"),
-            releaseDay = null,
-            releaseTimeWib = null,
-            viewsLabel = "API",
+            genres = genres,
+            releaseDay = parseReleaseDay(dto.airingDay),
+            releaseTimeWib = dto.airingTime?.trim()?.takeIf { it.isNotEmpty() },
+            viewsLabel = dto.viewsLabel?.trim().orEmpty().ifEmpty { "Live" },
             popularityRank = index + 1,
             isFeatured = false,
             isTrending = false,
             isNewRelease = false,
             artTheme = pickArtTheme(slug),
-            posterTag = if (type == AnimeType.MOVIE) "MOVIE" else "SUB INDO",
+            posterTag = if (type == AnimeType.MOVIE) "Movie" else "Sub Indo",
             posterUrl = poster,
-            bannerUrl = poster,
+            bannerUrl = banner,
             isRemote = true,
             isEpisodeEntry = false,
             episodes = emptyList()
@@ -216,76 +280,108 @@ object KumanimeMapper {
     fun mergeAnimeDetail(existing: Anime?, slug: String, detail: AnimeDetailDataDto): Anime {
         val cleanTitle = detail.title?.trim().orEmpty().ifEmpty { existing?.title ?: slug }
         val poster = normalizeUrl(detail.poster).ifEmpty { existing?.posterUrl.orEmpty() }
+        val banner = normalizeUrl(detail.banner).ifEmpty { existing?.bannerUrl?.ifEmpty { poster } ?: poster }
         val genres = detail.genres
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
             ?.ifEmpty { existing?.genres ?: listOf("Anime", "Sub Indo") }
             ?: existing?.genres ?: listOf("Anime", "Sub Indo")
 
+        val trailerStream = normalizeUrl(detail.trailerUrl)
+        val durationMin = detail.durationMinutes?.takeIf { it > 0 } ?: existing?.durationMinutes ?: 24
+
         val rawEpisodes = detail.episodes.orEmpty()
         val mappedEpisodes = rawEpisodes.mapIndexedNotNull { idx, epDto ->
             val epSlug = epDto.epsSlug?.trim().orEmpty()
             if (epSlug.isEmpty()) return@mapIndexedNotNull null
             val epLabel = epDto.epsTitle?.trim().orEmpty()
-            val number = extractNumber(epLabel, fallback = idx + 1)
+            val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
             Episode(
                 id = "remote_ep_$epSlug",
                 animeId = slug,
                 number = number,
                 title = epLabel.replace(Regex("^Episode(?=\\d)"), "Episode ").ifEmpty { "Episode $number" },
-                durationSeconds = (existing?.durationMinutes ?: 24) * 60,
+                durationSeconds = durationMin * 60,
                 releaseDate = "Sub Indo",
                 synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { "Tersedia melalui Kumanime API." },
                 slug = epSlug,
+                streamUrl = trailerStream,
                 servers = defaultServers,
                 qualities = defaultQualities,
                 subtitles = defaultSubtitles
             )
         }.sortedBy { it.number }
 
+        val mappedCharacters = detail.characters.orEmpty().mapNotNull { ch ->
+            val name = ch.name?.trim().orEmpty()
+            if (name.isEmpty()) return@mapNotNull null
+            CharacterRole(
+                name = name,
+                role = ch.role?.trim().orEmpty().ifEmpty { "Karakter" },
+                voiceActor = ch.voiceActor?.trim().orEmpty().ifEmpty { "Seiyuu Jepang" },
+                emblem = ch.emblem?.trim().orEmpty().ifEmpty { name.take(1).uppercase() }
+            )
+        }
+
         val finalEpisodes = if (mappedEpisodes.isNotEmpty()) mappedEpisodes else existing?.episodes.orEmpty()
-        val epCount = finalEpisodes.size.coerceAtLeast(existing?.releasedEpisodes ?: 1)
+        val epCount = detail.releasedEpisodes?.takeIf { it > 0 }
+            ?: finalEpisodes.size.coerceAtLeast(existing?.releasedEpisodes ?: 1)
+        val totalEps = detail.totalEpisodes?.takeIf { it > 0 }
+            ?: maxOf(epCount, existing?.totalEpisodes ?: epCount)
 
         return (existing ?: Anime(
             id = slug,
             slug = slug,
             title = cleanTitle,
-            japaneseTitle = "Sub Indo • Kumanime API",
+            japaneseTitle = detail.japaneseTitle?.trim().orEmpty().ifEmpty { "Kumanime Live" },
             synopsis = "",
-            rating = 8.7,
-            ratingCountLabel = "LIVE",
-            totalEpisodes = epCount,
+            rating = detail.rating?.coerceIn(1.0, 10.0) ?: 8.7,
+            ratingCountLabel = detail.ratingCount?.trim().orEmpty().ifEmpty { "Live" },
+            totalEpisodes = totalEps,
             releasedEpisodes = epCount,
-            durationMinutes = 24,
-            year = 2026,
-            season = "Kumanime",
-            studio = "Kumanime API",
-            status = AnimeStatus.ONGOING,
+            durationMinutes = durationMin,
+            year = detail.year?.takeIf { it in 1970..2035 } ?: 2026,
+            season = detail.season?.trim().orEmpty().ifEmpty { "Kumanime" },
+            studio = detail.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            status = parseAnimeStatus(detail.status, AnimeStatus.ONGOING),
             type = AnimeType.TV_SERIES,
             ageRating = "13+",
             genres = genres,
-            releaseDay = null,
-            releaseTimeWib = null,
-            viewsLabel = "LIVE",
+            releaseDay = parseReleaseDay(detail.airingDay),
+            releaseTimeWib = detail.airingTime?.trim()?.takeIf { it.isNotEmpty() },
+            viewsLabel = "Live",
             popularityRank = 99,
             artTheme = pickArtTheme(slug),
-            posterTag = "SUB INDO",
+            posterTag = "Sub Indo",
             posterUrl = poster,
-            bannerUrl = poster,
+            bannerUrl = banner,
             isRemote = true
         )).copy(
             id = slug,
             slug = slug,
             title = cleanTitle,
+            japaneseTitle = detail.japaneseTitle?.trim().orEmpty().ifEmpty { existing?.japaneseTitle.orEmpty() },
             synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { existing?.synopsis.orEmpty() },
+            rating = detail.rating?.coerceIn(1.0, 10.0) ?: existing?.rating ?: 8.7,
+            ratingCountLabel = detail.ratingCount?.trim().orEmpty().ifEmpty { existing?.ratingCountLabel ?: "Live" },
+            studio = detail.studio?.trim().orEmpty().ifEmpty { existing?.studio ?: "Kumanime API" },
+            season = detail.season?.trim().orEmpty().ifEmpty { existing?.season ?: "Kumanime" },
+            year = detail.year?.takeIf { it in 1970..2035 } ?: existing?.year ?: 2026,
+            status = parseAnimeStatus(detail.status, existing?.status ?: AnimeStatus.ONGOING),
+            durationMinutes = durationMin,
             posterUrl = poster,
-            bannerUrl = poster,
+            bannerUrl = banner,
             genres = genres,
-            totalEpisodes = maxOf(epCount, existing?.totalEpisodes ?: epCount),
+            releaseDay = parseReleaseDay(detail.airingDay) ?: existing?.releaseDay,
+            releaseTimeWib = detail.airingTime?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.releaseTimeWib,
+            totalEpisodes = maxOf(totalEps, epCount),
             releasedEpisodes = epCount,
             isRemote = true,
             isEpisodeEntry = false,
-            episodes = finalEpisodes
+            episodes = finalEpisodes,
+            characters = mappedCharacters.ifEmpty { existing?.characters.orEmpty() },
+            relatedIds = detail.relatedSlugs?.filter { it.isNotBlank() }?.ifEmpty { existing?.relatedIds.orEmpty() }
+                ?: existing?.relatedIds.orEmpty()
         )
     }
 
@@ -296,7 +392,7 @@ object KumanimeMapper {
         return episode.copy(
             title = detail.title?.trim().orEmpty().ifEmpty { episode.title },
             synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { episode.synopsis },
-            streamUrl = stream,
+            streamUrl = stream.ifEmpty { episode.streamUrl },
             nextEpisodeSlug = nextSlug,
             prevEpisodeSlug = prevSlug
         )

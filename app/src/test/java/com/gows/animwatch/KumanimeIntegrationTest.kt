@@ -68,6 +68,23 @@ class KumanimeIntegrationTest {
 
         override suspend fun getMoviesPage(page: Int): MovieResponseDto = getMovies()
 
+        override suspend fun getCompleted(): PopularResponseDto = PopularResponseDto(
+            status = "success",
+            data = listOf(
+                PopularItemDto(
+                    title = "Frieren: Beyond Journey's End",
+                    poster = "https://cdn.example.com/frieren.jpg",
+                    slug = "sousou-no-frieren-154587",
+                    genres = listOf("Adventure", "Drama", "Fantasy"),
+                    rating = 9.1,
+                    studio = "Madhouse",
+                    status = "COMPLETED",
+                    totalEpisodes = 28,
+                    releasedEpisodes = 28
+                )
+            )
+        )
+
         override suspend fun searchAnime(query: String): SearchResponseDto = SearchResponseDto(
             status = "success",
             query = query,
@@ -130,10 +147,15 @@ class KumanimeIntegrationTest {
     fun remoteDataSourceFetchesCatalogResolvesLatestSlugAndEpisodeStream() = runTest {
         val dataSource = KumanimeRemoteDataSource(serviceProvider = { FakeKumanimeService() })
 
-        val catalogResult = dataSource.fetchInitialCatalog("http://10.0.2.2:3000/api/")
+        val catalogResult = dataSource.fetchInitialCatalog("https://kumanime-api-production.up.railway.app/api/")
         assertTrue(catalogResult.isSuccess)
         val catalog = catalogResult.getOrThrow()
-        assertEquals(3, catalog.size)
+        assertEquals(4, catalog.size)
+
+        val completedEntry = catalog.first { it.slug == "sousou-no-frieren-154587" }
+        assertEquals("Madhouse", completedEntry.studio)
+        assertEquals(9.1, completedEntry.rating, 0.01)
+        assertEquals(28, completedEntry.totalEpisodes)
 
         val latestEntry = catalog.first { it.isEpisodeEntry }
         assertEquals("solo-leveling-s2-episode-12", latestEntry.slug)

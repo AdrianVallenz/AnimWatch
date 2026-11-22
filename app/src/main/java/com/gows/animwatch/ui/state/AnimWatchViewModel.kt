@@ -537,23 +537,18 @@ class AnimWatchViewModel(
 
             val result = remoteDataSource.fetchInitialCatalog(config.baseUrl)
             result.onSuccess { remoteItems ->
-                val mockItems = repository.getAllAnime()
-                val combinedMap = LinkedHashMap<String, Anime>()
-                remoteItems.forEach { combinedMap[it.id] = it }
-                // Pertahankan item lokal yang memiliki jadwal mingguan agar tab Jadwal tetap terisi
-                mockItems.forEach { local ->
-                    if (!combinedMap.containsKey(local.id)) {
-                        combinedMap[local.id] = local.copy(isFeatured = false, isNewRelease = false)
-                    }
-                }
-
-                val dynamicGenres = (remoteItems.flatMap { it.genres } + repository.getAllGenres())
+                val remoteIds = remoteItems.map { it.id }.toSet()
+                val dynamicGenres = remoteItems
+                    .flatMap { it.genres }
                     .distinct()
+                    .ifEmpty { repository.getAllGenres() }
 
                 _uiState.update { state ->
                     state.copy(
-                        allAnime = combinedMap.values.toList(),
+                        allAnime = remoteItems,
                         genres = dynamicGenres,
+                        watchlist = state.watchlist.filterKeys { it in remoteIds },
+                        watchHistory = state.watchHistory.filter { it.animeId in remoteIds },
                         apiConfig = state.apiConfig.copy(
                             status = ApiConnectionStatus.CONNECTED,
                             lastSyncMessage = "Terhubung (${remoteItems.size} anime live dimuat)",
@@ -605,7 +600,7 @@ class AnimWatchViewModel(
             }
         }
         val anime = _uiState.value.allAnime.find { it.id == animeId }
-        if (anime != null && anime.isRemote && (anime.episodes.isEmpty() || anime.isEpisodeEntry)) {
+        if (anime != null && anime.isRemote && (anime.episodes.isEmpty() || anime.isEpisodeEntry || (anime.characters.isEmpty() && anime.episodes.size <= 1))) {
             fetchRemoteDetailFor(anime)
         }
     }

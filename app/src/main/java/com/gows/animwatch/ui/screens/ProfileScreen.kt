@@ -1012,7 +1012,7 @@ private fun EditApiBaseUrlDialog(
                         urlInput = it
                         urlError = if (it.isBlank()) "Base URL tidak boleh kosong" else null
                     },
-                    placeholder = "http://10.0.2.2:3000/api/",
+                    placeholder = "https://kumanime-api-production.up.railway.app/api/",
                     errorText = urlError
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1021,13 +1021,13 @@ private fun EditApiBaseUrlDialog(
                             .clip(CircleShape)
                             .background(GoldTint)
                             .clickable {
-                                urlInput = "http://10.0.2.2:3000/api/"
+                                urlInput = "https://kumanime-api-production.up.railway.app/api/"
                                 urlError = null
                             }
                             .padding(horizontal = 11.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "Emulator Lokal",
+                            text = "Railway Live",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = GoldPrimary
@@ -1039,13 +1039,13 @@ private fun EditApiBaseUrlDialog(
                             .background(ObsidianCard)
                             .border(0.75.dp, GoldSubtleBorder, CircleShape)
                             .clickable {
-                                urlInput = "http://192.168.1.10:3000/api/"
+                                urlInput = "http://10.0.2.2:3000/api/"
                                 urlError = null
                             }
                             .padding(horizontal = 11.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "IP Wi-Fi LAN",
+                            text = "Emulator Lokal",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
                             color = TextSecondary

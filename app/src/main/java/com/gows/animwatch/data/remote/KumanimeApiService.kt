@@ -25,6 +25,9 @@ interface KumanimeApiService {
     @GET("movie/page/{page}")
     suspend fun getMoviesPage(@Path("page") page: Int): MovieResponseDto
 
+    @GET("completed")
+    suspend fun getCompleted(): PopularResponseDto
+
     @GET("search/{query}")
     suspend fun searchAnime(@Path("query") query: String): SearchResponseDto
 
@@ -37,7 +40,7 @@ interface KumanimeApiService {
 
 object KumanimeApiClient {
 
-    const val DEFAULT_BASE_URL = "http://10.0.2.2:3000/api/"
+    const val DEFAULT_BASE_URL = "https://kumanime-api-production.up.railway.app/api/"
 
     @Volatile
     private var cachedBaseUrl: String? = null
@@ -50,8 +53,8 @@ object KumanimeApiClient {
             level = HttpLoggingInterceptor.Level.BASIC
         }
         OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(12, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .addInterceptor(logging)
             .build()

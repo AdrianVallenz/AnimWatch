@@ -1,6 +1,7 @@
 package com.gows.animwatch.data.remote
 
 import com.gows.animwatch.data.model.Anime
+import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.Episode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -13,7 +14,7 @@ data class EpisodeStreamResult(
 )
 
 /**
- * Network gateway for MastayY/kumanime-api.
+ * Network gateway for AnimWatch Kumanime API (Railway AniList-live + MastayY/kumanime-api compatible).
  * Isolates Retrofit calls and DTO mapping so ViewModel stays clean and testable.
  */
 class KumanimeRemoteDataSource(
@@ -27,6 +28,7 @@ class KumanimeRemoteDataSource(
                 val popularDeferred = async { runCatching { api.getPopular() }.getOrNull() }
                 val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
                 val moviesDeferred = async { runCatching { api.getMovies() }.getOrNull() }
+                val completedDeferred = async { runCatching { api.getCompleted() }.getOrNull() }
 
                 val popularList = popularDeferred.await()?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapPopularItem(dto, idx) }
@@ -34,14 +36,41 @@ class KumanimeRemoteDataSource(
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapLatestItem(dto, idx) }
                 val moviesList = moviesDeferred.await()?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapCatalogCard(dto, idx, isMovieList = true) }
+                val completedList = completedDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto,
+                            index = idx,
+                            defaultStatus = AnimeStatus.COMPLETED,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
 
                 val merged = LinkedHashMap<String, Anime>()
                 popularList.forEach { merged[it.id] = it }
+
                 latestList.forEach { item ->
-                    if (!merged.containsKey(item.id)) {
+                    val existing = merged[item.id]
+                    if (existing == null) {
                         merged[item.id] = item
+                    } else {
+                        merged[item.id] = existing.copy(
+                            isNewRelease = true,
+                            releaseDay = existing.releaseDay ?: item.releaseDay,
+                            releaseTimeWib = existing.releaseTimeWib ?: item.releaseTimeWib,
+                            latestEpisodeSlug = existing.latestEpisodeSlug ?: item.latestEpisodeSlug,
+                            releasedEpisodes = maxOf(existing.releasedEpisodes, item.releasedEpisodes)
+                        )
                     }
                 }
+
+                completedList.forEach { comp ->
+                    if (!merged.containsKey(comp.id)) {
+                        merged[comp.id] = comp
+                    }
+                }
+
                 moviesList.forEach { movie ->
                     if (!merged.containsKey(movie.id)) {
                         merged[movie.id] = movie
@@ -49,7 +78,7 @@ class KumanimeRemoteDataSource(
                 }
 
                 if (merged.isEmpty()) {
-                    throw IllegalStateException("Kumanime API merespons kosong. Pastikan server & domain target aktif.")
+                    throw IllegalStateException("Kumanime API merespons kosong. Pastikan server aktif.")
                 }
                 merged.values.toList()
             }
@@ -73,7 +102,7 @@ class KumanimeRemoteDataSource(
             val api = serviceProvider(baseUrl)
             var targetSlug = existing.slug
 
-            // Endpoint /api/latest returns episode slugs instead of anime slugs.
+            // Classic /api/latest returns episode slugs instead of anime slugs.
             // Resolve the parent anime_slug via /api/episode/{slug} first.
             if (existing.isEpisodeEntry) {
                 val epResp = api.getEpisodeDetail(existing.slug).epsDetail
