@@ -62,13 +62,13 @@ fun AnimWatchCrestLogo(
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(GoldPrimary.copy(alpha = 0.24f), ObsidianCard, ObsidianBase)
+                    colors = listOf(GoldPrimary.copy(alpha = 0.22f), ObsidianCard, ObsidianBase)
                 )
             )
-            .border(1.2.dp, GoldPrimary.copy(alpha = 0.78f), RoundedCornerShape(8.dp)),
+            .border(1.dp, GoldPrimary.copy(alpha = 0.45f), RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
@@ -277,7 +277,7 @@ fun AnimatedStreamingSceneCanvas(
             stepPx = 5f
         )
 
-        // Analog broadcast corner watermark + blinking REC indicator
+        // Soft ambient broadcast watermark
         Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -285,18 +285,17 @@ fun AnimatedStreamingSceneCanvas(
             verticalAlignment = Alignment.CenterVertically
         ) {
             LedStatusDot(
-                color = if (isPlaying) GoldBright else MediaTextLight.copy(alpha = 0.3f),
+                color = if (isPlaying) GoldBright else MediaTextLight.copy(alpha = 0.35f),
                 pulsing = isPlaying,
                 size = 6.dp
             )
             androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(6.dp))
             Text(
-                text = "ANIMWATCH // ${artTheme.kanjiCrest}",
-                color = MediaTextLight.copy(alpha = 0.32f),
-                fontFamily = com.gows.animwatch.ui.theme.MonoFont,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp
+                text = "AnimWatch",
+                color = MediaTextLight.copy(alpha = 0.38f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.3.sp
             )
         }
     }

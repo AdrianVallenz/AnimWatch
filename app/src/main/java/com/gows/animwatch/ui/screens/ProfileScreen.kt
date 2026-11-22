@@ -17,12 +17,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.ClosedCaption
 import androidx.compose.material.icons.rounded.Dns
@@ -40,6 +42,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -69,16 +72,15 @@ import com.gows.animwatch.ui.components.LedStatusDot
 import com.gows.animwatch.ui.components.TactileInputField
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.theme.DividerSubtle
-import com.gows.animwatch.ui.theme.GoldBorder
-import com.gows.animwatch.ui.theme.GoldBorderBrush
 import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.GoldTintStrong
-import com.gows.animwatch.ui.theme.MonoFont
+import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.ObsidianCard
+import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianGoldCardBrush
 import com.gows.animwatch.ui.theme.ObsidianVoid
@@ -129,116 +131,117 @@ fun ProfileScreen(
             top = 12.dp,
             bottom = bottomInsetPadding
         ),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
             Text(
-                text = "PROFIL // KONFIGURASI",
+                text = "Profil",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary
             )
         }
 
-        // Luxury Royal Black & Gold Member Cassette Card
+        // Smooth Member Profile Card
         item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ObsidianGoldCardBrush)
-                    .border(1.5.dp, GoldBorderBrush, RoundedCornerShape(8.dp))
-                    .padding(16.dp)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = ObsidianCard,
+                shadowElevation = if (IsDarkTheme) 0.dp else 4.dp
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .background(ObsidianGoldCardBrush)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
+                        .padding(18.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(GoldGradientBrush)
-                            .border(1.5.dp, GoldBright, RoundedCornerShape(8.dp)),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(62.dp)
+                                .clip(CircleShape)
+                                .background(GoldGradientBrush),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = profile.avatarEmblem,
+                                color = TextOnGold,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            GoldTagChip(text = profile.memberTier, highlighted = true)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = profile.displayName,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = profile.handle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = GoldPrimary
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(GoldTint)
+                                .clickable { showEditProfileDialog = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Edit,
+                                contentDescription = "Edit Profil",
+                                tint = GoldPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    if (profile.bio.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = profile.avatarEmblem,
-                            fontFamily = MonoFont,
-                            color = TextOnGold,
-                            fontSize = 21.sp,
-                            fontWeight = FontWeight.Black
+                            text = profile.bio,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        GoldTagChip(text = profile.memberTier, highlighted = true)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = profile.displayName,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = TextPrimary
-                        )
-                        Text(
-                            text = profile.handle,
-                            fontFamily = MonoFont,
-                            fontSize = 11.sp,
-                            color = GoldPrimary
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(GoldTint)
-                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
-                            .clickable { showEditProfileDialog = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Edit,
-                            contentDescription = "Edit Profil",
-                            tint = GoldBright,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                if (profile.bio.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = profile.bio,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
+                    HorizontalDivider(
+                        color = DividerSubtle,
+                        modifier = Modifier.padding(vertical = 15.dp)
                     )
-                }
 
-                HorizontalDivider(
-                    color = GoldSubtleBorder,
-                    modifier = Modifier.padding(vertical = 14.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround
-                ) {
-                    ProfileStatItem("${profile.watchedHours}J", "JAM TONTON")
-                    ProfileStatItem("${uiState.watchlist.size}", "KOLEKSI")
-                    ProfileStatItem("${uiState.downloads.size}", "UNDUHAN")
-                    ProfileStatItem("${profile.completedAnimeCount}", "TAMAT")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        ProfileStatItem("${profile.watchedHours}j", "Jam Tonton")
+                        ProfileStatItem("${uiState.watchlist.size}", "Koleksi")
+                        ProfileStatItem("${uiState.downloads.size}", "Unduhan")
+                        ProfileStatItem("${profile.completedAnimeCount}", "Tamat")
+                    }
                 }
             }
         }
 
         // Theme & Appearance Quick Access Card
         item {
-            SettingsGroupCard(title = "TEMA & TAMPILAN") {
+            SettingsGroupCard(title = "Tema & Tampilan") {
                 SettingRowItem(
                     icon = Icons.Rounded.Palette,
-                    title = "Ubah Mode & Warna Tema",
-                    value = "${uiState.appearanceMode.code} • ${uiState.accentTheme.displayName}",
+                    title = "Mode & Warna Tema",
+                    value = "${uiState.appearanceMode.label} • ${uiState.accentTheme.displayName}",
                     onClick = onOpenThemeEditor
                 )
             }
@@ -246,7 +249,7 @@ fun ProfileScreen(
 
         // Playback Preferences
         item {
-            SettingsGroupCard(title = "PREFERENSI STREAMING") {
+            SettingsGroupCard(title = "Preferensi Streaming") {
                 SettingRowItem(
                     icon = Icons.Rounded.HighQuality,
                     title = "Kualitas Video Default",
@@ -299,7 +302,7 @@ fun ProfileScreen(
 
         // Downloads & Notifications
         item {
-            SettingsGroupCard(title = "UNDUHAN & NOTIFIKASI") {
+            SettingsGroupCard(title = "Unduhan & Notifikasi") {
                 SettingSwitchItem(
                     icon = Icons.Rounded.Wifi,
                     title = "Unduh Hanya via Wi-Fi",
@@ -322,7 +325,7 @@ fun ProfileScreen(
             }
         }
 
-        // Interactive Kumanime API Terminal Card
+        // Clean Organic Kumanime API Card
         item {
             val ledColor = when (apiConfig.status) {
                 ApiConnectionStatus.CONNECTED -> StatusEmerald
@@ -330,146 +333,173 @@ fun ProfileScreen(
                 ApiConnectionStatus.OFFLINE_FALLBACK -> StatusAmber
                 ApiConnectionStatus.DEMO_LOCAL -> TextSecondary
             }
+            val friendlyStatus = when (apiConfig.status) {
+                ApiConnectionStatus.CONNECTED -> "Terhubung"
+                ApiConnectionStatus.SYNCING -> "Menyinkronkan"
+                ApiConnectionStatus.OFFLINE_FALLBACK -> "Offline"
+                ApiConnectionStatus.DEMO_LOCAL -> "Lokal"
+            }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ObsidianCard)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
-                    .padding(14.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Api,
-                            contentDescription = null,
-                            tint = GoldBright,
-                            modifier = Modifier.size(19.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "TERMINAL KUMANIME API",
-                            fontFamily = MonoFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = TextPrimary
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        LedStatusDot(
-                            color = ledColor,
-                            pulsing = apiConfig.status == ApiConnectionStatus.SYNCING ||
-                                apiConfig.status == ApiConnectionStatus.CONNECTED,
-                            size = 7.dp
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = apiConfig.status.code,
-                            fontFamily = MonoFont,
-                            color = ledColor,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(ObsidianVoid)
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
-                ) {
-                    Text(
-                        text = "> BASE_URL : ${apiConfig.baseUrl}",
-                        fontFamily = MonoFont,
-                        fontSize = 10.sp,
-                        color = GoldBright,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "> ADAPTER  : MastayY/kumanime-api (Retrofit)",
-                        fontFamily = MonoFont,
-                        fontSize = 10.sp,
-                        color = TextSecondary
-                    )
-                    Text(
-                        text = "> STATUS   : ${apiConfig.lastSyncMessage}",
-                        fontFamily = MonoFont,
-                        fontSize = 10.sp,
-                        color = TextTertiary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (apiConfig.status == ApiConnectionStatus.SYNCING) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
+            Column {
+                Text(
+                    text = "Sumber Streaming",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                )
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    shape = RoundedCornerShape(20.dp),
+                    color = ObsidianCard,
+                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
                 ) {
-                    Text(
-                        text = "Aktifkan Kumanime Live API",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextPrimary
-                    )
-                    Switch(
-                        checked = apiConfig.useLiveApi,
-                        onCheckedChange = onSetUseLiveApi,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = TextOnGold,
-                            checkedTrackColor = GoldBright,
-                            uncheckedThumbColor = TextSecondary,
-                            uncheckedTrackColor = ObsidianVoid,
-                            uncheckedBorderColor = GoldBorder
-                        )
-                    )
-                }
+                    Column(
+                        modifier = Modifier
+                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(GoldTint),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Api,
+                                        contentDescription = null,
+                                        tint = GoldPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "Kumanime API",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = TextPrimary
+                                )
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(ledColor.copy(alpha = 0.14f))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                LedStatusDot(
+                                    color = ledColor,
+                                    pulsing = apiConfig.status == ApiConnectionStatus.SYNCING ||
+                                        apiConfig.status == ApiConnectionStatus.CONNECTED,
+                                    size = 6.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = friendlyStatus,
+                                    color = ledColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    GoldOutlinedButton(
-                        text = "Ubah URL",
-                        icon = Icons.Rounded.Edit,
-                        onClick = { showApiUrlDialog = true },
-                        modifier = Modifier.weight(1f),
-                        height = 40.dp
-                    )
-                    GoldGradientButton(
-                        text = "Sinkronkan",
-                        icon = Icons.Rounded.Refresh,
-                        onClick = onSyncApi,
-                        modifier = Modifier.weight(1f),
-                        height = 40.dp
-                    )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(ObsidianCardAlt.copy(alpha = if (IsDarkTheme) 0.65f else 0.75f))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text(
+                                text = "Server: ${apiConfig.baseUrl}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Adapter: MastayY/kumanime-api",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                            Text(
+                                text = apiConfig.lastSyncMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextTertiary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (apiConfig.status == ApiConnectionStatus.SYNCING) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Aktifkan Kumanime Live API",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary
+                            )
+                            Switch(
+                                checked = apiConfig.useLiveApi,
+                                onCheckedChange = onSetUseLiveApi,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = TextOnGold,
+                                    checkedTrackColor = GoldPrimary,
+                                    uncheckedThumbColor = TextSecondary,
+                                    uncheckedTrackColor = ObsidianCardAlt,
+                                    uncheckedBorderColor = GoldSubtleBorder
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            GoldOutlinedButton(
+                                text = "Ubah Server",
+                                icon = Icons.Rounded.Edit,
+                                onClick = { showApiUrlDialog = true },
+                                modifier = Modifier.weight(1f),
+                                height = 42.dp
+                            )
+                            GoldGradientButton(
+                                text = "Sinkronkan",
+                                icon = Icons.Rounded.Refresh,
+                                onClick = onSyncApi,
+                                modifier = Modifier.weight(1f),
+                                height = 42.dp
+                            )
+                        }
+                    }
                 }
             }
         }
 
         // Storage & About
         item {
-            SettingsGroupCard(title = "SISTEM & PENYIMPANAN") {
+            SettingsGroupCard(title = "Aplikasi & Penyimpanan") {
                 SettingRowItem(
                     icon = Icons.Rounded.CleaningServices,
-                    title = "Bersihkan Cache Buffer",
+                    title = "Bersihkan Cache",
                     value = "${uiState.cacheSizeMb} MB",
                     onClick = onClearCache
                 )
@@ -477,7 +507,7 @@ fun ProfileScreen(
                 SettingRowItem(
                     icon = Icons.Rounded.Info,
                     title = "Tentang AnimWatch",
-                    value = "v1.0.0 DECK",
+                    value = "v1.0.0",
                     onClick = { showAboutDialog = true }
                 )
             }
@@ -488,9 +518,9 @@ fun ProfileScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(StatusLive.copy(alpha = 0.14f))
-                    .border(1.2.dp, StatusLive.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(StatusLive.copy(alpha = 0.11f))
+                    .border(0.75.dp, StatusLive.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
                     .clickable {
                         if (uiState.isGuestSession) onLogout() else showLogoutDialog = true
                     }
@@ -502,16 +532,14 @@ fun ProfileScreen(
                     imageVector = Icons.AutoMirrored.Rounded.Logout,
                     contentDescription = null,
                     tint = StatusLive,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(19.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (uiState.isGuestSession) "MASUK / DAFTAR AKUN" else "KELUAR DARI AKUN",
-                    fontFamily = MonoFont,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = StatusLive,
-                    letterSpacing = 0.7.sp
+                    text = if (uiState.isGuestSession) "Masuk atau Daftar Akun" else "Keluar dari Akun",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = StatusLive
                 )
             }
         }
@@ -521,19 +549,20 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
             containerColor = ObsidianElevated,
-            shape = RoundedCornerShape(10.dp),
-            titleContentColor = GoldBright,
+            shape = RoundedCornerShape(24.dp),
+            titleContentColor = TextPrimary,
             textContentColor = TextSecondary,
             title = {
                 Text(
-                    text = "KONFIRMASI KELUAR",
-                    fontFamily = MonoFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    text = "Keluar dari Akun?",
+                    style = MaterialTheme.typography.titleLarge
                 )
             },
             text = {
-                Text("Kamu akan kembali ke halaman Masuk / Daftar. Daftar tonton dan riwayat lokal tetap tersimpan di sesi ini.")
+                Text(
+                    "Kamu akan kembali ke halaman Masuk / Daftar. Daftar tonton dan riwayat lokal tetap tersimpan di sesi ini.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             },
             confirmButton = {
                 GoldGradientButton(
@@ -542,12 +571,12 @@ fun ProfileScreen(
                         showLogoutDialog = false
                         onLogout()
                     },
-                    height = 38.dp
+                    height = 40.dp
                 )
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+                    Text("Batal", color = TextSecondary)
                 }
             }
         )
@@ -573,7 +602,7 @@ fun ProfileScreen(
 
     if (showQualityDialog) {
         OptionPickerDialog(
-            title = "KUALITAS DEFAULT",
+            title = "Kualitas Default",
             options = listOf("1080p", "720p", "480p", "360p"),
             selected = settings.defaultQuality,
             onSelect = { q -> onUpdateSettings { it.copy(defaultQuality = q) } },
@@ -583,7 +612,7 @@ fun ProfileScreen(
 
     if (showServerDialog) {
         OptionPickerDialog(
-            title = "SERVER DEFAULT",
+            title = "Server Mirror Utama",
             options = listOf("SankaStream", "KuroCDN", "DriveMirror", "VidFast HLS"),
             selected = settings.defaultServer,
             onSelect = { srv -> onUpdateSettings { it.copy(defaultServer = srv) } },
@@ -593,7 +622,7 @@ fun ProfileScreen(
 
     if (showSubtitleLangDialog) {
         OptionPickerDialog(
-            title = "BAHASA SUBTITLE",
+            title = "Bahasa Subtitle",
             options = listOf("Indonesia", "English", "Nonaktif"),
             selected = settings.defaultSubtitle,
             onSelect = { sub -> onUpdateSettings { it.copy(defaultSubtitle = sub) } },
@@ -603,7 +632,7 @@ fun ProfileScreen(
 
     if (showSubtitleSizeDialog) {
         OptionPickerDialog(
-            title = "UKURAN SUBTITLE",
+            title = "Ukuran Subtitle",
             options = SubtitleSizeOption.entries.map { it.label },
             selected = settings.subtitleSize.label,
             onSelect = { label ->
@@ -617,29 +646,28 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showAboutDialog = false },
             containerColor = ObsidianElevated,
-            shape = RoundedCornerShape(10.dp),
-            titleContentColor = GoldBright,
+            shape = RoundedCornerShape(24.dp),
+            titleContentColor = TextPrimary,
             textContentColor = TextSecondary,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = GoldBright)
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = GoldPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "ANIMWATCH // STREAM DECK",
-                        fontFamily = MonoFont,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
+                        "AnimWatch",
+                        style = MaterialTheme.typography.titleLarge
                     )
                 }
             },
             text = {
                 Text(
-                    "AnimWatch adalah aplikasi streaming anime bergaya Cassette Futurism dengan dukungan Mode Gelap & Terang serta pilihan warna tema personal. Terintegrasi dengan adapter REST API kumanime-api."
+                    "AnimWatch adalah aplikasi streaming anime modern dengan antarmuka lembut, dukungan Mode Gelap & Terang, pilihan warna tema personal, serta integrasi REST API kumanime-api.",
+                    style = MaterialTheme.typography.bodyMedium
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showAboutDialog = false }) {
-                    Text("TUTUP", fontFamily = MonoFont, color = GoldBright)
+                    Text("Tutup", color = GoldPrimary, fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -651,16 +679,15 @@ private fun ProfileStatItem(value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
-            fontFamily = MonoFont,
-            color = GoldBright,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.ExtraBold
+            color = GoldPrimary,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
         )
+        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = label,
-            fontFamily = MonoFont,
-            color = TextSecondary,
-            fontSize = 9.5.sp
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary
         )
     }
 }
@@ -673,21 +700,21 @@ private fun SettingsGroupCard(
     Column {
         Text(
             text = title,
-            fontFamily = MonoFont,
-            color = GoldPrimary,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.2.sp,
+            style = MaterialTheme.typography.titleSmall,
+            color = TextSecondary,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(ObsidianCard)
-                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            color = ObsidianCard,
+            shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
         ) {
-            content()
+            Column(
+                modifier = Modifier.border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+            ) {
+                content()
+            }
         }
     }
 }
@@ -703,15 +730,23 @@ private fun SettingRowItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = GoldPrimary,
-            modifier = Modifier.size(19.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(GoldTint),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = GoldPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = title,
@@ -724,11 +759,13 @@ private fun SettingRowItem(
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
-            fontFamily = MonoFont,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = GoldBright
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = GoldPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
+        Spacer(modifier = Modifier.width(2.dp))
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
             contentDescription = null,
@@ -750,15 +787,23 @@ private fun SettingSwitchItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = GoldPrimary,
-            modifier = Modifier.size(19.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(GoldTint),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = GoldPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -778,10 +823,10 @@ private fun SettingSwitchItem(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = TextOnGold,
-                checkedTrackColor = GoldBright,
+                checkedTrackColor = GoldPrimary,
                 uncheckedThumbColor = TextSecondary,
-                uncheckedTrackColor = ObsidianVoid,
-                uncheckedBorderColor = GoldBorder
+                uncheckedTrackColor = ObsidianCardAlt,
+                uncheckedBorderColor = GoldSubtleBorder
             )
         )
     }
@@ -789,7 +834,7 @@ private fun SettingSwitchItem(
 
 @Composable
 private fun SettingDivider() {
-    HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 14.dp))
+    HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
 }
 
 @Composable
@@ -803,14 +848,12 @@ private fun OptionPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
-        shape = RoundedCornerShape(10.dp),
-        titleContentColor = GoldBright,
+        shape = RoundedCornerShape(24.dp),
+        titleContentColor = TextPrimary,
         title = {
             Text(
                 title,
-                fontFamily = MonoFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
+                style = MaterialTheme.typography.titleLarge
             )
         },
         text = {
@@ -820,29 +863,34 @@ private fun OptionPickerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (isSelected) GoldTintStrong else ObsidianCard)
                             .border(
-                                1.dp,
-                                if (isSelected) GoldBright else GoldSubtleBorder,
-                                RoundedCornerShape(8.dp)
+                                if (isSelected) 1.dp else 0.75.dp,
+                                if (isSelected) GoldPrimary else GoldSubtleBorder,
+                                RoundedCornerShape(14.dp)
                             )
                             .clickable {
                                 onSelect(option)
                                 onDismiss()
                             }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                            .padding(horizontal = 15.dp, vertical = 13.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = option,
-                            fontFamily = MonoFont,
-                            color = if (isSelected) GoldBright else TextPrimary,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isSelected) GoldPrimary else TextPrimary,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                         )
                         if (isSelected) {
-                            LedStatusDot(color = GoldBright, pulsing = false, size = 7.dp)
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                tint = GoldPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }
@@ -850,7 +898,7 @@ private fun OptionPickerDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("TUTUP", fontFamily = MonoFont, color = TextSecondary)
+                Text("Tutup", color = TextSecondary)
             }
         }
     )
@@ -872,14 +920,12 @@ private fun EditProfileDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
-        shape = RoundedCornerShape(10.dp),
-        titleContentColor = GoldBright,
+        shape = RoundedCornerShape(24.dp),
+        titleContentColor = TextPrimary,
         title = {
             Text(
-                "EDIT PROFIL",
-                fontFamily = MonoFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
+                "Edit Profil",
+                style = MaterialTheme.typography.titleLarge
             )
         },
         text = {
@@ -895,7 +941,7 @@ private fun EditProfileDialog(
                     errorText = nameError
                 )
                 TactileInputField(
-                    label = "Inisial Avatar (Maks 2 Huruf)",
+                    label = "Inisial Avatar (Maks 2 huruf)",
                     value = emblem,
                     onValueChange = { if (it.length <= 2) emblem = it.uppercase() },
                     placeholder = "AV"
@@ -926,7 +972,7 @@ private fun EditProfileDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+                Text("Batal", color = TextSecondary)
             }
         }
     )
@@ -944,20 +990,18 @@ private fun EditApiBaseUrlDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
-        shape = RoundedCornerShape(10.dp),
-        titleContentColor = GoldBright,
+        shape = RoundedCornerShape(24.dp),
+        titleContentColor = TextPrimary,
         title = {
             Text(
-                "KONFIGURASI KUMANIME API",
-                fontFamily = MonoFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
+                "Server Kumanime API",
+                style = MaterialTheme.typography.titleLarge
             )
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Masukkan Base URL server kumanime-api (lokal Emulator gunakan 10.0.2.2:3000 atau URL deploy Vercel/Railway).",
+                    text = "Masukkan Base URL server kumanime-api (untuk Emulator gunakan 10.0.2.2:3000 atau URL deploy Vercel/Railway).",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
@@ -971,42 +1015,39 @@ private fun EditApiBaseUrlDialog(
                     placeholder = "http://10.0.2.2:3000/api/",
                     errorText = urlError
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(CircleShape)
                             .background(GoldTint)
-                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
                             .clickable {
                                 urlInput = "http://10.0.2.2:3000/api/"
                                 urlError = null
                             }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .padding(horizontal = 11.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "EMULATOR LOKAL",
-                            fontFamily = MonoFont,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GoldBright
+                            text = "Emulator Lokal",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GoldPrimary
                         )
                     }
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(CircleShape)
                             .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
+                            .border(0.75.dp, GoldSubtleBorder, CircleShape)
                             .clickable {
                                 urlInput = "http://192.168.1.10:3000/api/"
                                 urlError = null
                             }
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .padding(horizontal = 11.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "IP WI-FI LAN",
-                            fontFamily = MonoFont,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "IP Wi-Fi LAN",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
                             color = TextSecondary
                         )
                     }
@@ -1029,9 +1070,8 @@ private fun EditApiBaseUrlDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+                Text("Batal", color = TextSecondary)
             }
         }
     )
 }
-

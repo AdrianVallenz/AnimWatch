@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,6 +46,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,24 +74,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimWatchCrestLogo
-import com.gows.animwatch.ui.components.CassetteTelemetryStrip
-import com.gows.animwatch.ui.components.CrtScanlineOverlay
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
 import com.gows.animwatch.ui.components.TactileInputField
-import com.gows.animwatch.ui.components.TapeReelSpinner
 import com.gows.animwatch.ui.theme.AnimWatchTheme
 import com.gows.animwatch.ui.theme.DividerSubtle
-import com.gows.animwatch.ui.theme.GoldBorder
-import com.gows.animwatch.ui.theme.GoldBorderBrush
 import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
-import com.gows.animwatch.ui.theme.MonoFont
+import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
-import com.gows.animwatch.ui.theme.ObsidianGoldCardBrush
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusAmber
 import com.gows.animwatch.ui.theme.StatusEmerald
@@ -100,8 +96,8 @@ import com.gows.animwatch.ui.theme.TextSecondary
 import com.gows.animwatch.ui.theme.TextTertiary
 
 private enum class AuthMode(val label: String) {
-    LOGIN("MASUK"),
-    REGISTER("DAFTAR")
+    LOGIN("Masuk"),
+    REGISTER("Daftar")
 }
 
 @Composable
@@ -118,7 +114,6 @@ fun AuthScreen(
     val focusManager = LocalFocusManager.current
     var mode by remember { mutableStateOf(AuthMode.LOGIN) }
 
-    // Login fields
     var loginIdentifier by remember { mutableStateOf("") }
     var loginPassword by remember { mutableStateOf("") }
     var loginPasswordVisible by remember { mutableStateOf(false) }
@@ -126,7 +121,6 @@ fun AuthScreen(
     var loginIdentifierError by remember { mutableStateOf<String?>(null) }
     var loginPasswordError by remember { mutableStateOf<String?>(null) }
 
-    // Register fields
     var regName by remember { mutableStateOf("") }
     var regEmail by remember { mutableStateOf("") }
     var regPassword by remember { mutableStateOf("") }
@@ -145,7 +139,7 @@ fun AuthScreen(
         focusManager.clearFocus()
         onClearAuthError()
         val idTrim = loginIdentifier.trim()
-        loginIdentifierError = if (idTrim.length < 3) "Masukkan email atau username (min. 3 karakter)" else null
+        loginIdentifierError = if (idTrim.length < 3) "Masukkan email atau username minimal 3 karakter" else null
         loginPasswordError = if (loginPassword.length < 6) "Kata sandi minimal 6 karakter" else null
         if (loginIdentifierError == null && loginPasswordError == null) {
             onLogin(idTrim, loginPassword, rememberSession)
@@ -163,7 +157,7 @@ fun AuthScreen(
         } else null
         regPasswordError = if (regPassword.length < 6) "Kata sandi minimal 6 karakter" else null
         regConfirmError = if (regConfirmPassword != regPassword) "Konfirmasi kata sandi tidak cocok" else null
-        regTermsError = if (!regTermsAccepted) "Setujui ketentuan layanan untuk mendaftar" else null
+        regTermsError = if (!regTermsAccepted) "Setujui ketentuan layanan untuk melanjutkan" else null
 
         if (regNameError == null &&
             regEmailError == null &&
@@ -180,22 +174,18 @@ fun AuthScreen(
             .fillMaxSize()
             .background(ObsidianVoid)
     ) {
-        // Subtle atmospheric accent glow at top + CRT scanline overlay
+        // Gentle organic ambient glow behind header
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .height(320.dp)
                 .background(
                     Brush.verticalGradient(
-                        0.0f to GoldPrimary.copy(alpha = 0.14f),
-                        0.32f to ObsidianVoid,
-                        1.0f to ObsidianVoid
+                        0.0f to GoldPrimary.copy(alpha = if (IsDarkTheme) 0.16f else 0.12f),
+                        0.65f to GoldPrimary.copy(alpha = 0.03f),
+                        1.0f to Color.Transparent
                     )
                 )
-        )
-        CrtScanlineOverlay(
-            modifier = Modifier.fillMaxSize(),
-            lineAlpha = 0.07f,
-            stepPx = 6f
         )
 
         Column(
@@ -205,74 +195,50 @@ fun AuthScreen(
                 .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+                .padding(horizontal = 22.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. Hardware Telemetry Header
-            CassetteTelemetryStrip(
-                code = "SYS.AUTH // TERMINAL AKSES",
-                statusText = "DECK-OS v1.0",
-                ledColor = GoldBright,
-                pulsing = true
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Organic Brand Header
+            AnimWatchCrestLogo(size = 64.dp)
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.Bold)) {
+                        append("Anim")
+                    }
+                    withStyle(SpanStyle(color = GoldPrimary, fontWeight = FontWeight.Bold)) {
+                        append("Watch")
+                    }
+                },
+                fontSize = 30.sp,
+                letterSpacing = (-0.5).sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = if (mode == AuthMode.LOGIN) {
+                    "Selamat datang kembali. Masuk untuk melanjutkan tontonan anime favoritmu."
+                } else {
+                    "Buat akun baru dan atur tampilan tema sesuai seleramu."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp)
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // 2. Brand Crest + Twin Cassette Tape Deck Visual
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ObsidianGoldCardBrush)
-                    .border(1.2.dp, GoldBorderBrush, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 18.dp, vertical = 18.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    TapeReelSpinner(isSpinning = true, size = 28.dp, tint = GoldPrimary)
-                    AnimWatchCrestLogo(size = 54.dp)
-                    TapeReelSpinner(isSpinning = true, size = 28.dp, tint = GoldBright)
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = TextPrimary, fontWeight = FontWeight.ExtraBold)) {
-                            append("ANIM")
-                        }
-                        withStyle(SpanStyle(color = GoldBright, fontWeight = FontWeight.ExtraBold)) {
-                            append("WATCH")
-                        }
-                    },
-                    fontFamily = MonoFont,
-                    fontSize = 26.sp,
-                    letterSpacing = 1.6.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "ANIME STREAMING // SUB INDO DECK",
-                    fontFamily = MonoFont,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GoldPrimary,
-                    letterSpacing = 1.1.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // 3. Segmented Mode Switcher: MASUK / DAFTAR
+            // Smooth Pill Mode Switcher
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(CircleShape)
                     .background(ObsidianElevated)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -281,7 +247,7 @@ fun AuthScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(CircleShape)
                             .background(
                                 if (selected) GoldGradientBrush
                                 else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
@@ -295,257 +261,327 @@ fun AuthScreen(
                     ) {
                         Text(
                             text = tab.label,
-                            fontFamily = MonoFont,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (selected) TextOnGold else TextSecondary,
-                            letterSpacing = 0.8.sp
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (selected) TextOnGold else TextSecondary
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 4. Auth Form Console Card
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ObsidianCard)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
-                    .padding(16.dp)
+            // Soft Rounded Form Surface
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = ObsidianCard,
+                shadowElevation = if (IsDarkTheme) 0.dp else 4.dp
             ) {
-                if (authError != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(StatusLive.copy(alpha = 0.14f))
-                            .border(1.dp, StatusLive, RoundedCornerShape(6.dp))
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = "ERR // $authError",
-                            fontFamily = MonoFont,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = StatusLive
-                        )
-                    }
-                }
-
-                AnimatedContent(
-                    targetState = mode,
-                    transitionSpec = {
-                        (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 16 }) togetherWith
-                            fadeOut(tween(180))
-                    },
-                    label = "auth_mode_form"
-                ) { currentMode ->
-                    when (currentMode) {
-                        AuthMode.LOGIN -> {
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                TactileInputField(
-                                    label = "Email atau Username",
-                                    value = loginIdentifier,
-                                    onValueChange = {
-                                        loginIdentifier = it
-                                        loginIdentifierError = null
-                                        onClearAuthError()
-                                    },
-                                    placeholder = "adrian@animwatch.id",
-                                    errorText = loginIdentifierError,
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Email,
-                                            contentDescription = null,
-                                            tint = GoldPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    },
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Email,
-                                        imeAction = ImeAction.Next
-                                    )
-                                )
-
-                                TactileInputField(
-                                    label = "Kata Sandi",
-                                    value = loginPassword,
-                                    onValueChange = {
-                                        loginPassword = it
-                                        loginPasswordError = null
-                                        onClearAuthError()
-                                    },
-                                    placeholder = "Minimal 6 karakter",
-                                    errorText = loginPasswordError,
-                                    visualTransformation = if (loginPasswordVisible) {
-                                        VisualTransformation.None
-                                    } else {
-                                        PasswordVisualTransformation()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Lock,
-                                            contentDescription = null,
-                                            tint = GoldPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    },
-                                    trailingIcon = {
-                                        IconButton(
-                                            onClick = { loginPasswordVisible = !loginPasswordVisible },
-                                            modifier = Modifier.size(26.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = if (loginPasswordVisible) {
-                                                    Icons.Rounded.VisibilityOff
-                                                } else {
-                                                    Icons.Rounded.Visibility
-                                                },
-                                                contentDescription = "Tampilkan sandi",
-                                                tint = TextSecondary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    },
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Password,
-                                        imeAction = ImeAction.Done
-                                    ),
-                                    keyboardActions = KeyboardActions(onDone = { submitLogin() })
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.clickable { rememberSession = !rememberSession }
-                                    ) {
-                                        Checkbox(
-                                            checked = rememberSession,
-                                            onCheckedChange = { rememberSession = it },
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = GoldBright,
-                                                uncheckedColor = GoldBorder,
-                                                checkmarkColor = TextOnGold
-                                            )
-                                        )
-                                        Text(
-                                            text = "Ingat sesi",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary
-                                        )
-                                    }
-
-                                    Text(
-                                        text = "LUPA SANDI?",
-                                        fontFamily = MonoFont,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = GoldBright,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .clickable { showForgotDialog = true }
-                                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                                    )
-                                }
-
-                                GoldGradientButton(
-                                    text = "Masuk ke AnimWatch",
-                                    icon = Icons.AutoMirrored.Rounded.Login,
-                                    onClick = ::submitLogin,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    height = 48.dp
-                                )
-
-                                Text(
-                                    text = "INFO DEMO // adrian@animwatch.id • sandi: 123456",
-                                    fontFamily = MonoFont,
-                                    fontSize = 9.5.sp,
-                                    color = TextTertiary,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                Column(
+                    modifier = Modifier
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
+                        .padding(18.dp)
+                ) {
+                    if (authError != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 14.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(StatusLive.copy(alpha = 0.12f))
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Text(
+                                text = authError,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = StatusLive
+                            )
                         }
+                    }
 
-                        AuthMode.REGISTER -> {
-                            val strengthFraction = when {
-                                regPassword.isEmpty() -> 0f
-                                regPassword.length < 6 -> 0.28f
-                                regPassword.length < 9 -> 0.62f
-                                else -> 1.0f
-                            }
-                            val (strengthLabel, strengthColor) = when {
-                                regPassword.isEmpty() -> "BELUM DIISI" to TextTertiary
-                                regPassword.length < 6 -> "LEMAH" to StatusLive
-                                regPassword.length < 9 -> "CUKUP KUAT" to StatusAmber
-                                else -> "AMAN & KUAT" to StatusEmerald
-                            }
-
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                TactileInputField(
-                                    label = "Nama Tampilan",
-                                    value = regName,
-                                    onValueChange = {
-                                        regName = it
-                                        regNameError = null
-                                        onClearAuthError()
-                                    },
-                                    placeholder = "Contoh: Adrian Vallenz",
-                                    errorText = regNameError,
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Badge,
-                                            contentDescription = null,
-                                            tint = GoldPrimary,
-                                            modifier = Modifier.size(18.dp)
+                    AnimatedContent(
+                        targetState = mode,
+                        transitionSpec = {
+                            (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 18 }) togetherWith
+                                fadeOut(tween(180))
+                        },
+                        label = "auth_mode_form"
+                    ) { currentMode ->
+                        when (currentMode) {
+                            AuthMode.LOGIN -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    TactileInputField(
+                                        label = "Email atau Username",
+                                        value = loginIdentifier,
+                                        onValueChange = {
+                                            loginIdentifier = it
+                                            loginIdentifierError = null
+                                            onClearAuthError()
+                                        },
+                                        placeholder = "adrian@animwatch.id",
+                                        errorText = loginIdentifierError,
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Email,
+                                                contentDescription = null,
+                                                tint = GoldPrimary,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Email,
+                                            imeAction = ImeAction.Next
                                         )
-                                    },
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                                )
-
-                                TactileInputField(
-                                    label = "Alamat Email",
-                                    value = regEmail,
-                                    onValueChange = {
-                                        regEmail = it
-                                        regEmailError = null
-                                        onClearAuthError()
-                                    },
-                                    placeholder = "nama@email.com",
-                                    errorText = regEmailError,
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Email,
-                                            contentDescription = null,
-                                            tint = GoldPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    },
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Email,
-                                        imeAction = ImeAction.Next
                                     )
-                                )
 
-                                Column {
                                     TactileInputField(
                                         label = "Kata Sandi",
-                                        value = regPassword,
+                                        value = loginPassword,
                                         onValueChange = {
-                                            regPassword = it
-                                            regPasswordError = null
+                                            loginPassword = it
+                                            loginPasswordError = null
                                             onClearAuthError()
                                         },
                                         placeholder = "Minimal 6 karakter",
-                                        errorText = regPasswordError,
+                                        errorText = loginPasswordError,
+                                        visualTransformation = if (loginPasswordVisible) {
+                                            VisualTransformation.None
+                                        } else {
+                                            PasswordVisualTransformation()
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Lock,
+                                                contentDescription = null,
+                                                tint = GoldPrimary,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            IconButton(
+                                                onClick = { loginPasswordVisible = !loginPasswordVisible },
+                                                modifier = Modifier.size(26.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (loginPasswordVisible) {
+                                                        Icons.Rounded.VisibilityOff
+                                                    } else {
+                                                        Icons.Rounded.Visibility
+                                                    },
+                                                    contentDescription = "Tampilkan sandi",
+                                                    tint = TextSecondary,
+                                                    modifier = Modifier.size(19.dp)
+                                                )
+                                            }
+                                        },
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Password,
+                                            imeAction = ImeAction.Done
+                                        ),
+                                        keyboardActions = KeyboardActions(onDone = { submitLogin() })
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.clickable { rememberSession = !rememberSession }
+                                        ) {
+                                            Checkbox(
+                                                checked = rememberSession,
+                                                onCheckedChange = { rememberSession = it },
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = GoldPrimary,
+                                                    uncheckedColor = TextTertiary,
+                                                    checkmarkColor = TextOnGold
+                                                )
+                                            )
+                                            Text(
+                                                text = "Ingat sesi saya",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextSecondary
+                                            )
+                                        }
+
+                                        Text(
+                                            text = "Lupa sandi?",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = GoldPrimary,
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .clickable { showForgotDialog = true }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+
+                                    GoldGradientButton(
+                                        text = "Masuk Sekarang",
+                                        icon = Icons.AutoMirrored.Rounded.Login,
+                                        onClick = ::submitLogin,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        height = 50.dp
+                                    )
+
+                                    Text(
+                                        text = "Akun demo: adrian@animwatch.id • Sandi: 123456",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontSize = 11.5.sp,
+                                        color = TextTertiary,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+
+                            AuthMode.REGISTER -> {
+                                val strengthFraction = when {
+                                    regPassword.isEmpty() -> 0f
+                                    regPassword.length < 6 -> 0.28f
+                                    regPassword.length < 9 -> 0.65f
+                                    else -> 1.0f
+                                }
+                                val (strengthLabel, strengthColor) = when {
+                                    regPassword.isEmpty() -> "Belum diisi" to TextTertiary
+                                    regPassword.length < 6 -> "Terlalu pendek" to StatusLive
+                                    regPassword.length < 9 -> "Cukup kuat" to StatusAmber
+                                    else -> "Sangat kuat" to StatusEmerald
+                                }
+
+                                Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                                    TactileInputField(
+                                        label = "Nama Tampilan",
+                                        value = regName,
+                                        onValueChange = {
+                                            regName = it
+                                            regNameError = null
+                                            onClearAuthError()
+                                        },
+                                        placeholder = "Contoh: Adrian Vallenz",
+                                        errorText = regNameError,
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Badge,
+                                                contentDescription = null,
+                                                tint = GoldPrimary,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
+                                    )
+
+                                    TactileInputField(
+                                        label = "Alamat Email",
+                                        value = regEmail,
+                                        onValueChange = {
+                                            regEmail = it
+                                            regEmailError = null
+                                            onClearAuthError()
+                                        },
+                                        placeholder = "nama@email.com",
+                                        errorText = regEmailError,
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Email,
+                                                contentDescription = null,
+                                                tint = GoldPrimary,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Email,
+                                            imeAction = ImeAction.Next
+                                        )
+                                    )
+
+                                    Column {
+                                        TactileInputField(
+                                            label = "Kata Sandi",
+                                            value = regPassword,
+                                            onValueChange = {
+                                                regPassword = it
+                                                regPasswordError = null
+                                                onClearAuthError()
+                                            },
+                                            placeholder = "Minimal 6 karakter",
+                                            errorText = regPasswordError,
+                                            visualTransformation = if (regPasswordVisible) {
+                                                VisualTransformation.None
+                                            } else {
+                                                PasswordVisualTransformation()
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Lock,
+                                                    contentDescription = null,
+                                                    tint = GoldPrimary,
+                                                    modifier = Modifier.size(19.dp)
+                                                )
+                                            },
+                                            trailingIcon = {
+                                                IconButton(
+                                                    onClick = { regPasswordVisible = !regPasswordVisible },
+                                                    modifier = Modifier.size(26.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (regPasswordVisible) {
+                                                            Icons.Rounded.VisibilityOff
+                                                        } else {
+                                                            Icons.Rounded.Visibility
+                                                        },
+                                                        contentDescription = "Tampilkan sandi",
+                                                        tint = TextSecondary,
+                                                        modifier = Modifier.size(19.dp)
+                                                    )
+                                                }
+                                            },
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Password,
+                                                imeAction = ImeAction.Next
+                                            )
+                                        )
+                                        if (regPassword.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(7.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Kekuatan sandi",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontSize = 11.5.sp,
+                                                    color = TextTertiary
+                                                )
+                                                Text(
+                                                    text = strengthLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = strengthColor
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(5.dp))
+                                            AnalogMeterGauge(
+                                                progress = strengthFraction,
+                                                height = 5.dp,
+                                                activeColor = strengthColor
+                                            )
+                                        }
+                                    }
+
+                                    TactileInputField(
+                                        label = "Konfirmasi Kata Sandi",
+                                        value = regConfirmPassword,
+                                        onValueChange = {
+                                            regConfirmPassword = it
+                                            regConfirmError = null
+                                        },
+                                        placeholder = "Ulangi kata sandi",
+                                        errorText = regConfirmError,
                                         visualTransformation = if (regPasswordVisible) {
                                             VisualTransformation.None
                                         } else {
@@ -556,187 +592,108 @@ fun AuthScreen(
                                                 imageVector = Icons.Rounded.Lock,
                                                 contentDescription = null,
                                                 tint = GoldPrimary,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(19.dp)
                                             )
-                                        },
-                                        trailingIcon = {
-                                            IconButton(
-                                                onClick = { regPasswordVisible = !regPasswordVisible },
-                                                modifier = Modifier.size(26.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (regPasswordVisible) {
-                                                        Icons.Rounded.VisibilityOff
-                                                    } else {
-                                                        Icons.Rounded.Visibility
-                                                    },
-                                                    contentDescription = "Tampilkan sandi",
-                                                    tint = TextSecondary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
                                         },
                                         keyboardOptions = KeyboardOptions(
                                             keyboardType = KeyboardType.Password,
-                                            imeAction = ImeAction.Next
-                                        )
+                                            imeAction = ImeAction.Done
+                                        ),
+                                        keyboardActions = KeyboardActions(onDone = { submitRegister() })
                                     )
-                                    if (regPassword.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                    Column {
                                         Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "KEKUATAN SANDI",
-                                                fontFamily = MonoFont,
-                                                fontSize = 9.5.sp,
-                                                color = TextTertiary
-                                            )
-                                            Text(
-                                                text = strengthLabel,
-                                                fontFamily = MonoFont,
-                                                fontSize = 9.5.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = strengthColor
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        AnalogMeterGauge(
-                                            progress = strengthFraction,
-                                            segments = 12,
-                                            height = 6.dp,
-                                            activeColor = strengthColor
-                                        )
-                                    }
-                                }
-
-                                TactileInputField(
-                                    label = "Konfirmasi Kata Sandi",
-                                    value = regConfirmPassword,
-                                    onValueChange = {
-                                        regConfirmPassword = it
-                                        regConfirmError = null
-                                    },
-                                    placeholder = "Ulangi kata sandi",
-                                    errorText = regConfirmError,
-                                    visualTransformation = if (regPasswordVisible) {
-                                        VisualTransformation.None
-                                    } else {
-                                        PasswordVisualTransformation()
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Lock,
-                                            contentDescription = null,
-                                            tint = GoldPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    },
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Password,
-                                        imeAction = ImeAction.Done
-                                    ),
-                                    keyboardActions = KeyboardActions(onDone = { submitRegister() })
-                                )
-
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.clickable {
-                                            regTermsAccepted = !regTermsAccepted
-                                            regTermsError = null
-                                        }
-                                    ) {
-                                        Checkbox(
-                                            checked = regTermsAccepted,
-                                            onCheckedChange = {
-                                                regTermsAccepted = it
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.clickable {
+                                                regTermsAccepted = !regTermsAccepted
                                                 regTermsError = null
-                                            },
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = GoldBright,
-                                                uncheckedColor = GoldBorder,
-                                                checkmarkColor = TextOnGold
+                                            }
+                                        ) {
+                                            Checkbox(
+                                                checked = regTermsAccepted,
+                                                onCheckedChange = {
+                                                    regTermsAccepted = it
+                                                    regTermsError = null
+                                                },
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = GoldPrimary,
+                                                    uncheckedColor = TextTertiary,
+                                                    checkmarkColor = TextOnGold
+                                                )
                                             )
-                                        )
-                                        Text(
-                                            text = "Saya menyetujui Ketentuan Layanan & Privasi AnimWatch",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary
-                                        )
+                                            Text(
+                                                text = "Saya menyetujui Ketentuan Layanan & Privasi AnimWatch",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                        if (regTermsError != null) {
+                                            Text(
+                                                text = regTermsError.orEmpty(),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = StatusLive,
+                                                modifier = Modifier.padding(start = 12.dp)
+                                            )
+                                        }
                                     }
-                                    if (regTermsError != null) {
-                                        Text(
-                                            text = regTermsError.orEmpty(),
-                                            fontFamily = MonoFont,
-                                            fontSize = 10.sp,
-                                            color = StatusLive,
-                                            modifier = Modifier.padding(start = 12.dp)
-                                        )
-                                    }
-                                }
 
-                                GoldGradientButton(
-                                    text = "Daftar & Mulai Nonton",
-                                    icon = Icons.Rounded.PersonAdd,
-                                    onClick = ::submitRegister,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    height = 48.dp
-                                )
+                                    GoldGradientButton(
+                                        text = "Buat Akun Baru",
+                                        icon = Icons.Rounded.PersonAdd,
+                                        onClick = ::submitRegister,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        height = 50.dp
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // 5. Quick Access Divider & Instant Demo / Guest Keys
+            // Quick Access Divider & Instant Demo / Guest Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HorizontalDivider(color = DividerSubtle, modifier = Modifier.weight(1f))
                 Text(
-                    text = "  AKSES CEPAT  ",
-                    fontFamily = MonoFont,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextTertiary,
-                    letterSpacing = 0.8.sp
+                    text = "  Atau masuk cepat  ",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary
                 )
                 HorizontalDivider(color = DividerSubtle, modifier = Modifier.weight(1f))
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 GoldOutlinedButton(
-                    text = "Demo VIP",
+                    text = "Akun Demo",
                     icon = Icons.Rounded.AutoAwesome,
                     isActive = true,
                     onClick = onDemoVipLogin,
                     modifier = Modifier.weight(1f),
-                    height = 44.dp
+                    height = 46.dp
                 )
                 GoldOutlinedButton(
-                    text = "Tamu",
+                    text = "Mode Tamu",
                     icon = Icons.Rounded.PersonOutline,
                     isActive = false,
                     onClick = onContinueAsGuest,
                     modifier = Modifier.weight(1f),
-                    height = 44.dp
+                    height = 46.dp
                 )
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // Footer Switch Prompt
             Row(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
@@ -748,22 +705,20 @@ fun AuthScreen(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (mode == AuthMode.LOGIN) "DAFTAR SEKARANG" else "MASUK DI SINI",
-                    fontFamily = MonoFont,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GoldBright,
+                    text = if (mode == AuthMode.LOGIN) "Daftar sekarang" else "Masuk di sini",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = GoldPrimary,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(CircleShape)
                         .clickable {
                             mode = if (mode == AuthMode.LOGIN) AuthMode.REGISTER else AuthMode.LOGIN
                             onClearAuthError()
                         }
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
         }
     }
 
@@ -791,18 +746,16 @@ private fun ForgotPasswordDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ObsidianElevated,
-        shape = RoundedCornerShape(10.dp),
-        titleContentColor = GoldBright,
+        shape = RoundedCornerShape(24.dp),
+        titleContentColor = TextPrimary,
         title = {
             Text(
-                text = "PEMULIHAN KATA SANDI",
-                fontFamily = MonoFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
+                text = "Pemulihan Kata Sandi",
+                style = MaterialTheme.typography.headlineSmall
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     text = "Masukkan alamat email terdaftar untuk menerima tautan pemulihan kata sandi.",
                     style = MaterialTheme.typography.bodySmall,
@@ -832,12 +785,12 @@ private fun ForgotPasswordDialog(
                         onSendReset(trimmed)
                     }
                 },
-                height = 40.dp
+                height = 42.dp
             )
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+                Text("Batal", color = TextSecondary)
             }
         }
     )

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -53,11 +54,11 @@ import com.gows.animwatch.ui.state.AppRoute
 import com.gows.animwatch.ui.state.ExploreMode
 import com.gows.animwatch.ui.state.MainTab
 import com.gows.animwatch.ui.theme.AnimWatchTheme
-import com.gows.animwatch.ui.theme.GoldBorder
-import com.gows.animwatch.ui.theme.GoldBright
-import com.gows.animwatch.ui.theme.MonoFont
+import com.gows.animwatch.ui.theme.GoldPrimary
+import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
+import com.gows.animwatch.ui.theme.TextPrimary
 
 @Composable
 fun AnimWatchApp(
@@ -378,29 +379,29 @@ fun AnimWatchApp(
         }
         } // end else (uiState.isAuthenticated)
 
-        // 4. Global Accent Snackbar Toast
+        // 4. Global Smooth Snackbar Toast
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(
-                    bottom = if (uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme && isTabsRoot) 84.dp else 20.dp,
+                    bottom = if (uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme && isTabsRoot) 88.dp else 20.dp,
                     start = 16.dp,
                     end = 16.dp
                 )
         ) { data ->
             Snackbar(
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(16.dp),
                 containerColor = ObsidianElevated,
-                contentColor = GoldBright,
-                modifier = Modifier.border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+                contentColor = TextPrimary,
+                modifier = Modifier.border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
             ) {
                 Text(
                     text = data.visuals.message,
-                    fontFamily = MonoFont,
-                    color = GoldBright,
-                    fontWeight = FontWeight.SemiBold
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = GoldPrimary,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }

@@ -8,13 +8,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 // ============================================================
-// AnimWatch Dynamic Multi-Theme Engine (Dark & Light Modes)
-// 7 Curated Accent Color Themes — NO Gold/Yellow Palette
+// AnimWatch Organic Multi-Theme Palette (Dark & Light Modes)
+// 7 Curated Non-Gold Accent Palettes with Soft Layered Depth
 // ============================================================
 
 enum class AppAppearanceMode(val label: String, val code: String, val subtitle: String) {
-    DARK("Mode Gelap", "DARK", "Nyaman ditonton malam hari"),
-    LIGHT("Mode Terang", "LIGHT", "Bersih dan tajam di siang hari")
+    DARK("Mode Gelap", "Gelap", "Tenang dan nyaman di malam hari"),
+    LIGHT("Mode Terang", "Terang", "Cerah, lapang, dan bersih di siang hari")
 }
 
 enum class AppAccentTheme(
@@ -32,93 +32,93 @@ enum class AppAccentTheme(
 ) {
     COBALT_SAPPHIRE(
         displayName = "Biru Safir",
-        code = "SAPPHIRE",
-        tagline = "Modern & fokus sinematik",
-        darkPrimary = Color(0xFF4C7CF5),
-        darkBright = Color(0xFF7CA4FF),
-        darkDeep = Color(0xFF2B54C7),
-        lightPrimary = Color(0xFF2855D6),
-        lightBright = Color(0xFF4C7CF5),
-        lightDeep = Color(0xFF1C3EA6),
-        onAccentDark = Color(0xFFF6F8FF),
+        code = "Safir",
+        tagline = "Tenang & sinematik",
+        darkPrimary = Color(0xFF5682F5),
+        darkBright = Color(0xFF84A9FF),
+        darkDeep = Color(0xFF335ED4),
+        lightPrimary = Color(0xFF3461DE),
+        lightBright = Color(0xFF5682F5),
+        lightDeep = Color(0xFF2349B5),
+        onAccentDark = Color(0xFFFFFFFF),
         onAccentLight = Color(0xFFFFFFFF)
     ),
     CRIMSON_RUBY(
         displayName = "Merah Rubi",
-        code = "CRIMSON",
-        tagline = "Tegas & penuh energi aksi",
-        darkPrimary = Color(0xFFE0455A),
-        darkBright = Color(0xFFFF7588),
-        darkDeep = Color(0xFFB3263B),
-        lightPrimary = Color(0xFFC92A42),
-        lightBright = Color(0xFFE54860),
-        lightDeep = Color(0xFF991B2E),
-        onAccentDark = Color(0xFFFFF5F6),
+        code = "Rubi",
+        tagline = "Hangat & penuh energi",
+        darkPrimary = Color(0xFFE55367),
+        darkBright = Color(0xFFFF8293),
+        darkDeep = Color(0xFFBF2E43),
+        lightPrimary = Color(0xFFD1324A),
+        lightBright = Color(0xFFE8566C),
+        lightDeep = Color(0xFFA62035),
+        onAccentDark = Color(0xFFFFFFFF),
         onAccentLight = Color(0xFFFFFFFF)
     ),
     ELECTRIC_CYAN(
         displayName = "Biru Sian",
-        code = "CYAN",
-        tagline = "Futuristik ala terminal sci-fi",
-        darkPrimary = Color(0xFF22B8CF),
-        darkBright = Color(0xFF66D9E8),
-        darkDeep = Color(0xFF108A9E),
-        lightPrimary = Color(0xFF0C8599),
-        lightBright = Color(0xFF1AA3B8),
-        lightDeep = Color(0xFF096373),
-        onAccentDark = Color(0xFF071619),
+        code = "Sian",
+        tagline = "Segar & modern",
+        darkPrimary = Color(0xFF2CC2D6),
+        darkBright = Color(0xFF70DFED),
+        darkDeep = Color(0xFF1594A6),
+        lightPrimary = Color(0xFF0E8FA3),
+        lightBright = Color(0xFF22ABC0),
+        lightDeep = Color(0xFF0A6B7A),
+        onAccentDark = Color(0xFF061A1E),
         onAccentLight = Color(0xFFFFFFFF)
     ),
     EMERALD_MINT(
         displayName = "Hijau Zamrud",
-        code = "EMERALD",
-        tagline = "Segar & seimbang di mata",
-        darkPrimary = Color(0xFF2FC480),
-        darkBright = Color(0xFF68E0A8),
-        darkDeep = Color(0xFF1C945D),
-        lightPrimary = Color(0xFF1A9960),
-        lightBright = Color(0xFF2FC480),
-        lightDeep = Color(0xFF127347),
-        onAccentDark = Color(0xFF07170F),
+        code = "Zamrud",
+        tagline = "Sejuk & alami di mata",
+        darkPrimary = Color(0xFF38C988),
+        darkBright = Color(0xFF72E3AE),
+        darkDeep = Color(0xFF1F9E65),
+        lightPrimary = Color(0xFF1E9E65),
+        lightBright = Color(0xFF35BD80),
+        lightDeep = Color(0xFF147A4D),
+        onAccentDark = Color(0xFF061A11),
         onAccentLight = Color(0xFFFFFFFF)
     ),
     VIOLET_AMETHYST(
         displayName = "Ungu Ametis",
-        code = "AMETHYST",
-        tagline = "Elegan untuk dunia fantasi",
-        darkPrimary = Color(0xFF8B6CE8),
-        darkBright = Color(0xFFB197FC),
-        darkDeep = Color(0xFF6546C4),
-        lightPrimary = Color(0xFF6D48D6),
-        lightBright = Color(0xFF8B6CE8),
-        lightDeep = Color(0xFF5130B0),
-        onAccentDark = Color(0xFFF8F5FF),
+        code = "Ametis",
+        tagline = "Lembut & elegan",
+        darkPrimary = Color(0xFF9376ED),
+        darkBright = Color(0xFFB7A1FA),
+        darkDeep = Color(0xFF6E4FD1),
+        lightPrimary = Color(0xFF724EDB),
+        lightBright = Color(0xFF9172EB),
+        lightDeep = Color(0xFF5634B8),
+        onAccentDark = Color(0xFFFFFFFF),
         onAccentLight = Color(0xFFFFFFFF)
     ),
     CORAL_SUNSET(
         displayName = "Oranye Koral",
-        code = "CORAL",
-        tagline = "Hangat & penuh semangat",
-        darkPrimary = Color(0xFFEB6B40),
-        darkBright = Color(0xFFFF926B),
-        darkDeep = Color(0xFFBD4924),
-        lightPrimary = Color(0xFFD14E24),
-        lightBright = Color(0xFFEB6B40),
-        lightDeep = Color(0xFFA33917),
-        onAccentDark = Color(0xFFFFF6F3),
+        code = "Koral",
+        tagline = "Ceria & hangat",
+        darkPrimary = Color(0xFFEF754B),
+        darkBright = Color(0xFFFF9B78),
+        darkDeep = Color(0xFFC95028),
+        lightPrimary = Color(0xFFD95529),
+        lightBright = Color(0xFFEF754B),
+        lightDeep = Color(0xFFAD3D18),
+        onAccentDark = Color(0xFFFFFFFF),
         onAccentLight = Color(0xFFFFFFFF)
     ),
     ROSE_MAGENTA(
         displayName = "Merah Muda",
-        code = "MAGENTA",
-        tagline = "Ekspresif & bergaya",
-        darkPrimary = Color(0xFFE0569C),
-        darkBright = Color(0xFFFF87C2),
-        darkDeep = Color(0xFFB33274),
-        lightPrimary = Color(0xFFC2367D),
-        lightBright = Color(0xFFE0569C),
-        lightDeep = Color(0xFF94225C),
-        onAccentDark = Color(0xFFFFF5FA),
+        code = "Rose",
+        tagline = "Manis & ekspresif",
+        darkPrimary = Color(0xFFE660A4),
+        darkBright = Color(0xFFFF91C8),
+        darkDeep = Color(0xFFBD3A7E),
+        lightPrimary = Color(0xFFC93C84),
+        lightBright = Color(0xFFE35EA2),
+        lightDeep = Color(0xFF9E2864),
+        onAccentDark = Color(0xFFFFFFFF),
         onAccentLight = Color(0xFFFFFFFF)
     )
 }
@@ -158,60 +158,56 @@ fun buildPalette(mode: AppAppearanceMode, accent: AppAccentTheme): AnimWatchPale
     return if (isDark) {
         AnimWatchPalette(
             isDark = true,
-            surfaceVoid = Color(0xFF0D0F14),
-            surfaceBase = Color(0xFF13161E),
-            surfaceElevated = Color(0xFF191D28),
-            surfaceCard = Color(0xFF202533),
-            surfaceCardAlt = Color(0xFF282E3F),
-            surfaceHover = Color(0xFF323A4E),
-            surfaceGlass = Color(0xF0151923),
+            surfaceVoid = Color(0xFF0F1117),
+            surfaceBase = Color(0xFF151821),
+            surfaceElevated = Color(0xFF1B1F2B),
+            surfaceCard = Color(0xFF212635),
+            surfaceCardAlt = Color(0xFF2A3042),
+            surfaceHover = Color(0xFF343B50),
+            surfaceGlass = Color(0xEB171B26),
             accentBright = bright,
             accentPrimary = primary,
             accentWarm = primary,
             accentDeep = deep,
-            accentMuted = deep.copy(alpha = 0.7f),
-            accentTint = primary.copy(alpha = 0.16f),
-            accentTintStrong = primary.copy(alpha = 0.28f),
-            accentBorder = primary.copy(alpha = 0.55f),
-            accentSubtleBorder = primary.copy(alpha = 0.24f),
-            textPrimary = Color(0xFFF1F3F8),
-            textSecondary = Color(0xFFB4BCCB),
-            textTertiary = Color(0xFF7D869A),
+            accentMuted = deep.copy(alpha = 0.65f),
+            accentTint = primary.copy(alpha = 0.13f),
+            accentTintStrong = primary.copy(alpha = 0.22f),
+            accentBorder = primary.copy(alpha = 0.34f),
+            accentSubtleBorder = Color(0x1AE8EDF7),
+            textPrimary = Color(0xFFF3F5FA),
+            textSecondary = Color(0xFFB5BDCF),
+            textTertiary = Color(0xFF818A9E),
             textOnAccent = onAccent,
-            dividerSubtle = Color(0x1FF1F3F8)
+            dividerSubtle = Color(0x16F3F5FA)
         )
     } else {
         AnimWatchPalette(
             isDark = false,
-            surfaceVoid = Color(0xFFF3F5FA),
-            surfaceBase = Color(0xFFEAEFF7),
+            surfaceVoid = Color(0xFFF6F7FB),
+            surfaceBase = Color(0xFFEEF1F7),
             surfaceElevated = Color(0xFFFFFFFF),
             surfaceCard = Color(0xFFFFFFFF),
-            surfaceCardAlt = Color(0xFFE6EBF4),
-            surfaceHover = Color(0xFFD9E0EE),
+            surfaceCardAlt = Color(0xFFEDF0F7),
+            surfaceHover = Color(0xFFE1E6F0),
             surfaceGlass = Color(0xF5FFFFFF),
             accentBright = primary,
             accentPrimary = primary,
             accentWarm = bright,
             accentDeep = deep,
-            accentMuted = deep.copy(alpha = 0.65f),
-            accentTint = primary.copy(alpha = 0.11f),
-            accentTintStrong = primary.copy(alpha = 0.20f),
-            accentBorder = primary.copy(alpha = 0.45f),
-            accentSubtleBorder = Color(0x26141824),
-            textPrimary = Color(0xFF141824),
-            textSecondary = Color(0xFF4B556B),
-            textTertiary = Color(0xFF758096),
+            accentMuted = deep.copy(alpha = 0.60f),
+            accentTint = primary.copy(alpha = 0.10f),
+            accentTintStrong = primary.copy(alpha = 0.17f),
+            accentBorder = primary.copy(alpha = 0.32f),
+            accentSubtleBorder = Color(0x17141824),
+            textPrimary = Color(0xFF171C28),
+            textSecondary = Color(0xFF525D73),
+            textTertiary = Color(0xFF7F8A9E),
             textOnAccent = onAccent,
-            dividerSubtle = Color(0x1F141824)
+            dividerSubtle = Color(0x14171C28)
         )
     }
 }
 
-/**
- * Snapshot-backed live theme state so Compose recomposes and redraws
- * every screen and Canvas immediately when the user switches Dark/Light or accent color.
- */
 object AppThemeState {
     var current by mutableStateOf(
         buildPalette(AppAppearanceMode.DARK, AppAccentTheme.COBALT_SAPPHIRE)
@@ -222,7 +218,7 @@ object AppThemeState {
     }
 }
 
-// Reactive Theme Tokens (automatically switch across Dark/Light & 7 accent colors)
+// Reactive Theme Tokens
 val IsDarkTheme: Boolean get() = AppThemeState.current.isDark
 val ObsidianVoid: Color get() = AppThemeState.current.surfaceVoid
 val ObsidianBase: Color get() = AppThemeState.current.surfaceBase
@@ -248,35 +244,35 @@ val TextTertiary: Color get() = AppThemeState.current.textTertiary
 val TextOnGold: Color get() = AppThemeState.current.textOnAccent
 val DividerSubtle: Color get() = AppThemeState.current.dividerSubtle
 
-// Always-Dark Media Overlay Tokens (high legibility on top of posters & video streams even in Light Mode)
-val MediaScrimDark = Color(0xFF0D0F14)
-val MediaTextLight = Color(0xFFF4F6FA)
-val MediaTextSecondary = Color(0xFFC8CFD9)
+// Always-Dark Media Overlay Tokens (legibility on top of posters & video streams in Dark & Light modes)
+val MediaScrimDark = Color(0xFF0E1016)
+val MediaTextLight = Color(0xFFF6F7FB)
+val MediaTextSecondary = Color(0xFFCCD2DE)
 
-// Semantic Status Colors (Non-Gold)
-val StatusLive = Color(0xFFD63946)
-val StatusEmerald = Color(0xFF28A76E)
-val StatusAmber = Color(0xFFEB6B40)
+// Semantic Status Colors
+val StatusLive = Color(0xFFE04856)
+val StatusEmerald = Color(0xFF2EB377)
+val StatusAmber = Color(0xFFEF754B)
 
-// Reactive Brushes
+// Soft Organic Brushes
 val GoldGradientBrush: Brush
     get() = Brush.linearGradient(
-        colors = listOf(GoldBright, GoldPrimary, GoldDeep),
+        colors = listOf(GoldBright, GoldPrimary),
         start = Offset.Zero,
         end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
     )
 
 val GoldHorizontalBrush: Brush
     get() = Brush.horizontalGradient(
-        colors = listOf(GoldBright, GoldPrimary, GoldDeep)
+        colors = listOf(GoldPrimary, GoldBright)
     )
 
 val GoldBorderBrush: Brush
     get() = Brush.linearGradient(
         colors = listOf(
-            GoldBright.copy(alpha = 0.72f),
-            GoldPrimary.copy(alpha = 0.38f),
-            GoldDeep.copy(alpha = 0.52f)
+            GoldBright.copy(alpha = 0.42f),
+            GoldPrimary.copy(alpha = 0.22f),
+            GoldDeep.copy(alpha = 0.30f)
         )
     )
 
@@ -284,15 +280,15 @@ val ObsidianGoldCardBrush: Brush
     get() = if (IsDarkTheme) {
         Brush.linearGradient(
             colors = listOf(
-                GoldPrimary.copy(alpha = 0.22f),
+                GoldPrimary.copy(alpha = 0.18f),
                 ObsidianCard,
-                ObsidianBase
+                ObsidianElevated
             )
         )
     } else {
         Brush.linearGradient(
             colors = listOf(
-                GoldPrimary.copy(alpha = 0.14f),
+                GoldPrimary.copy(alpha = 0.12f),
                 ObsidianCard,
                 ObsidianVoid
             )

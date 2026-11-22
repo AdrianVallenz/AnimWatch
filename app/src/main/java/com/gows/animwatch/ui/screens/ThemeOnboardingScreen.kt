@@ -1,5 +1,7 @@
 package com.gows.animwatch.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,7 +32,6 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.NotificationsActive
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Wifi
@@ -38,10 +39,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,8 +59,6 @@ import androidx.compose.ui.unit.sp
 import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimWatchCrestLogo
-import com.gows.animwatch.ui.components.CassetteTelemetryStrip
-import com.gows.animwatch.ui.components.CrtScanlineOverlay
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
 import com.gows.animwatch.ui.components.GoldTagChip
@@ -67,13 +68,11 @@ import com.gows.animwatch.ui.theme.AppAccentTheme
 import com.gows.animwatch.ui.theme.AppAppearanceMode
 import com.gows.animwatch.ui.theme.DividerSubtle
 import com.gows.animwatch.ui.theme.GoldBorder
-import com.gows.animwatch.ui.theme.GoldBorderBrush
-import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTintStrong
-import com.gows.animwatch.ui.theme.MonoFont
+import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianElevated
@@ -111,10 +110,17 @@ fun ThemeOnboardingScreen(
             .fillMaxSize()
             .background(ObsidianVoid)
     ) {
-        CrtScanlineOverlay(
-            modifier = Modifier.fillMaxSize(),
-            lineAlpha = 0.06f,
-            stepPx = 6f
+        // Gentle top accent gradient glow
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to GoldPrimary.copy(alpha = if (IsDarkTheme) 0.14f else 0.10f),
+                        1.0f to Color.Transparent
+                    )
+                )
         )
 
         Column(
@@ -122,15 +128,14 @@ fun ThemeOnboardingScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-            // Scrollable Customization Content
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
-                // Top Header Bar
+                // Header & Greeting
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -139,10 +144,10 @@ fun ThemeOnboardingScreen(
                         IconButton(
                             onClick = onBack,
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .size(40.dp)
+                                .clip(CircleShape)
                                 .background(ObsidianCard)
-                                .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+                                .border(0.75.dp, GoldSubtleBorder, CircleShape)
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -150,33 +155,24 @@ fun ThemeOnboardingScreen(
                                 tint = TextPrimary
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                     }
-                    CassetteTelemetryStrip(
-                        code = if (isFromProfile) "SYS.THEME // UBAH TAMPILAN" else "SYS.SETUP // TEMA & PREFERENSI",
-                        statusText = "${appearanceMode.code} • ${accentTheme.code}",
-                        ledColor = GoldBright,
-                        pulsing = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isFromProfile) "Tema & Preferensi" else "Halo, $userName",
+                            style = MaterialTheme.typography.displaySmall,
+                            color = TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Pilih suasana layar, warna favorit, dan gaya menonton yang paling nyaman untukmu.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
                 }
 
-                // Greeting Title
-                Column {
-                    Text(
-                        text = if (isFromProfile) "Atur Tema & Preferensi" else "Halo, $userName",
-                        style = MaterialTheme.typography.displaySmall,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Pilih mode gelap atau terang, warna tema kesukaanmu, serta preferensi menonton sebelum masuk ke Beranda.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
-                    )
-                }
-
-                // Live Theme Preview Mini-Deck
+                // Live Preview Card
                 LiveThemePreviewCard(
                     appearanceMode = appearanceMode,
                     accentTheme = accentTheme,
@@ -185,121 +181,131 @@ fun ThemeOnboardingScreen(
                 )
 
                 // ============================
-                // SECTION 1: GELAP / TERANG
+                // SECTION 1: MODE GELAP / TERANG
                 // ============================
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ThemeSectionTitle(
-                        code = "01 // MODE LAYAR",
-                        title = "Pilih Mode Gelap atau Terang"
+                        title = "Suasana Layar",
+                        subtitle = "Pilih antara tampilan gelap yang tenang atau terang yang cerah"
                     )
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         AppAppearanceMode.entries.forEach { mode ->
                             val selected = mode == appearanceMode
-                            val previewBg = if (mode == AppAppearanceMode.DARK) Color(0xFF0D0F14) else Color(0xFFF3F5FA)
-                            val previewCard = if (mode == AppAppearanceMode.DARK) Color(0xFF202533) else Color(0xFFFFFFFF)
+                            val previewBg = if (mode == AppAppearanceMode.DARK) Color(0xFF0F1117) else Color(0xFFF6F7FB)
+                            val previewCard = if (mode == AppAppearanceMode.DARK) Color(0xFF212635) else Color(0xFFFFFFFF)
                             val previewAccent = if (mode == AppAppearanceMode.DARK) accentTheme.darkPrimary else accentTheme.lightPrimary
 
-                            Column(
+                            val cardBg by animateColorAsState(
+                                targetValue = if (selected) GoldTintStrong else ObsidianCard,
+                                animationSpec = tween(220),
+                                label = "mode_bg"
+                            )
+
+                            Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) GoldTintStrong else ObsidianCard)
-                                    .border(
-                                        width = if (selected) 2.dp else 1.dp,
-                                        color = if (selected) GoldPrimary else GoldSubtleBorder,
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable { onSelectAppearance(mode) }
-                                    .padding(12.dp)
+                                    .clickable { onSelectAppearance(mode) },
+                                shape = RoundedCornerShape(20.dp),
+                                color = cardBg,
+                                shadowElevation = if (IsDarkTheme) 0.dp else 3.dp
                             ) {
-                                // Mini Dark/Light visual mock bar
-                                Row(
+                                Column(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(34.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(previewBg)
-                                        .border(1.dp, previewAccent.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                                        .padding(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        .border(
+                                            width = if (selected) 1.5.dp else 0.75.dp,
+                                            color = if (selected) GoldPrimary else GoldSubtleBorder,
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(14.dp)
                                 ) {
-                                    Box(
+                                    Row(
                                         modifier = Modifier
-                                            .size(16.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(previewAccent)
-                                    )
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                            .fillMaxWidth()
+                                            .height(40.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(previewBg)
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth(0.75f)
-                                                .height(5.dp)
-                                                .clip(RoundedCornerShape(2.dp))
-                                                .background(previewCard)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth(0.5f)
-                                                .height(4.dp)
-                                                .clip(RoundedCornerShape(2.dp))
-                                                .background(previewAccent.copy(alpha = 0.6f))
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = if (mode == AppAppearanceMode.DARK) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
-                                            contentDescription = null,
-                                            tint = if (selected) GoldPrimary else TextSecondary,
-                                            modifier = Modifier.size(17.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = mode.label,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = if (selected) GoldPrimary else TextPrimary
-                                        )
-                                    }
-                                    if (selected) {
                                         Box(
                                             modifier = Modifier
                                                 .size(20.dp)
                                                 .clip(CircleShape)
-                                                .background(GoldPrimary),
-                                            contentAlignment = Alignment.Center
+                                                .background(previewAccent)
+                                        )
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Rounded.Check,
-                                                contentDescription = null,
-                                                tint = TextOnGold,
-                                                modifier = Modifier.size(13.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(0.75f)
+                                                    .height(5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(previewCard)
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(0.45f)
+                                                    .height(4.dp)
+                                                    .clip(CircleShape)
+                                                    .background(previewAccent.copy(alpha = 0.65f))
                                             )
                                         }
                                     }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (mode == AppAppearanceMode.DARK) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
+                                                contentDescription = null,
+                                                tint = if (selected) GoldPrimary else TextSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = mode.label,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (selected) GoldPrimary else TextPrimary
+                                            )
+                                        }
+                                        if (selected) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(20.dp)
+                                                    .clip(CircleShape)
+                                                    .background(GoldPrimary),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Check,
+                                                    contentDescription = null,
+                                                    tint = TextOnGold,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = mode.subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextTertiary,
+                                        maxLines = 2
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = mode.subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextTertiary,
-                                    maxLines = 2
-                                )
                             }
                         }
                     }
@@ -308,10 +314,10 @@ fun ThemeOnboardingScreen(
                 // ============================
                 // SECTION 2: WARNA TEMA (7 PILIHAN, TANPA EMAS)
                 // ============================
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ThemeSectionTitle(
-                        code = "02 // WARNA AKSEN",
-                        title = "Pilih Warna Tema Kesukaanmu"
+                        title = "Warna Tema Kesukaan",
+                        subtitle = "Pilih palet warna aksen yang terasa paling pas di matamu"
                     )
 
                     val rows = AppAccentTheme.entries.chunked(2)
@@ -334,56 +340,61 @@ fun ThemeOnboardingScreen(
                                         theme.lightBright
                                     }
 
-                                    Row(
+                                    Surface(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (selected) swatchPrimary.copy(alpha = 0.16f) else ObsidianCard)
-                                            .border(
-                                                width = if (selected) 2.dp else 1.dp,
-                                                color = if (selected) swatchPrimary else GoldSubtleBorder,
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
-                                            .clickable { onSelectAccent(theme) }
-                                            .padding(11.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                            .clickable { onSelectAccent(theme) },
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = if (selected) swatchPrimary.copy(alpha = 0.14f) else ObsidianCard,
+                                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
                                     ) {
-                                        Box(
+                                        Row(
                                             modifier = Modifier
-                                                .size(34.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(
-                                                    Brush.linearGradient(listOf(swatchBright, swatchPrimary))
+                                                .border(
+                                                    width = if (selected) 1.5.dp else 0.75.dp,
+                                                    color = if (selected) swatchPrimary else GoldSubtleBorder,
+                                                    shape = RoundedCornerShape(18.dp)
                                                 )
-                                                .border(1.dp, swatchBright.copy(alpha = 0.6f), RoundedCornerShape(8.dp)),
-                                            contentAlignment = Alignment.Center
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            if (selected) {
-                                                Icon(
-                                                    imageVector = Icons.Rounded.Check,
-                                                    contentDescription = null,
-                                                    tint = if (appearanceMode == AppAppearanceMode.DARK) theme.onAccentDark else theme.onAccentLight,
-                                                    modifier = Modifier.size(18.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        Brush.linearGradient(listOf(swatchBright, swatchPrimary))
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (selected) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Check,
+                                                        contentDescription = null,
+                                                        tint = if (appearanceMode == AppAppearanceMode.DARK) theme.onAccentDark else theme.onAccentLight,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = theme.displayName,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (selected) swatchPrimary else TextPrimary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = theme.tagline,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = TextTertiary,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = theme.displayName,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                color = if (selected) swatchPrimary else TextPrimary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = theme.tagline,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = TextTertiary,
-                                                fontSize = 10.5.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
                                         }
                                     }
                                 }
@@ -400,215 +411,224 @@ fun ThemeOnboardingScreen(
                 // ============================
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ThemeSectionTitle(
-                        code = "03 // PREFERENSI",
-                        title = "Sesuaikan Pengalaman Menonton"
+                        title = "Preferensi Menonton",
+                        subtitle = "Atur genre favorit dan pengaturan pemutaran bawaan"
                     )
 
                     // Genre Favorit Multi-Select
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
-                            .padding(14.dp)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = ObsidianCard,
+                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                                .padding(16.dp)
                         ) {
-                            Text(
-                                text = "GENRE FAVORIT",
-                                fontFamily = MonoFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = GoldPrimary
-                            )
-                            Text(
-                                text = "${preferredGenres.size} DIPILIH",
-                                fontFamily = MonoFont,
-                                fontSize = 10.sp,
-                                color = TextTertiary
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            genreChoices.forEach { genre ->
-                                val selected = genre in preferredGenres
-                                SelectablePrefChip(
-                                    label = genre,
-                                    selected = selected,
-                                    onClick = { onTogglePreferredGenre(genre) }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Genre Favorit",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
                                 )
+                                Text(
+                                    text = "${preferredGenres.size} dipilih",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = GoldPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                genreChoices.forEach { genre ->
+                                    SelectablePrefChip(
+                                        label = genre,
+                                        selected = genre in preferredGenres,
+                                        onClick = { onTogglePreferredGenre(genre) }
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // Default Quality, Subtitle, & Layout Mode
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    // Quality, Subtitle, & Catalog View
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = ObsidianCard,
+                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
                     ) {
-                        Column {
-                            Text(
-                                text = "KUALITAS VIDEO DEFAULT",
-                                fontFamily = MonoFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = GoldPrimary
-                            )
-                            Spacer(modifier = Modifier.height(7.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("1080p", "720p", "480p", "360p").forEach { q ->
+                        Column(
+                            modifier = Modifier
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Kualitas Video Default",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("1080p", "720p", "480p", "360p").forEach { q ->
+                                        SelectablePrefChip(
+                                            label = q,
+                                            selected = settings.defaultQuality == q,
+                                            onClick = { onUpdateSettings { it.copy(defaultQuality = q) } },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = DividerSubtle)
+
+                            Column {
+                                Text(
+                                    text = "Bahasa Subtitle Default",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf("Indonesia", "English", "Nonaktif").forEach { sub ->
+                                        SelectablePrefChip(
+                                            label = sub,
+                                            selected = settings.defaultSubtitle == sub,
+                                            onClick = { onUpdateSettings { it.copy(defaultSubtitle = sub) } },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = DividerSubtle)
+
+                            Column {
+                                Text(
+                                    text = "Gaya Katalog Jelajah",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     SelectablePrefChip(
-                                        label = q,
-                                        selected = settings.defaultQuality == q,
-                                        onClick = { onUpdateSettings { it.copy(defaultQuality = q) } },
+                                        label = "Grid Kartu",
+                                        selected = isGridCatalogPreferred,
+                                        onClick = { onSetGridCatalogPreferred(true) },
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    SelectablePrefChip(
+                                        label = "Daftar Ringkas",
+                                        selected = !isGridCatalogPreferred,
+                                        onClick = { onSetGridCatalogPreferred(false) },
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
                         }
-
-                        HorizontalDivider(color = DividerSubtle)
-
-                        Column {
-                            Text(
-                                text = "BAHASA SUBTITLE DEFAULT",
-                                fontFamily = MonoFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = GoldPrimary
-                            )
-                            Spacer(modifier = Modifier.height(7.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("Indonesia", "English", "Nonaktif").forEach { sub ->
-                                    SelectablePrefChip(
-                                        label = sub,
-                                        selected = settings.defaultSubtitle == sub,
-                                        onClick = { onUpdateSettings { it.copy(defaultSubtitle = sub) } },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(color = DividerSubtle)
-
-                        Column {
-                            Text(
-                                text = "TAMPILAN KATALOG JELAJAH",
-                                fontFamily = MonoFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = GoldPrimary
-                            )
-                            Spacer(modifier = Modifier.height(7.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SelectablePrefChip(
-                                    label = "Grid Asimetris",
-                                    selected = isGridCatalogPreferred,
-                                    onClick = { onSetGridCatalogPreferred(true) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                SelectablePrefChip(
-                                    label = "Daftar Ringkas",
-                                    selected = !isGridCatalogPreferred,
-                                    onClick = { onSetGridCatalogPreferred(false) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
                     }
 
-                    // Smart Playback Toggles
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(ObsidianCard)
-                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
+                    // Smart Toggles
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = ObsidianCard,
+                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
                     ) {
-                        OnboardingToggleRow(
-                            icon = Icons.Rounded.PlayCircleOutline,
-                            title = "Putar Episode Berikutnya Otomatis",
-                            subtitle = "Lanjut otomatis setelah episode selesai",
-                            checked = settings.autoPlayNext,
-                            onCheckedChange = { checked ->
-                                onUpdateSettings { it.copy(autoPlayNext = checked) }
-                            }
-                        )
-                        HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 14.dp))
-                        OnboardingToggleRow(
-                            icon = Icons.Rounded.FastForward,
-                            title = "Lewati Intro Otomatis",
-                            subtitle = "Langsung lewati lagu pembuka episode",
-                            checked = settings.autoSkipIntro,
-                            onCheckedChange = { checked ->
-                                onUpdateSettings { it.copy(autoSkipIntro = checked) }
-                            }
-                        )
-                        HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 14.dp))
-                        OnboardingToggleRow(
-                            icon = Icons.Rounded.Wifi,
-                            title = "Unduh Hanya via Wi-Fi",
-                            subtitle = "Hemat kuota data seluler saat mengunduh",
-                            checked = settings.wifiOnlyDownloads,
-                            onCheckedChange = { checked ->
-                                onUpdateSettings { it.copy(wifiOnlyDownloads = checked) }
-                            }
-                        )
-                        HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 14.dp))
-                        OnboardingToggleRow(
-                            icon = Icons.Rounded.NotificationsActive,
-                            title = "Notifikasi Episode Baru",
-                            subtitle = "Info rilis terbaru dari daftar tontonmu",
-                            checked = settings.episodeNotifications,
-                            onCheckedChange = { checked ->
-                                onUpdateSettings { it.copy(episodeNotifications = checked) }
-                            }
-                        )
+                        Column(
+                            modifier = Modifier.border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                        ) {
+                            OnboardingToggleRow(
+                                icon = Icons.Rounded.PlayCircleOutline,
+                                title = "Putar Episode Berikutnya Otomatis",
+                                subtitle = "Lanjut otomatis setelah episode selesai",
+                                checked = settings.autoPlayNext,
+                                onCheckedChange = { checked ->
+                                    onUpdateSettings { it.copy(autoPlayNext = checked) }
+                                }
+                            )
+                            HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
+                            OnboardingToggleRow(
+                                icon = Icons.Rounded.FastForward,
+                                title = "Lewati Intro Otomatis",
+                                subtitle = "Langsung lewati lagu pembuka episode",
+                                checked = settings.autoSkipIntro,
+                                onCheckedChange = { checked ->
+                                    onUpdateSettings { it.copy(autoSkipIntro = checked) }
+                                }
+                            )
+                            HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
+                            OnboardingToggleRow(
+                                icon = Icons.Rounded.Wifi,
+                                title = "Unduh Hanya via Wi-Fi",
+                                subtitle = "Hemat kuota data seluler saat mengunduh",
+                                checked = settings.wifiOnlyDownloads,
+                                onCheckedChange = { checked ->
+                                    onUpdateSettings { it.copy(wifiOnlyDownloads = checked) }
+                                }
+                            )
+                            HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
+                            OnboardingToggleRow(
+                                icon = Icons.Rounded.NotificationsActive,
+                                title = "Notifikasi Episode Baru",
+                                subtitle = "Dapatkan info rilis terbaru dari daftar tontonmu",
+                                checked = settings.episodeNotifications,
+                                onCheckedChange = { checked ->
+                                    onUpdateSettings { it.copy(episodeNotifications = checked) }
+                                }
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
             }
 
-            // Sticky Bottom CTA Bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(ObsidianElevated)
-                    .border(1.dp, GoldSubtleBorder)
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Soft Elevated Bottom Action Bar
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = ObsidianElevated,
+                shadowElevation = 8.dp
             ) {
-                if (!isFromProfile) {
-                    GoldOutlinedButton(
-                        text = "Lewati",
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (!isFromProfile) {
+                        GoldOutlinedButton(
+                            text = "Lewati",
+                            onClick = onComplete,
+                            modifier = Modifier.weight(0.65f),
+                            height = 48.dp
+                        )
+                    }
+                    GoldGradientButton(
+                        text = if (isFromProfile) "Simpan Tema" else "Mulai Menonton",
+                        icon = Icons.AutoMirrored.Rounded.ArrowForward,
                         onClick = onComplete,
-                        modifier = Modifier.weight(0.65f),
-                        height = 46.dp
+                        modifier = Modifier.weight(1.35f),
+                        height = 48.dp
                     )
                 }
-                GoldGradientButton(
-                    text = if (isFromProfile) "Simpan Tema" else "Mulai Menonton",
-                    icon = Icons.AutoMirrored.Rounded.ArrowForward,
-                    onClick = onComplete,
-                    modifier = Modifier.weight(1.35f),
-                    height = 46.dp
-                )
             }
         }
     }
@@ -621,92 +641,92 @@ private fun LiveThemePreviewCard(
     quality: String,
     subtitle: String
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(ObsidianGoldCardBrush)
-            .border(1.5.dp, GoldBorderBrush, RoundedCornerShape(8.dp))
-            .padding(14.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = ObsidianCard,
+        shadowElevation = if (IsDarkTheme) 0.dp else 4.dp
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AnimWatchCrestLogo(size = 30.dp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "PRATINJAU LANGSUNG",
-                        fontFamily = MonoFont,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldPrimary
-                    )
-                    Text(
-                        text = "${appearanceMode.label} • ${accentTheme.displayName}",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary
-                    )
-                }
-            }
-            GoldTagChip(text = "$quality • $subtitle", highlighted = true)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(ObsidianCard)
-                .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .background(ObsidianGoldCardBrush)
+                .border(1.dp, GoldBorder, RoundedCornerShape(22.dp))
+                .padding(16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(GoldGradientBrush),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    tint = TextOnGold,
-                    modifier = Modifier.size(26.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    LedStatusDot(color = GoldPrimary, pulsing = true, size = 6.dp)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "SIAP STREAMING",
-                        fontFamily = MonoFont,
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldPrimary
+                    AnimWatchCrestLogo(size = 34.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Pratinjau Langsung",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GoldPrimary
+                        )
+                        Text(
+                            text = "${appearanceMode.label} • ${accentTheme.displayName}",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    }
+                }
+                GoldTagChip(text = "$quality • $subtitle", highlighted = true)
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ObsidianCard)
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(GoldGradientBrush),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = TextOnGold,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Kage no Ou • Episode 18",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(5.dp))
-                AnalogMeterGauge(
-                    progress = 0.65f,
-                    segments = 16,
-                    height = 6.dp
-                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LedStatusDot(color = GoldPrimary, pulsing = true, size = 6.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Siap ditonton",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GoldPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Kage no Ou • Episode 18",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    AnalogMeterGauge(
+                        progress = 0.65f,
+                        height = 5.dp
+                    )
+                }
             }
         }
     }
@@ -714,32 +734,20 @@ private fun LiveThemePreviewCard(
 
 @Composable
 private fun ThemeSectionTitle(
-    code: String,
-    title: String
+    title: String,
+    subtitle: String
 ) {
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Rounded.Palette,
-                contentDescription = null,
-                tint = GoldPrimary,
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = code,
-                fontFamily = MonoFont,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = GoldPrimary,
-                letterSpacing = 0.9.sp
-            )
-        }
-        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             color = TextPrimary
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary
         )
     }
 }
@@ -753,25 +761,19 @@ private fun SelectablePrefChip(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(CircleShape)
             .background(
                 if (selected) GoldGradientBrush
                 else Brush.linearGradient(listOf(ObsidianCardAlt, ObsidianCardAlt))
             )
-            .border(
-                1.dp,
-                if (selected) GoldPrimary else GoldSubtleBorder,
-                RoundedCornerShape(6.dp)
-            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = label.uppercase(),
-            fontFamily = MonoFont,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Bold,
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             color = if (selected) TextOnGold else TextSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -791,21 +793,29 @@ private fun OnboardingToggleRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 14.dp, vertical = 11.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = GoldPrimary,
-            modifier = Modifier.size(19.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(GoldPrimary.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = GoldPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 color = TextPrimary
             )
             Text(
@@ -822,8 +832,8 @@ private fun OnboardingToggleRow(
                 checkedThumbColor = TextOnGold,
                 checkedTrackColor = GoldPrimary,
                 uncheckedThumbColor = TextSecondary,
-                uncheckedTrackColor = ObsidianVoid,
-                uncheckedBorderColor = GoldBorder
+                uncheckedTrackColor = ObsidianCardAlt,
+                uncheckedBorderColor = GoldSubtleBorder
             )
         )
     }
@@ -833,12 +843,12 @@ private fun OnboardingToggleRow(
 @Composable
 private fun ThemeOnboardingPreview() {
     AnimWatchTheme(
-        appearanceMode = AppAppearanceMode.DARK,
+        appearanceMode = AppAppearanceMode.LIGHT,
         accentTheme = AppAccentTheme.COBALT_SAPPHIRE
     ) {
         ThemeOnboardingScreen(
             userName = "Adrian Vallenz",
-            appearanceMode = AppAppearanceMode.DARK,
+            appearanceMode = AppAppearanceMode.LIGHT,
             accentTheme = AppAccentTheme.COBALT_SAPPHIRE,
             preferredGenres = setOf("Action", "Sci-Fi", "Fantasy"),
             availableGenres = listOf("Action", "Fantasy", "Sci-Fi", "Romance", "Isekai", "Mystery"),

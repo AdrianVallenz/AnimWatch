@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
@@ -76,6 +77,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -126,16 +128,15 @@ import com.gows.animwatch.ui.components.formatTimeSeconds
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.state.PlayerSession
 import com.gows.animwatch.ui.theme.DividerSubtle
-import com.gows.animwatch.ui.theme.GoldBorder
 import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.MediaScrimDark
 import com.gows.animwatch.ui.theme.MediaTextLight
 import com.gows.animwatch.ui.theme.MediaTextSecondary
-import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
@@ -275,7 +276,7 @@ fun PlayerScreen(
             .let { if (!session.isFullscreen) it.statusBarsPadding() else it }
     ) {
         // ===========================
-        // CRT MONITOR VIDEO VIEWPORT
+        // VIDEO VIEWPORT
         // ===========================
         val playerBoxModifier = if (session.isFullscreen) {
             Modifier.fillMaxSize()
@@ -309,10 +310,10 @@ fun PlayerScreen(
                                         if (session.isLocked) return@detectTapGestures
                                         if (offset.x < size.width * 0.45f) {
                                             onSeekBy(-10)
-                                            seekFeedbackLabel = "<< 10 DETIK"
+                                            seekFeedbackLabel = "-10 detik"
                                         } else if (offset.x > size.width * 0.55f) {
                                             onSeekBy(10)
-                                            seekFeedbackLabel = "10 DETIK >>"
+                                            seekFeedbackLabel = "+10 detik"
                                         } else {
                                             onTogglePlayPause()
                                         }
@@ -347,37 +348,34 @@ fun PlayerScreen(
                     streamUrl = session.streamUrl,
                     modifier = Modifier.fillMaxSize()
                 )
-                // Compact floating controls for live embed WebView (minimize & fullscreen)
                 Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
-                        .padding(8.dp),
+                        .padding(10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
                         onClick = { if (session.isFullscreen) onToggleFullscreen() else onMinimize() },
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(ObsidianVoid.copy(alpha = 0.78f))
-                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MediaScrimDark.copy(alpha = 0.68f))
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.KeyboardArrowDown,
                             contentDescription = "Perkecil Player",
-                            tint = TextPrimary
+                            tint = MediaTextLight
                         )
                     }
 
                     IconButton(
                         onClick = onToggleFullscreen,
                         modifier = Modifier
-                            .size(34.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(ObsidianVoid.copy(alpha = 0.78f))
-                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MediaScrimDark.copy(alpha = 0.68f))
                     ) {
                         Icon(
                             imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
@@ -387,462 +385,450 @@ fun PlayerScreen(
                     }
                 }
             } else {
-            AnimatedStreamingSceneCanvas(
-                artTheme = anime.artTheme,
-                isPlaying = session.isPlaying,
-                positionSeconds = session.positionSeconds,
-                playbackSpeed = session.playbackSpeed,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .scale(scaleFactor)
-            )
-
-            // Simulated screen brightness dimming layer
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MediaScrimDark.copy(alpha = (1f - brightnessLevel) * 0.65f))
-            )
-
-            // Live Subtitle Overlay
-            if (subtitleText != null) {
-                Box(
+                AnimatedStreamingSceneCanvas(
+                    artTheme = anime.artTheme,
+                    isPlaying = session.isPlaying,
+                    positionSeconds = session.positionSeconds,
+                    playbackSpeed = session.playbackSpeed,
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(
-                            bottom = if (showControls) 68.dp else 18.dp,
-                            start = 24.dp,
-                            end = 24.dp
-                        )
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(MediaScrimDark.copy(alpha = 0.80f))
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
-                ) {
-                    Text(
-                        text = subtitleText,
-                        color = MediaTextLight,
-                        fontSize = (13f * uiState.settings.subtitleSize.scale).sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
+                        .fillMaxSize()
+                        .scale(scaleFactor)
+                )
 
-            // Skip Intro Floating Pill
-            val inIntro = session.positionSeconds in episode.introStartSec..episode.introEndSec
-            androidx.compose.animation.AnimatedVisibility(
-                visible = inIntro && !session.isLocked && session.autoNextCountdownSec == null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = if (showControls) 72.dp else 18.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(GoldGradientBrush)
-                        .border(1.dp, GoldBright, RoundedCornerShape(8.dp))
-                        .clickable(onClick = onSkipIntro)
-                        .padding(horizontal = 12.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "LEWATI INTRO",
-                        fontFamily = MonoFont,
-                        color = TextOnGold,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 11.sp
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Rounded.FastForward,
-                        contentDescription = null,
-                        tint = TextOnGold,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            // Double-Tap Seek Feedback
-            androidx.compose.animation.AnimatedVisibility(
-                visible = seekFeedbackLabel != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.Center)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.90f))
-                        .border(1.dp, GoldBright, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 18.dp, vertical = 9.dp)
-                ) {
-                    Text(
-                        text = seekFeedbackLabel.orEmpty(),
-                        fontFamily = MonoFont,
-                        color = GoldBright,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            // Brightness / Volume Drag HUD
-            activeGestureHud?.let { hud ->
-                val isBrightness = hud.startsWith("BRIGHTNESS")
-                val pct = hud.substringAfter(":").toIntOrNull() ?: 50
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.90f))
-                        .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (isBrightness) Icons.Rounded.Brightness6 else Icons.Rounded.VolumeUp,
-                        contentDescription = null,
-                        tint = GoldBright,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = if (isBrightness) "CAHAYA $pct%" else "VOLUME $pct%",
-                        fontFamily = MonoFont,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp
-                    )
-                }
-            }
-
-            // Auto-Next Episode Countdown Overlay
-            session.autoNextCountdownSec?.let { count ->
+                // Simulated screen brightness dimming layer
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(ObsidianVoid.copy(alpha = 0.88f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                        .background(MediaScrimDark.copy(alpha = (1f - brightnessLevel) * 0.65f))
+                )
+
+                // Live Subtitle Overlay
+                if (subtitleText != null) {
+                    Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(ObsidianElevated)
-                            .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
-                            .padding(20.dp)
+                            .align(Alignment.BottomCenter)
+                            .padding(
+                                bottom = if (showControls) 68.dp else 18.dp,
+                                start = 24.dp,
+                                end = 24.dp
+                            )
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MediaScrimDark.copy(alpha = 0.78f))
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "EPISODE BERIKUTNYA // ${count}S",
-                            fontFamily = MonoFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = GoldBright
+                            text = subtitleText,
+                            color = MediaTextLight,
+                            fontSize = (13f * uiState.settings.subtitleSize.scale).sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                }
+
+                // Skip Intro Floating Pill
+                val inIntro = session.positionSeconds in episode.introStartSec..episode.introEndSec
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = inIntro && !session.isLocked && session.autoNextCountdownSec == null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = if (showControls) 72.dp else 18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(GoldGradientBrush)
+                            .clickable(onClick = onSkipIntro)
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = "Episode ${episode.number + 1}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            text = "Lewati Intro",
+                            color = TextOnGold,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp
                         )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            GoldOutlinedButton(
-                                text = "Batal",
-                                onClick = onCancelAutoNext,
-                                height = 38.dp
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.FastForward,
+                            contentDescription = null,
+                            tint = TextOnGold,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Double-Tap Seek Feedback
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = seekFeedbackLabel != null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MediaScrimDark.copy(alpha = 0.84f))
+                            .padding(horizontal = 18.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = seekFeedbackLabel.orEmpty(),
+                            color = MediaTextLight,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                // Brightness / Volume Drag HUD
+                activeGestureHud?.let { hud ->
+                    val isBrightness = hud.startsWith("BRIGHTNESS")
+                    val pct = hud.substringAfter(":").toIntOrNull() ?: 50
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(CircleShape)
+                            .background(MediaScrimDark.copy(alpha = 0.84f))
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (isBrightness) Icons.Rounded.Brightness6 else Icons.Rounded.VolumeUp,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (isBrightness) "Kecerahan $pct%" else "Volume $pct%",
+                            color = MediaTextLight,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+
+                // Auto-Next Episode Countdown Overlay
+                session.autoNextCountdownSec?.let { count ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MediaScrimDark.copy(alpha = 0.84f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(ObsidianElevated)
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
+                                .padding(horizontal = 24.dp, vertical = 20.dp)
+                        ) {
+                            Text(
+                                text = "Episode berikutnya dalam $count dtk",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
                             )
-                            GoldGradientButton(
-                                text = "Putar",
-                                icon = Icons.Rounded.SkipNext,
-                                onClick = onNextEpisode,
-                                height = 38.dp
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Episode ${episode.number + 1}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
                             )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                GoldOutlinedButton(
+                                    text = "Batal",
+                                    onClick = onCancelAutoNext,
+                                    height = 40.dp
+                                )
+                                GoldGradientButton(
+                                    text = "Putar",
+                                    icon = Icons.Rounded.SkipNext,
+                                    onClick = onNextEpisode,
+                                    height = 40.dp
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            // Main Interactive Player Controls Overlay
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showControls && session.autoNextCountdownSec == null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (session.isLocked) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
-                        IconButton(
-                            onClick = onToggleLock,
+                // Main Interactive Player Controls Overlay
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showControls && session.autoNextCountdownSec == null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (session.isLocked) {
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(ObsidianVoid.copy(alpha = 0.85f))
-                                .border(1.dp, GoldBright, RoundedCornerShape(8.dp))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Lock,
-                                contentDescription = "Buka Kunci",
-                                tint = GoldBright
-                            )
-                        }
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MediaScrimDark.copy(alpha = 0.56f))
-                    ) {
-                        // Top Control Bar
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(onClick = {
-                                if (session.isFullscreen) onToggleFullscreen() else onMinimize()
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Rounded.KeyboardArrowDown,
-                                    contentDescription = "Perkecil Player",
-                                    tint = MediaTextLight
-                                )
-                            }
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = anime.title,
-                                    color = MediaTextLight,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "EP ${episode.number} // ${session.selectedQuality} // ${currentServer?.name ?: "SERVER"}",
-                                    fontFamily = MonoFont,
-                                    color = GoldBright,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            IconButton(onClick = { activeModal = PlayerModal.CAST }) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Cast,
-                                    contentDescription = "Cast",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            IconButton(onClick = onToggleLock) {
-                                Icon(
-                                    imageVector = Icons.Rounded.LockOpen,
-                                    contentDescription = "Kunci Layar",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            if (session.isFullscreen) {
-                                IconButton(onClick = { activeModal = PlayerModal.EPISODES }) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.PlaylistPlay,
-                                        contentDescription = "Episode",
-                                        tint = GoldBright,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Center Transport Controls
-                        Row(
-                            modifier = Modifier.align(Alignment.Center),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                .fillMaxSize()
+                                .padding(16.dp)
                         ) {
                             IconButton(
-                                onClick = onPreviousEpisode,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.SkipPrevious,
-                                    contentDescription = "Episode Sebelumnya",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    onSeekBy(-10)
-                                    seekFeedbackLabel = "<< 10 DETIK"
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Replay10,
-                                    contentDescription = "Mundur 10s",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            Box(
+                                onClick = onToggleLock,
                                 modifier = Modifier
-                                    .size(54.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(GoldGradientBrush)
-                                    .border(1.5.dp, GoldBright, RoundedCornerShape(10.dp))
-                                    .clickable(onClick = onTogglePlayPause),
-                                contentAlignment = Alignment.Center
+                                    .align(Alignment.CenterStart)
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MediaScrimDark.copy(alpha = 0.78f))
+                                    .border(1.dp, GoldBright.copy(alpha = 0.8f), CircleShape)
                             ) {
                                 Icon(
-                                    imageVector = if (session.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    contentDescription = "Putar / Jeda",
-                                    tint = TextOnGold,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    onSeekBy(10)
-                                    seekFeedbackLabel = "10 DETIK >>"
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Forward10,
-                                    contentDescription = "Maju 10s",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                            IconButton(
-                                onClick = onNextEpisode,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.SkipNext,
-                                    contentDescription = "Episode Berikutnya",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(28.dp)
+                                    imageVector = Icons.Rounded.Lock,
+                                    contentDescription = "Buka Kunci",
+                                    tint = GoldBright
                                 )
                             }
                         }
-
-                        // Bottom Scrub Bar & Player Option Keys
-                        Column(
+                    } else {
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .fillMaxSize()
+                                .background(MediaScrimDark.copy(alpha = 0.54f))
                         ) {
+                            // Top Control Bar
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                val shownSec = if (isScrubbing) scrubSeconds else session.positionSeconds
-                                Text(
-                                    text = formatTimeSeconds(shownSec),
-                                    fontFamily = MonoFont,
-                                    color = GoldBright,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Slider(
-                                    value = shownSec.toFloat(),
-                                    onValueChange = {
-                                        isScrubbing = true
-                                        scrubSeconds = it.toInt()
-                                    },
-                                    onValueChangeFinished = {
-                                        isScrubbing = false
-                                        onSeekTo(scrubSeconds)
-                                    },
-                                    valueRange = 0f..session.durationSeconds.coerceAtLeast(1).toFloat(),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = GoldBright,
-                                        activeTrackColor = GoldPrimary,
-                                        inactiveTrackColor = TextPrimary.copy(alpha = 0.25f)
-                                    ),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(26.dp)
-                                        .padding(horizontal = 8.dp)
-                                )
-
-                                Text(
-                                    text = formatTimeSeconds(session.durationSeconds),
-                                    fontFamily = MonoFont,
-                                    color = TextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    PlayerBottomBadge(
-                                        icon = Icons.Rounded.HighQuality,
-                                        label = session.selectedQuality,
-                                        onClick = { activeModal = PlayerModal.QUALITY }
-                                    )
-                                    PlayerBottomBadge(
-                                        icon = Icons.Rounded.Dns,
-                                        label = currentServer?.name ?: "Server",
-                                        onClick = { activeModal = PlayerModal.SERVER }
-                                    )
-                                    PlayerBottomBadge(
-                                        icon = Icons.Rounded.Subtitles,
-                                        label = session.selectedSubtitleId.uppercase(),
-                                        onClick = { activeModal = PlayerModal.SUBTITLE }
-                                    )
-                                    PlayerBottomBadge(
-                                        icon = Icons.Rounded.Speed,
-                                        label = "${session.playbackSpeed}x",
-                                        onClick = { activeModal = PlayerModal.SPEED }
+                                IconButton(onClick = {
+                                    if (session.isFullscreen) onToggleFullscreen() else onMinimize()
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                                        contentDescription = "Perkecil Player",
+                                        tint = MediaTextLight
                                     )
                                 }
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(
-                                        onClick = onCycleAspect,
-                                        modifier = Modifier.size(30.dp)
-                                    ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = anime.title,
+                                        color = MediaTextLight,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Ep ${episode.number} • ${session.selectedQuality} • ${currentServer?.name ?: "Server"}",
+                                        color = MediaTextSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                IconButton(onClick = { activeModal = PlayerModal.CAST }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Cast,
+                                        contentDescription = "Cast",
+                                        tint = MediaTextLight,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                IconButton(onClick = onToggleLock) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.LockOpen,
+                                        contentDescription = "Kunci Layar",
+                                        tint = MediaTextLight,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                if (session.isFullscreen) {
+                                    IconButton(onClick = { activeModal = PlayerModal.EPISODES }) {
                                         Icon(
-                                            imageVector = Icons.Rounded.AspectRatio,
-                                            contentDescription = "Rasio Layar",
-                                            tint = TextPrimary,
-                                            modifier = Modifier.size(18.dp)
+                                            imageVector = Icons.Rounded.PlaylistPlay,
+                                            contentDescription = "Episode",
+                                            tint = GoldBright,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
-                                    IconButton(
-                                        onClick = onToggleFullscreen,
+                                }
+                            }
+
+                            // Center Transport Controls
+                            Row(
+                                modifier = Modifier.align(Alignment.Center),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                IconButton(
+                                    onClick = onPreviousEpisode,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipPrevious,
+                                        contentDescription = "Episode Sebelumnya",
+                                        tint = MediaTextLight,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        onSeekBy(-10)
+                                        seekFeedbackLabel = "-10 detik"
+                                    },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Replay10,
+                                        contentDescription = "Mundur 10 detik",
+                                        tint = MediaTextLight,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(CircleShape)
+                                        .background(GoldGradientBrush)
+                                        .clickable(onClick = onTogglePlayPause),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (session.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                        contentDescription = "Putar / Jeda",
+                                        tint = TextOnGold,
                                         modifier = Modifier.size(32.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = {
+                                        onSeekBy(10)
+                                        seekFeedbackLabel = "+10 detik"
+                                    },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Forward10,
+                                        contentDescription = "Maju 10 detik",
+                                        tint = MediaTextLight,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = onNextEpisode,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipNext,
+                                        contentDescription = "Episode Berikutnya",
+                                        tint = MediaTextLight,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                            }
+
+                            // Bottom Scrub Bar & Option Pills
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    val shownSec = if (isScrubbing) scrubSeconds else session.positionSeconds
+                                    Text(
+                                        text = formatTimeSeconds(shownSec),
+                                        color = MediaTextLight,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+
+                                    Slider(
+                                        value = shownSec.toFloat(),
+                                        onValueChange = {
+                                            isScrubbing = true
+                                            scrubSeconds = it.toInt()
+                                        },
+                                        onValueChangeFinished = {
+                                            isScrubbing = false
+                                            onSeekTo(scrubSeconds)
+                                        },
+                                        valueRange = 0f..session.durationSeconds.coerceAtLeast(1).toFloat(),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = GoldBright,
+                                            activeTrackColor = GoldPrimary,
+                                            inactiveTrackColor = Color.White.copy(alpha = 0.28f)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(26.dp)
+                                            .padding(horizontal = 8.dp)
+                                    )
+
+                                    Text(
+                                        text = formatTimeSeconds(session.durationSeconds),
+                                        color = MediaTextSecondary,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                            contentDescription = "Layar Penuh",
-                                            tint = GoldBright,
-                                            modifier = Modifier.size(22.dp)
+                                        PlayerBottomBadge(
+                                            icon = Icons.Rounded.HighQuality,
+                                            label = session.selectedQuality,
+                                            onClick = { activeModal = PlayerModal.QUALITY }
                                         )
+                                        PlayerBottomBadge(
+                                            icon = Icons.Rounded.Dns,
+                                            label = currentServer?.name ?: "Server",
+                                            onClick = { activeModal = PlayerModal.SERVER }
+                                        )
+                                        PlayerBottomBadge(
+                                            icon = Icons.Rounded.Subtitles,
+                                            label = session.selectedSubtitleId.uppercase(),
+                                            onClick = { activeModal = PlayerModal.SUBTITLE }
+                                        )
+                                        PlayerBottomBadge(
+                                            icon = Icons.Rounded.Speed,
+                                            label = "${session.playbackSpeed}x",
+                                            onClick = { activeModal = PlayerModal.SPEED }
+                                        )
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = onCycleAspect,
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.AspectRatio,
+                                                contentDescription = "Rasio Layar",
+                                                tint = MediaTextLight,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = onToggleFullscreen,
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                                contentDescription = "Layar Penuh",
+                                                tint = GoldBright,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -850,23 +836,21 @@ fun PlayerScreen(
                     }
                 }
             }
-            } // end else (!showingLiveWebStream)
 
             if (session.isLoadingStream) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(ObsidianVoid.copy(alpha = 0.88f))
+                        .background(MediaScrimDark.copy(alpha = 0.86f))
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "MENGAMBIL STREAM_URL DARI KUMANIME API...",
-                        fontFamily = MonoFont,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldBright
+                        text = "Menyiapkan tautan stream...",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MediaTextLight
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     CassetteLinearShimmer(modifier = Modifier.fillMaxWidth(0.75f))
@@ -878,32 +862,28 @@ fun PlayerScreen(
         // PORTRAIT CONTENT BELOW VIDEO
         // ===========================
         if (!session.isFullscreen) {
-            // Cassette Tape Deck Telemetry Strip
+            // Smooth Playback Status Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(ObsidianElevated)
-                    .border(0.75.dp, GoldSubtleBorder)
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                    .background(ObsidianCard)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TapeReelSpinner(isSpinning = session.isPlaying, size = 20.dp, tint = GoldBright)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    TapeReelSpinner(isSpinning = session.isPlaying, size = 20.dp, tint = GoldPrimary)
-                    Spacer(modifier = Modifier.width(10.dp))
+                    TapeReelSpinner(isSpinning = session.isPlaying, size = 18.dp, tint = GoldPrimary)
+                    Spacer(modifier = Modifier.width(9.dp))
                     Text(
                         text = when {
-                            session.isLoadingStream -> "SYNC // STREAM_URL"
-                            showingLiveWebStream -> "LIVE.EMBED // KUMANIME"
-                            session.isPlaying -> "TAPE.RUN // ${session.selectedQuality}"
-                            else -> "TAPE.PAUSE // STANDBY"
+                            session.isLoadingStream -> "Menyiapkan stream..."
+                            showingLiveWebStream -> "Siaran Langsung Kumanime"
+                            session.isPlaying -> "Sedang memutar • ${session.selectedQuality}"
+                            else -> "Dijeda"
                         },
-                        fontFamily = MonoFont,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldBright
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
                     )
                 }
                 Row(
@@ -913,18 +893,16 @@ fun PlayerScreen(
                     if (session.streamUrl.isNotBlank()) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(CircleShape)
                                 .background(GoldTintStrong)
-                                .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
                                 .clickable(onClick = onToggleWebStreamView)
-                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (session.useWebStreamView) "DECK MODE" else "LIVE STREAM",
-                                fontFamily = MonoFont,
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GoldBright
+                                text = if (session.useWebStreamView) "Mode Pemutar" else "Live Stream",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GoldPrimary
                             )
                         }
                     }
@@ -936,14 +914,14 @@ fun PlayerScreen(
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = "${currentServer?.latencyMs ?: 24}MS",
-                            fontFamily = MonoFont,
-                            fontSize = 10.sp,
+                            text = "${currentServer?.latencyMs ?: 24} ms",
+                            style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
                     }
                 }
             }
+            HorizontalDivider(color = DividerSubtle)
 
             LazyColumn(
                 modifier = Modifier
@@ -958,11 +936,11 @@ fun PlayerScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            GoldTagChip(text = "EPISODE ${episode.number}", highlighted = true)
+                            GoldTagChip(text = "Episode ${episode.number}", highlighted = true)
                             GoldTagChip(text = session.selectedQuality)
                             GoldTagChip(text = currentServer?.name ?: "SankaStream")
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = episode.title,
                             style = MaterialTheme.typography.titleLarge,
@@ -970,9 +948,8 @@ fun PlayerScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${anime.title} // ${anime.studio}",
-                            fontFamily = MonoFont,
-                            fontSize = 11.sp,
+                            text = "${anime.title} • ${anime.studio}",
+                            style = MaterialTheme.typography.labelMedium,
                             color = GoldPrimary,
                             modifier = Modifier.clickable { onOpenAnimeDetail(anime.id) }
                         )
@@ -983,17 +960,16 @@ fun PlayerScreen(
                             color = TextSecondary
                         )
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         val posFraction = if (session.durationSeconds > 0) {
                             session.positionSeconds.toFloat() / session.durationSeconds
                         } else 0f
                         AnalogMeterGauge(
                             progress = posFraction,
-                            segments = 24,
-                            height = 7.dp
+                            height = 6.dp
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1050,56 +1026,62 @@ fun PlayerScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "PILIH EPISODE (${anime.episodes.size})",
-                                fontFamily = MonoFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
+                                text = "Pilih Episode (${anime.episodes.size})",
+                                style = MaterialTheme.typography.titleMedium,
                                 color = TextPrimary
                             )
                             Text(
-                                text = "DETAIL ANIME >",
-                                fontFamily = MonoFont,
-                                color = GoldBright,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clickable { onOpenAnimeDetail(anime.id) }
+                                text = "Detail Anime",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = GoldPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onOpenAnimeDetail(anime.id) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                         Spacer(modifier = Modifier.height(10.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(anime.episodes, key = { it.id }) { ep ->
                                 val isCurrent = ep.id == episode.id
-                                Column(
+                                Surface(
                                     modifier = Modifier
-                                        .width(128.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                            if (isCurrent) GoldGradientBrush
-                                            else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
-                                        )
-                                        .border(
-                                            1.dp,
-                                            if (isCurrent) GoldBright else GoldSubtleBorder,
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { onSelectEpisode(ep) }
-                                        .padding(10.dp)
+                                        .width(134.dp)
+                                        .clickable { onSelectEpisode(ep) },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isCurrent) GoldPrimary else ObsidianCard,
+                                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
                                 ) {
-                                    Text(
-                                        text = "EP ${ep.number}",
-                                        fontFamily = MonoFont,
-                                        color = if (isCurrent) TextOnGold else GoldBright,
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 11.5.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = ep.title,
-                                        color = if (isCurrent) TextOnGold.copy(alpha = 0.85f) else TextSecondary,
-                                        fontSize = 11.sp,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .background(
+                                                if (isCurrent) GoldGradientBrush
+                                                else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
+                                            )
+                                            .border(
+                                                if (isCurrent) 0.dp else 0.75.dp,
+                                                if (isCurrent) Color.Transparent else GoldSubtleBorder,
+                                                RoundedCornerShape(16.dp)
+                                            )
+                                            .padding(12.dp)
+                                    ) {
+                                        Text(
+                                            text = "Episode ${ep.number}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = if (isCurrent) TextOnGold else GoldPrimary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            text = ep.title,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isCurrent) TextOnGold.copy(alpha = 0.88f) else TextSecondary,
+                                            fontSize = 11.5.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1111,10 +1093,8 @@ fun PlayerScreen(
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "KOMENTAR PENONTON (${episodeComments.size})",
-                            fontFamily = MonoFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            text = "Komentar Penonton (${episodeComments.size})",
+                            style = MaterialTheme.typography.titleMedium,
                             color = TextPrimary
                         )
                         Spacer(modifier = Modifier.height(10.dp))
@@ -1137,8 +1117,8 @@ fun PlayerScreen(
                                     }
                                 },
                                 modifier = Modifier
-                                    .size(44.dp)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .size(46.dp)
+                                    .clip(CircleShape)
                                     .background(GoldGradientBrush)
                             ) {
                                 Icon(
@@ -1170,7 +1150,7 @@ fun PlayerScreen(
     when (activeModal) {
         PlayerModal.QUALITY -> {
             PlayerSelectionSheet(
-                title = "PILIH KUALITAS VIDEO",
+                title = "Pilih Kualitas Video",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
                 episode.qualities.forEach { q ->
@@ -1191,15 +1171,15 @@ fun PlayerScreen(
 
         PlayerModal.SERVER -> {
             PlayerSelectionSheet(
-                title = "PILIH SERVER MIRROR",
+                title = "Pilih Server Mirror",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
                 episode.servers.forEach { srv ->
                     val selected = srv.id == session.selectedServerId
                     ModalOptionRow(
                         title = srv.name,
-                        subtitle = "Region ${srv.region} // Ping ${srv.latencyMs}ms",
-                        badge = if (srv.isRecommended) "CEPAT" else null,
+                        subtitle = "Region ${srv.region} • Ping ${srv.latencyMs} ms",
+                        badge = if (srv.isRecommended) "Cepat" else null,
                         selected = selected,
                         onClick = {
                             onSelectServer(srv.id, srv.name)
@@ -1212,7 +1192,7 @@ fun PlayerScreen(
 
         PlayerModal.SUBTITLE -> {
             PlayerSelectionSheet(
-                title = "PENGATURAN SUBTITLE",
+                title = "Pengaturan Subtitle",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
                 episode.subtitles.forEach { sub ->
@@ -1228,13 +1208,11 @@ fun PlayerScreen(
                         }
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "UKURAN TEKS SUBTITLE",
-                    fontFamily = MonoFont,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = GoldPrimary
+                    text = "Ukuran Teks Subtitle",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1243,19 +1221,22 @@ fun PlayerScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(CircleShape)
                                 .background(if (selected) GoldGradientBrush else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard)))
-                                .border(1.dp, if (selected) GoldBright else GoldSubtleBorder, RoundedCornerShape(6.dp))
+                                .border(
+                                    if (selected) 0.dp else 0.75.dp,
+                                    if (selected) Color.Transparent else GoldSubtleBorder,
+                                    CircleShape
+                                )
                                 .clickable { onSelectSubtitleSize(opt) }
                                 .padding(vertical = 10.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = opt.label.uppercase(),
-                                fontFamily = MonoFont,
+                                text = opt.label,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = if (selected) TextOnGold else TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
@@ -1265,7 +1246,7 @@ fun PlayerScreen(
 
         PlayerModal.SPEED -> {
             PlayerSelectionSheet(
-                title = "KECEPATAN PEMUTARAN",
+                title = "Kecepatan Pemutaran",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
                 listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { spd ->
@@ -1285,14 +1266,14 @@ fun PlayerScreen(
 
         PlayerModal.EPISODES -> {
             PlayerSelectionSheet(
-                title = "PILIH EPISODE (${anime.episodes.size})",
+                title = "Pilih Episode (${anime.episodes.size})",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
                 anime.episodes.forEach { ep ->
                     ModalOptionRow(
                         title = "Episode ${ep.number}: ${ep.title}",
-                        subtitle = "${ep.durationSeconds / 60} menit // ${ep.releaseDate}",
-                        badge = if (ep.id == episode.id) "DIPUTAR" else null,
+                        subtitle = "${ep.durationSeconds / 60} menit • ${ep.releaseDate}",
+                        badge = if (ep.id == episode.id) "Diputar" else null,
                         selected = ep.id == episode.id,
                         onClick = {
                             onSelectEpisode(ep)
@@ -1307,46 +1288,46 @@ fun PlayerScreen(
             AlertDialog(
                 onDismissRequest = { activeModal = PlayerModal.NONE },
                 containerColor = ObsidianElevated,
-                shape = RoundedCornerShape(10.dp),
-                titleContentColor = GoldBright,
+                shape = RoundedCornerShape(24.dp),
+                titleContentColor = TextPrimary,
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Tv, contentDescription = null, tint = GoldBright)
+                        Icon(Icons.Rounded.Tv, contentDescription = null, tint = GoldPrimary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("CAST PERANGKAT", fontFamily = MonoFont, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("Cast ke Perangkat", style = MaterialTheme.typography.titleMedium)
                     }
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             text = "Pilih perangkat di jaringan Wi-Fi yang sama:",
-                            color = TextSecondary,
-                            fontSize = 13.sp
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
                         )
                         listOf("Samsung Smart TV 4K (Ruang Tamu)", "Google TV Streamer (Kamar)").forEach { device ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(ObsidianCard)
-                                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
+                                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
                                     .clickable {
                                         onShowMessage("Terhubung ke $device")
                                         activeModal = PlayerModal.NONE
                                     }
-                                    .padding(12.dp),
+                                    .padding(13.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(Icons.Rounded.Cast, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(device, color = TextPrimary, fontSize = 13.sp)
+                                Text(device, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                             }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { activeModal = PlayerModal.NONE }) {
-                        Text("TUTUP", fontFamily = MonoFont, color = TextSecondary)
+                        Text("Tutup", color = TextSecondary)
                     }
                 }
             )
@@ -1356,14 +1337,12 @@ fun PlayerScreen(
             AlertDialog(
                 onDismissRequest = { activeModal = PlayerModal.NONE },
                 containerColor = ObsidianElevated,
-                shape = RoundedCornerShape(10.dp),
-                titleContentColor = GoldBright,
+                shape = RoundedCornerShape(24.dp),
+                titleContentColor = TextPrimary,
                 title = {
                     Text(
-                        "LAPOR MASALAH STREAM",
-                        fontFamily = MonoFont,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
+                        "Laporkan Masalah",
+                        style = MaterialTheme.typography.titleMedium
                     )
                 },
                 text = {
@@ -1377,23 +1356,23 @@ fun PlayerScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(14.dp))
                                     .background(ObsidianCard)
-                                    .border(1.dp, GoldSubtleBorder, RoundedCornerShape(8.dp))
+                                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
                                     .clickable {
                                         onShowMessage("Laporan terkirim: $reason. Terima kasih!")
                                         activeModal = PlayerModal.NONE
                                     }
-                                    .padding(12.dp)
+                                    .padding(13.dp)
                             ) {
-                                Text(reason, color = TextPrimary, fontSize = 13.sp)
+                                Text(reason, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                             }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { activeModal = PlayerModal.NONE }) {
-                        Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+                        Text("Batal", color = TextSecondary)
                     }
                 }
             )
@@ -1420,11 +1399,10 @@ private fun PlayerBottomBadge(
 ) {
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(MediaScrimDark.copy(alpha = 0.82f))
-            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
+            .clip(CircleShape)
+            .background(MediaScrimDark.copy(alpha = 0.72f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 7.dp, vertical = 4.dp),
+            .padding(horizontal = 9.dp, vertical = 4.5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
@@ -1433,13 +1411,12 @@ private fun PlayerBottomBadge(
             tint = GoldBright,
             modifier = Modifier.size(13.dp)
         )
-        Spacer(modifier = Modifier.width(3.dp))
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
-            text = label.uppercase(),
-            fontFamily = MonoFont,
+            text = label,
             color = MediaTextLight,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -1454,32 +1431,35 @@ private fun PlayerActionChip(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .size(42.dp)
+                .clip(CircleShape)
                 .background(if (active) GoldTintStrong else ObsidianCard)
-                .border(1.dp, if (active) GoldBright else GoldSubtleBorder, RoundedCornerShape(8.dp)),
+                .border(
+                    0.75.dp,
+                    if (active) GoldPrimary else GoldSubtleBorder,
+                    CircleShape
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (active) GoldBright else TextSecondary,
+                tint = if (active) GoldPrimary else TextSecondary,
                 modifier = Modifier.size(19.dp)
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Text(
-            text = label.uppercase(),
-            fontFamily = MonoFont,
-            color = if (active) GoldBright else TextSecondary,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) GoldPrimary else TextSecondary,
+            fontWeight = FontWeight.Medium
         )
     }
 }
@@ -1497,7 +1477,7 @@ private fun PlayerSelectionSheet(
         sheetState = sheetState,
         containerColor = ObsidianElevated,
         contentColor = TextPrimary,
-        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1507,12 +1487,10 @@ private fun PlayerSelectionSheet(
         ) {
             Text(
                 text = title,
-                fontFamily = MonoFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = GoldBright
+                style = MaterialTheme.typography.titleLarge,
+                color = TextPrimary
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             content()
         }
     }
@@ -1530,15 +1508,15 @@ private fun ModalOptionRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(if (selected) GoldTintStrong else ObsidianCard)
             .border(
-                1.dp,
-                if (selected) GoldBright else GoldSubtleBorder,
-                RoundedCornerShape(8.dp)
+                if (selected) 1.dp else 0.75.dp,
+                if (selected) GoldPrimary else GoldSubtleBorder,
+                RoundedCornerShape(16.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 15.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -1546,9 +1524,9 @@ private fun ModalOptionRow(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = title,
-                    color = if (selected) GoldBright else TextPrimary,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (selected) GoldPrimary else TextPrimary,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1560,9 +1538,8 @@ private fun ModalOptionRow(
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    fontFamily = MonoFont,
-                    color = TextSecondary,
-                    fontSize = 11.sp
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
                 )
             }
         }
@@ -1570,7 +1547,7 @@ private fun ModalOptionRow(
             Icon(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
-                tint = GoldBright
+                tint = GoldPrimary
             )
         }
     }
@@ -1622,4 +1599,3 @@ private fun KumanimeWebStreamPlayer(
         modifier = modifier
     )
 }
-

@@ -1,8 +1,11 @@
 package com.gows.animwatch.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -15,7 +18,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,61 +39,55 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gows.animwatch.ui.theme.GoldBorder
 import com.gows.animwatch.ui.theme.GoldBright
-import com.gows.animwatch.ui.theme.GoldDeep
+import com.gows.animwatch.ui.theme.GoldHorizontalBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.IsDarkTheme
-import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianCardAlt
-import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
 import com.gows.animwatch.ui.theme.TextTertiary
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * Subtle CRT horizontal scanline overlay for Cassette Futurism monitors & artwork decks.
+ * Soft organic ambient sheen overlay (replaces harsh CRT scanlines for a clean, silky finish).
  */
 @Composable
 fun CrtScanlineOverlay(
     modifier: Modifier = Modifier,
-    lineAlpha: Float = 0.08f,
+    lineAlpha: Float = 0.04f,
     stepPx: Float = 6f
 ) {
-    val effectiveAlpha = if (IsDarkTheme) lineAlpha else (lineAlpha * 0.35f)
-    Canvas(modifier = modifier) {
-        var y = 0f
-        while (y < size.height) {
-            drawLine(
-                color = Color(0xFF0C0F14).copy(alpha = effectiveAlpha),
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1.6f
+    // Keep parameter signature compatible; renders a subtle soft atmospheric glow instead of rigid scanlines
+    val sheenAlpha = if (IsDarkTheme) (lineAlpha * 0.45f).coerceAtMost(0.05f) else 0.0f
+    if (sheenAlpha > 0f) {
+        Box(
+            modifier = modifier.background(
+                Brush.verticalGradient(
+                    0.0f to Color.White.copy(alpha = sheenAlpha),
+                    0.35f to Color.Transparent,
+                    1.0f to Color.Transparent
+                )
             )
-            y += stepPx
-        }
+        )
     }
 }
 
 /**
- * Hardware phosphor LED indicator with optional pulse animation.
+ * Soft breathing status indicator dot.
  */
 @Composable
 fun LedStatusDot(
@@ -101,15 +97,15 @@ fun LedStatusDot(
     modifier: Modifier = Modifier
 ) {
     val alpha = if (pulsing) {
-        val transition = rememberInfiniteTransition(label = "led_pulse")
+        val transition = rememberInfiniteTransition(label = "status_pulse")
         val anim by transition.animateFloat(
-            initialValue = 0.35f,
+            initialValue = 0.45f,
             targetValue = 1.0f,
             animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = LinearEasing),
+                animation = tween(1200, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
-            label = "led_alpha"
+            label = "status_alpha"
         )
         anim
     } else 1.0f
@@ -123,109 +119,109 @@ fun LedStatusDot(
 }
 
 /**
- * Animated magnetic cassette tape reel in Gold & Charcoal.
+ * Smooth organic animated equalizer wave (replaces stiff mechanical reel).
  */
 @Composable
 fun TapeReelSpinner(
     isSpinning: Boolean,
-    size: Dp = 24.dp,
+    size: Dp = 22.dp,
     tint: Color = GoldBright,
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "tape_reel")
-    val angle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
+    val transition = rememberInfiniteTransition(label = "wave_anim")
+    val bar1 by transition.animateFloat(
+        initialValue = 0.32f,
+        targetValue = 0.92f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            animation = tween(580, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "reel_angle"
+        label = "bar1"
     )
-    val rotation = if (isSpinning) angle else 0f
+    val bar2 by transition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 0.28f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(720, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bar2"
+    )
+    val bar3 by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(640, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bar3"
+    )
 
     Canvas(modifier = modifier.size(size)) {
-        val cx = this.size.width / 2f
-        val cy = this.size.height / 2f
-        val r = minOf(cx, cy) - 2f
+        val w = this.size.width
+        val h = this.size.height
+        val barWidth = w * 0.20f
+        val gap = w * 0.12f
+        val startX = (w - (barWidth * 3 + gap * 2)) / 2f
+        val heights = if (isSpinning) listOf(bar1, bar2, bar3) else listOf(0.45f, 0.70f, 0.45f)
 
-        // Outer magnetic reel rim
-        drawCircle(
-            color = tint.copy(alpha = 0.35f),
-            radius = r,
-            center = Offset(cx, cy),
-            style = Stroke(width = 1.6f)
-        )
-        // Inner spool hub
-        drawCircle(
-            color = tint,
-            radius = r * 0.30f,
-            center = Offset(cx, cy),
-            style = Stroke(width = 1.5f)
-        )
-        // 3 rotating sprocket teeth
-        rotate(degrees = rotation, pivot = Offset(cx, cy)) {
-            for (i in 0 until 3) {
-                val rad = (i * 120f) * (PI / 180f).toFloat()
-                drawLine(
-                    color = tint,
-                    start = Offset(cx + cos(rad) * (r * 0.34f), cy + sin(rad) * (r * 0.34f)),
-                    end = Offset(cx + cos(rad) * (r * 0.85f), cy + sin(rad) * (r * 0.85f)),
-                    strokeWidth = 2.0f,
-                    cap = StrokeCap.Round
-                )
-            }
-        }
-    }
-}
-
-/**
- * Segmented Phosphor LED / Analog Meter Bar Gauge.
- * Replaces smooth/generic progress bars with authentic hardware metering.
- */
-@Composable
-fun AnalogMeterGauge(
-    progress: Float,
-    segments: Int = 18,
-    height: Dp = 8.dp,
-    activeColor: Color = GoldBright,
-    trackColor: Color = ObsidianCardAlt,
-    modifier: Modifier = Modifier
-) {
-    val clamped = progress.coerceIn(0f, 1f)
-    val activeCount = (clamped * segments).toInt().coerceIn(0, segments)
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(height)
-            .clip(RoundedCornerShape(4.dp))
-            .background(ObsidianVoid)
-            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(4.dp))
-            .padding(2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        for (i in 0 until segments) {
-            val isLit = i < activeCount || (clamped > 0f && i == 0)
-            val segColor = when {
-                !isLit -> trackColor
-                i >= segments - 2 -> GoldBright
-                else -> activeColor
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(1.5.dp))
-                    .background(segColor)
+        heights.forEachIndexed { idx, frac ->
+            val bh = (h * frac).coerceAtLeast(barWidth)
+            val x = startX + idx * (barWidth + gap)
+            val y = (h - bh) / 2f
+            drawRoundRect(
+                color = tint.copy(alpha = if (isSpinning) 0.95f else 0.55f),
+                topLeft = Offset(x, y),
+                size = Size(barWidth, bh),
+                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
             )
         }
     }
 }
 
 /**
- * Hardware telemetry strip header for deck sections.
+ * Silky smooth capsule progress bar with fluid animated fill.
+ */
+@Composable
+fun AnalogMeterGauge(
+    progress: Float,
+    segments: Int = 18,
+    height: Dp = 6.dp,
+    activeColor: Color = GoldPrimary,
+    trackColor: Color = ObsidianCardAlt,
+    modifier: Modifier = Modifier
+) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+        label = "smooth_progress"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(CircleShape)
+            .background(trackColor)
+    ) {
+        if (animatedProgress > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedProgress.coerceAtLeast(0.03f))
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(activeColor, GoldBright)
+                        )
+                    )
+            )
+        }
+    }
+}
+
+/**
+ * Soft organic pill status banner.
  */
 @Composable
 fun CassetteTelemetryStrip(
@@ -238,41 +234,34 @@ fun CassetteTelemetryStrip(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(ObsidianCard)
-            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LedStatusDot(color = ledColor, pulsing = pulsing, size = 6.dp)
-            Spacer(modifier = Modifier.width(8.dp))
+            LedStatusDot(color = ledColor, pulsing = pulsing, size = 7.dp)
+            Spacer(modifier = Modifier.width(9.dp))
             Text(
                 text = code,
-                fontFamily = MonoFont,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = GoldBright,
-                letterSpacing = 0.8.sp
+                style = MaterialTheme.typography.labelLarge,
+                color = TextPrimary,
+                fontSize = 12.5.sp
             )
         }
         Text(
             text = statusText,
-            fontFamily = MonoFont,
-            fontSize = 10.sp,
+            style = MaterialTheme.typography.labelMedium,
             color = TextTertiary,
-            letterSpacing = 0.6.sp
+            fontSize = 11.5.sp
         )
     }
 }
 
 /**
- * Cassette Futurism Form Input:
- * - Label placed strictly ABOVE the input box (no floating label)
- * - 1dp border unfocused, 2dp gold border when focused
- * - 8dp corner radius
- * - Optional error line below in Tape Red
+ * Soft, smooth, organic rounded form input field.
  */
 @Composable
 fun TactileInputField(
@@ -291,35 +280,49 @@ fun TactileInputField(
     keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
     var isFocused by remember { mutableStateOf(false) }
-    val borderWidth = if (isFocused) 2.dp else 1.dp
-    val borderColor = when {
-        errorText != null -> StatusLive
-        isFocused -> GoldBright
-        else -> GoldBorder
-    }
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            errorText != null -> StatusLive
+            isFocused -> GoldPrimary
+            else -> GoldSubtleBorder
+        },
+        animationSpec = tween(220),
+        label = "input_border"
+    )
+    val labelColor by animateColorAsState(
+        targetValue = when {
+            errorText != null -> StatusLive
+            isFocused -> GoldPrimary
+            else -> TextSecondary
+        },
+        animationSpec = tween(220),
+        label = "input_label"
+    )
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            text = label.uppercase(),
-            fontFamily = MonoFont,
-            fontSize = 10.5.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (isFocused) GoldBright else TextSecondary,
-            letterSpacing = 0.9.sp,
-            modifier = Modifier.padding(bottom = 5.dp)
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = labelColor,
+            modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
         )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(ObsidianVoid)
-                .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .clip(RoundedCornerShape(16.dp))
+                .background(ObsidianCardAlt.copy(alpha = if (IsDarkTheme) 0.72f else 0.85f))
+                .border(
+                    width = if (isFocused || errorText != null) 1.5.dp else 0.75.dp,
+                    color = borderColor,
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (leadingIcon != null) {
                 leadingIcon()
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(10.dp))
             }
             Box(modifier = Modifier.weight(1f)) {
                 if (value.isEmpty()) {
@@ -335,7 +338,7 @@ fun TactileInputField(
                     singleLine = singleLine,
                     maxLines = maxLines,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
-                    cursorBrush = SolidColor(GoldBright),
+                    cursorBrush = SolidColor(GoldPrimary),
                     visualTransformation = visualTransformation,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
@@ -352,17 +355,16 @@ fun TactileInputField(
         if (errorText != null) {
             Text(
                 text = errorText,
-                fontFamily = MonoFont,
-                fontSize = 10.5.sp,
+                style = MaterialTheme.typography.labelSmall,
                 color = StatusLive,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier.padding(start = 4.dp, top = 5.dp)
             )
         }
     }
 }
 
 /**
- * Cassette shimmer placeholder bar (replaces circular spinners where needed).
+ * Silky rounded shimmer bar for loading states.
  */
 @Composable
 fun CassetteLinearShimmer(
@@ -372,33 +374,32 @@ fun CassetteLinearShimmer(
     if (progress != null) {
         AnalogMeterGauge(
             progress = progress,
-            segments = 10,
-            height = 7.dp,
+            height = 6.dp,
             modifier = modifier
         )
     } else {
         val transition = rememberInfiniteTransition(label = "shimmer")
         val pos by transition.animateFloat(
-            initialValue = 0.15f,
-            targetValue = 0.85f,
+            initialValue = 0.22f,
+            targetValue = 0.90f,
             animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = LinearEasing),
+                animation = tween(1000, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "shimmer_pos"
         )
         Box(
             modifier = modifier
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .height(6.dp)
+                .clip(CircleShape)
                 .background(ObsidianCardAlt)
-                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(4.dp))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(pos)
                     .fillMaxHeight()
-                    .background(GoldDeep)
+                    .clip(CircleShape)
+                    .background(GoldHorizontalBrush)
             )
         }
     }

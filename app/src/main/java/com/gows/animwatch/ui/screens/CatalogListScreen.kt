@@ -23,7 +23,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ViewList
@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,22 +47,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.SortOption
 import com.gows.animwatch.ui.components.AnimePosterCard
 import com.gows.animwatch.ui.components.CompactAnimeRowCard
-import com.gows.animwatch.ui.theme.GoldBorder
-import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
-import com.gows.animwatch.ui.theme.MonoFont
+import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
+import com.gows.animwatch.ui.theme.TextTertiary
 
 @Composable
 fun CatalogListScreen(
@@ -97,22 +96,26 @@ fun CatalogListScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ObsidianCard)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+            Surface(
+                shape = CircleShape,
+                color = ObsidianCard,
+                shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Kembali",
-                    tint = TextPrimary
-                )
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Kembali",
+                        tint = TextPrimary
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -124,27 +127,30 @@ fun CatalogListScreen(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${subtitle.uppercase()} // ${sortedAnime.size} JUDUL",
-                    fontFamily = MonoFont,
-                    fontSize = 10.sp,
-                    color = GoldPrimary,
+                    text = "$subtitle • ${sortedAnime.size} judul",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(
-                onClick = { isGridView = !isGridView },
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(ObsidianCard)
-                    .border(1.dp, GoldBorder, RoundedCornerShape(8.dp))
+            Surface(
+                shape = CircleShape,
+                color = ObsidianCard,
+                shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
             ) {
-                Icon(
-                    imageVector = if (isGridView) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
-                    contentDescription = "Ubah Tampilan",
-                    tint = GoldBright
-                )
+                IconButton(
+                    onClick = { isGridView = !isGridView },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (isGridView) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
+                        contentDescription = "Ubah Tampilan",
+                        tint = GoldPrimary
+                    )
+                }
             }
         }
 
@@ -156,21 +162,24 @@ fun CatalogListScreen(
                 val selected = sortOption == opt
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(CircleShape)
                         .background(
                             if (selected) GoldGradientBrush
                             else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
                         )
-                        .border(1.dp, if (selected) GoldBright else GoldSubtleBorder, RoundedCornerShape(6.dp))
+                        .border(
+                            if (selected) 0.dp else 0.75.dp,
+                            if (selected) Color.Transparent else GoldSubtleBorder,
+                            CircleShape
+                        )
                         .clickable { sortOption = opt }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        text = opt.label.uppercase(),
-                        fontFamily = MonoFont,
+                        text = opt.label,
+                        style = MaterialTheme.typography.labelMedium,
                         color = if (selected) TextOnGold else TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
                     )
                 }
             }
@@ -179,7 +188,6 @@ fun CatalogListScreen(
         Spacer(modifier = Modifier.height(6.dp))
 
         if (isGridView) {
-            // Asymmetric 2-column Bento layout (no 3-equal-columns)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(
@@ -203,7 +211,7 @@ fun CatalogListScreen(
                             onClick = { onAnimeClick(anime.id) },
                             onPlayClick = { onPlayAnime(anime.id) },
                             onBookmarkClick = { onBookmarkClick(anime.id) },
-                            trailingBadge = "PILIHAN"
+                            trailingBadge = "Pilihan"
                         )
                     } else {
                         AnimePosterCard(
