@@ -3,24 +3,40 @@ package com.gows.animwatch
 import com.gows.animwatch.data.remote.AnimeDetailDataDto
 import com.gows.animwatch.data.remote.AnimeDetailEpisodeDto
 import com.gows.animwatch.data.remote.AnimeDetailResponseDto
+import com.gows.animwatch.data.remote.AuthResponseDto
 import com.gows.animwatch.data.remote.CatalogCardDto
+import com.gows.animwatch.data.remote.CommentDto
+import com.gows.animwatch.data.remote.CommentsListResponseDto
 import com.gows.animwatch.data.remote.EpisodeDetailDataDto
 import com.gows.animwatch.data.remote.EpisodeDetailResponseDto
+import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
 import com.gows.animwatch.data.remote.KumanimeApiClient
 import com.gows.animwatch.data.remote.KumanimeApiService
 import com.gows.animwatch.data.remote.KumanimeMapper
 import com.gows.animwatch.data.remote.KumanimeRemoteDataSource
 import com.gows.animwatch.data.remote.LatestItemDto
 import com.gows.animwatch.data.remote.LatestResponseDto
+import com.gows.animwatch.data.remote.LoginRequestDto
 import com.gows.animwatch.data.remote.MovieResponseDto
 import com.gows.animwatch.data.remote.PopularItemDto
 import com.gows.animwatch.data.remote.PopularResponseDto
+import com.gows.animwatch.data.remote.PostCommentRequestDto
+import com.gows.animwatch.data.remote.PostCommentResponseDto
+import com.gows.animwatch.data.remote.RatingUpsertRequestDto
+import com.gows.animwatch.data.remote.RegisterRequestDto
 import com.gows.animwatch.data.remote.SearchResponseDto
+import com.gows.animwatch.data.remote.SimpleStatusResponseDto
+import com.gows.animwatch.data.remote.ToggleCommentLikeResponseDto
+import com.gows.animwatch.data.remote.UpdatePreferencesRequestDto
+import com.gows.animwatch.data.remote.UpdateProfileRequestDto
+import com.gows.animwatch.data.remote.UserProfileDto
+import com.gows.animwatch.data.remote.WatchlistUpsertRequestDto
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import retrofit2.Response
 
 class KumanimeIntegrationTest {
 
@@ -127,6 +143,132 @@ class KumanimeIntegrationTest {
                 prevEpsSlug = "solo-leveling-s2-episode-11"
             )
         )
+
+        override suspend fun register(body: RegisterRequestDto): Response<AuthResponseDto> = Response.success(
+            AuthResponseDto(
+                status = "success",
+                token = "tok_register_123",
+                user = UserProfileDto(
+                    id = 1L,
+                    email = body.email,
+                    displayName = body.displayName,
+                    handle = "@member",
+                    avatarEmblem = "MB",
+                    memberTier = "Member",
+                    hasCompletedThemeSetup = false
+                )
+            )
+        )
+
+        override suspend fun login(body: LoginRequestDto): Response<AuthResponseDto> = Response.success(
+            AuthResponseDto(
+                status = "success",
+                token = "tok_login_456",
+                user = UserProfileDto(
+                    id = 1L,
+                    email = body.email,
+                    displayName = "Adrian Vallenz",
+                    handle = "@adrian.vip",
+                    avatarEmblem = "AV",
+                    memberTier = "PRO VIP",
+                    appearanceMode = "DARK",
+                    accentTheme = "OCEAN_CYAN",
+                    hasCompletedThemeSetup = true
+                ),
+                watchlist = mapOf("sousou-no-frieren-154587" to "WATCHING"),
+                ratings = mapOf("sousou-no-frieren-154587" to 10)
+            )
+        )
+
+        override suspend fun logout(authHeader: String): Response<SimpleStatusResponseDto> =
+            Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun getMe(authHeader: String): Response<AuthResponseDto> =
+            login(LoginRequestDto("adrian@animwatch.id", "animwatch123"))
+
+        override suspend fun updateProfile(
+            authHeader: String,
+            body: UpdateProfileRequestDto
+        ): Response<AuthResponseDto> = Response.success(
+            AuthResponseDto(
+                status = "success",
+                user = UserProfileDto(displayName = body.displayName, bio = body.bio, avatarEmblem = body.avatarEmblem)
+            )
+        )
+
+        override suspend fun updatePreferences(
+            authHeader: String,
+            body: UpdatePreferencesRequestDto
+        ): Response<AuthResponseDto> = Response.success(AuthResponseDto(status = "success"))
+
+        override suspend fun upsertWatchlist(
+            authHeader: String,
+            body: WatchlistUpsertRequestDto
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun upsertHistory(
+            authHeader: String,
+            body: HistoryUpsertRequestDto
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun deleteHistoryItem(
+            authHeader: String,
+            animeId: String
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun clearHistory(authHeader: String): Response<SimpleStatusResponseDto> =
+            Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun upsertRating(
+            authHeader: String,
+            body: RatingUpsertRequestDto
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun getComments(animeId: String, authHeader: String?): Response<CommentsListResponseDto> =
+            Response.success(
+                CommentsListResponseDto(
+                    status = "success",
+                    data = listOf(
+                        CommentDto(
+                            id = "db_cmt_1",
+                            animeId = animeId,
+                            author = "Adrian Vallenz",
+                            authorBadge = "PRO VIP",
+                            content = "Keren banget!",
+                            timeAgo = "Baru saja",
+                            likes = 3,
+                            isLiked = true
+                        )
+                    )
+                )
+            )
+
+        override suspend fun postComment(
+            authHeader: String,
+            body: PostCommentRequestDto
+        ): Response<PostCommentResponseDto> = Response.success(
+            PostCommentResponseDto(
+                status = "success",
+                comment = CommentDto(
+                    id = "db_cmt_99",
+                    animeId = body.animeId,
+                    episodeNumber = body.episodeNumber,
+                    author = "Adrian Vallenz",
+                    authorBadge = "PRO VIP",
+                    content = body.content,
+                    timeAgo = "Baru saja",
+                    likes = 0,
+                    isLiked = false,
+                    isSpoiler = body.isSpoiler
+                )
+            )
+        )
+
+        override suspend fun toggleCommentLike(
+            authHeader: String,
+            id: String
+        ): Response<ToggleCommentLikeResponseDto> =
+            Response.success(ToggleCommentLikeResponseDto("success", liked = true, likes = 4))
     }
 
     @Test
@@ -181,5 +323,26 @@ class KumanimeIntegrationTest {
         val searchRes = dataSource.searchAnime("http://10.0.2.2:3000/api/", "frieren")
         assertTrue(searchRes.isSuccess)
         assertEquals("https://cdn.example.com/frieren.jpg", searchRes.getOrThrow().first().posterUrl)
+    }
+
+    @Test
+    fun remoteDataSourceHandlesCloudAuthAndComments() = runTest {
+        val dataSource = KumanimeRemoteDataSource(serviceProvider = { FakeKumanimeService() })
+        val base = "https://kumanime-api-production.up.railway.app/api/"
+
+        val loginRes = dataSource.loginUser(base, "adrian@animwatch.id", "animwatch123")
+        assertTrue(loginRes.isSuccess)
+        val auth = loginRes.getOrThrow()
+        assertEquals("tok_login_456", auth.token)
+        assertEquals("OCEAN_CYAN", auth.user?.accentTheme)
+        assertEquals("WATCHING", auth.watchlist?.get("sousou-no-frieren-154587"))
+
+        val postRes = dataSource.postComment(base, "tok_login_456", "sousou-no-frieren-154587", 1, "Mantap!", false)
+        assertTrue(postRes.isSuccess)
+        assertEquals("db_cmt_99", postRes.getOrThrow().id)
+
+        val likeRes = dataSource.toggleCommentLike(base, "tok_login_456", "db_cmt_99")
+        assertTrue(likeRes.isSuccess)
+        assertEquals(Pair(true, 4), likeRes.getOrThrow())
     }
 }

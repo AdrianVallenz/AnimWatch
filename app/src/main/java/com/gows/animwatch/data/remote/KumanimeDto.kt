@@ -161,3 +161,128 @@ data class EpisodeDetailDataDto(
     @SerializedName("next_eps_slug") val nextEpsSlug: String? = null,
     @SerializedName("prev_eps_slug") val prevEpsSlug: String? = null
 )
+
+// ======================================================
+// PostgreSQL Auth, User Sync & Comments DTOs
+// ======================================================
+
+data class SimpleStatusResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null
+)
+
+data class RegisterRequestDto(
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("email") val email: String,
+    @SerializedName("password") val password: String
+)
+
+data class LoginRequestDto(
+    @SerializedName("email") val email: String,
+    @SerializedName("password") val password: String
+)
+
+data class UserProfileDto(
+    @SerializedName("id") val id: Long? = null,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("displayName") val displayName: String? = null,
+    @SerializedName("handle") val handle: String? = null,
+    @SerializedName("bio") val bio: String? = null,
+    @SerializedName("avatarEmblem") val avatarEmblem: String? = null,
+    @SerializedName("memberTier") val memberTier: String? = null,
+    @SerializedName("appearanceMode") val appearanceMode: String? = null,
+    @SerializedName("accentTheme") val accentTheme: String? = null,
+    @SerializedName("preferredGenres") val preferredGenres: List<String>? = null,
+    @SerializedName("hasCompletedThemeSetup") val hasCompletedThemeSetup: Boolean? = null,
+    @SerializedName("settings") val settings: Map<String, Any?>? = null
+)
+
+data class WatchHistoryDto(
+    @SerializedName("animeId") val animeId: String? = null,
+    @SerializedName("episodeId") val episodeId: String? = null,
+    @SerializedName("episodeNumber") val episodeNumber: Int? = null,
+    @SerializedName("episodeTitle") val episodeTitle: String? = null,
+    @SerializedName("positionSeconds") val positionSeconds: Int? = null,
+    @SerializedName("durationSeconds") val durationSeconds: Int? = null,
+    @SerializedName("updatedAtLabel") val updatedAtLabel: String? = null
+)
+
+data class AuthResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("token") val token: String? = null,
+    @SerializedName("user") val user: UserProfileDto? = null,
+    @SerializedName("watchlist") val watchlist: Map<String, String>? = null,
+    @SerializedName("history") val history: List<WatchHistoryDto>? = null,
+    @SerializedName("ratings") val ratings: Map<String, Int>? = null
+)
+
+data class UpdateProfileRequestDto(
+    @SerializedName("displayName") val displayName: String,
+    @SerializedName("bio") val bio: String,
+    @SerializedName("avatarEmblem") val avatarEmblem: String
+)
+
+data class UpdatePreferencesRequestDto(
+    @SerializedName("appearanceMode") val appearanceMode: String,
+    @SerializedName("accentTheme") val accentTheme: String,
+    @SerializedName("preferredGenres") val preferredGenres: List<String>,
+    @SerializedName("hasCompletedThemeSetup") val hasCompletedThemeSetup: Boolean,
+    @SerializedName("settings") val settings: Map<String, Any>
+)
+
+data class WatchlistUpsertRequestDto(
+    @SerializedName("animeId") val animeId: String,
+    @SerializedName("category") val category: String?
+)
+
+data class HistoryUpsertRequestDto(
+    @SerializedName("animeId") val animeId: String,
+    @SerializedName("episodeId") val episodeId: String,
+    @SerializedName("episodeNumber") val episodeNumber: Int,
+    @SerializedName("episodeTitle") val episodeTitle: String,
+    @SerializedName("positionSeconds") val positionSeconds: Int,
+    @SerializedName("durationSeconds") val durationSeconds: Int
+)
+
+data class RatingUpsertRequestDto(
+    @SerializedName("animeId") val animeId: String,
+    @SerializedName("score") val score: Int
+)
+
+data class CommentDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("animeId") val animeId: String? = null,
+    @SerializedName("episodeNumber") val episodeNumber: Int? = null,
+    @SerializedName("author") val author: String? = null,
+    @SerializedName("authorBadge") val authorBadge: String? = null,
+    @SerializedName("content") val content: String? = null,
+    @SerializedName("timeAgo") val timeAgo: String? = null,
+    @SerializedName("likes") val likes: Int? = null,
+    @SerializedName("isLiked") val isLiked: Boolean? = null,
+    @SerializedName("isSpoiler") val isSpoiler: Boolean? = null
+)
+
+data class CommentsListResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("data") val data: List<CommentDto>? = null
+)
+
+data class PostCommentRequestDto(
+    @SerializedName("animeId") val animeId: String,
+    @SerializedName("episodeNumber") val episodeNumber: Int?,
+    @SerializedName("content") val content: String,
+    @SerializedName("isSpoiler") val isSpoiler: Boolean
+)
+
+data class PostCommentResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("comment") val comment: CommentDto? = null
+)
+
+data class ToggleCommentLikeResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("liked") val liked: Boolean? = null,
+    @SerializedName("likes") val likes: Int? = null
+)

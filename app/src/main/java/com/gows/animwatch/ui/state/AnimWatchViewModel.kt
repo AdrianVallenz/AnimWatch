@@ -23,8 +23,13 @@ import com.gows.animwatch.data.model.UserProfile
 import com.gows.animwatch.data.model.VideoAspectMode
 import com.gows.animwatch.data.model.WatchProgress
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.data.local.InMemorySessionStore
+import com.gows.animwatch.data.local.SessionStore
+import com.gows.animwatch.data.remote.AuthResponseDto
+import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
 import com.gows.animwatch.data.remote.KumanimeApiClient
 import com.gows.animwatch.data.remote.KumanimeRemoteDataSource
+import com.gows.animwatch.data.remote.UpdatePreferencesRequestDto
 import com.gows.animwatch.data.repository.AnimeRepository
 import com.gows.animwatch.data.repository.MockAnimeRepository
 import com.gows.animwatch.ui.theme.AppAccentTheme
@@ -212,12 +217,187 @@ class AnimWatchViewModel(
         )
     )
 
+    private var sessionStore: SessionStore = InMemorySessionStore()
+    private var cloudSyncEnabled: Boolean = false
+    private var authToken: String? = null
+    private var authJob: Job? = null
+    private var commentsFetchJob: Job? = null
+    private var lastHistorySyncAnimeId: String? = null
+    private var lastHistorySyncEpisodeId: String? = null
+    private var lastHistorySyncAtMs: Long = 0L
+
     private var playerTickerJob: Job? = null
     private var apiSyncJob: Job? = null
     private var detailFetchJob: Job? = null
     private var streamFetchJob: Job? = null
     private var remoteSearchJob: Job? = null
     private val downloadJobs = mutableMapOf<String, Job>()
+
+    fun attachSessionStore(store: SessionStore) {
+        if (cloudSyncEnabled) return
+        sessionStore = store
+        cloudSyncEnabled = true
+
+        // Restore saved theme & API URL immediately
+        val savedUrl = store.getApiBaseUrl()
+        val savedMode = store.getAppearanceMode()?.let { name ->
+            AppAppearanceMode.entries.find { it.name == name }
+        }
+        val savedAccent = store.getAccentTheme()?.let { name ->
+            AppAccentTheme.entries.find { it.name == name }
+        }
+        _uiState.update { state ->
+            state.copy(
+                appearanceMode = savedMode ?: state.appearanceMode,
+                accentTheme = savedAccent ?: state.accentTheme,
+                apiConfig = if (savedUrl != null) {
+                    state.apiConfig.copy(baseUrl = KumanimeApiClient.normalizeBaseUrl(savedUrl))
+                } else state.apiConfig
+            )
+        }
+
+        val savedToken = store.getAuthToken() ?: return
+        authToken = savedToken
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            val res = remoteDataSource.fetchCurrentUser(baseUrl, savedToken)
+            res.onSuccess { snapshot ->
+                applyCloudAuthSnapshot(snapshot, savedToken, showWelcomeToast = false)
+            }.onFailure {
+                authToken = null
+                sessionStore.saveAuthToken(null)
+            }
+        }
+    }
+
+    private fun applyCloudAuthSnapshot(
+        dto: AuthResponseDto,
+        tokenOverride: String? = null,
+        showWelcomeToast: Boolean = true
+    ) {
+        val token = dto.token?.takeIf { it.isNotBlank() } ?: tokenOverride
+        if (!token.isNullOrBlank()) {
+            authToken = token
+            sessionStore.saveAuthToken(token)
+        }
+
+        val u = dto.user ?: return
+        val mode = AppAppearanceMode.entries.find { it.name.equals(u.appearanceMode, ignoreCase = true) }
+            ?: _uiState.value.appearanceMode
+        val accent = AppAccentTheme.entries.find { it.name.equals(u.accentTheme, ignoreCase = true) }
+            ?: _uiState.value.accentTheme
+        sessionStore.saveAppearanceMode(mode.name)
+        sessionStore.saveAccentTheme(accent.name)
+
+        val genres = u.preferredGenres?.filter { it.isNotBlank() }?.toSet()
+            ?.ifEmpty { _uiState.value.preferredGenres }
+            ?: _uiState.value.preferredGenres
+
+        val rawSettings = u.settings.orEmpty()
+        val currentSettings = _uiState.value.settings
+        val restoredSubSize = (rawSettings["subtitleSize"] as? String)?.let { label ->
+            SubtitleSizeOption.entries.find { it.name.equals(label, true) || it.label.equals(label, true) }
+        } ?: currentSettings.subtitleSize
+
+        val mergedSettings = currentSettings.copy(
+            defaultQuality = (rawSettings["defaultQuality"] as? String)?.ifBlank { null } ?: currentSettings.defaultQuality,
+            defaultServer = (rawSettings["defaultServer"] as? String)?.ifBlank { null } ?: currentSettings.defaultServer,
+            defaultSubtitle = (rawSettings["defaultSubtitle"] as? String)?.ifBlank { null } ?: currentSettings.defaultSubtitle,
+            subtitleSize = restoredSubSize,
+            autoPlayNext = (rawSettings["autoPlayNext"] as? Boolean) ?: currentSettings.autoPlayNext,
+            autoSkipIntro = (rawSettings["autoSkipIntro"] as? Boolean) ?: currentSettings.autoSkipIntro,
+            wifiOnlyDownloads = (rawSettings["wifiOnlyDownloads"] as? Boolean) ?: currentSettings.wifiOnlyDownloads,
+            episodeNotifications = (rawSettings["episodeNotifications"] as? Boolean) ?: currentSettings.episodeNotifications
+        )
+        val restoredGridPref = (rawSettings["isGridCatalogPreferred"] as? Boolean) ?: _uiState.value.exploreFilter.isGridView
+
+        val restoredWatchlist = dto.watchlist.orEmpty().mapNotNull { (animeId, catName) ->
+            val cat = WatchlistCategory.entries.find { it.name.equals(catName, ignoreCase = true) }
+            if (cat != null) animeId to cat else null
+        }.toMap()
+
+        val restoredHistory = dto.history.orEmpty().mapNotNull { h ->
+            val animeId = h.animeId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val epId = h.episodeId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            WatchProgress(
+                animeId = animeId,
+                episodeId = epId,
+                episodeNumber = (h.episodeNumber ?: 1).coerceAtLeast(1),
+                episodeTitle = h.episodeTitle?.ifBlank { null } ?: "Episode ${h.episodeNumber ?: 1}",
+                positionSeconds = (h.positionSeconds ?: 0).coerceAtLeast(0),
+                durationSeconds = (h.durationSeconds ?: 1440).coerceAtLeast(1),
+                updatedAtLabel = h.updatedAtLabel ?: "Tersimpan"
+            )
+        }
+
+        val restoredRatings = dto.ratings.orEmpty()
+        val completedSetup = u.hasCompletedThemeSetup ?: false
+
+        _uiState.update { state ->
+            state.copy(
+                isAuthenticated = true,
+                isGuestSession = false,
+                hasCompletedThemeSetup = completedSetup,
+                isEditingTheme = false,
+                appearanceMode = mode,
+                accentTheme = accent,
+                preferredGenres = genres,
+                authError = null,
+                currentTab = MainTab.HOME,
+                backStack = listOf(AppRoute.TabsRoot),
+                watchlist = restoredWatchlist,
+                watchHistory = restoredHistory,
+                userRatings = restoredRatings,
+                settings = mergedSettings,
+                exploreFilter = state.exploreFilter.copy(isGridView = restoredGridPref),
+                userProfile = state.userProfile.copy(
+                    displayName = u.displayName?.ifBlank { null } ?: state.userProfile.displayName,
+                    handle = u.handle?.ifBlank { null } ?: state.userProfile.handle,
+                    bio = u.bio ?: state.userProfile.bio,
+                    avatarEmblem = u.avatarEmblem?.ifBlank { null } ?: state.userProfile.avatarEmblem,
+                    memberTier = u.memberTier?.ifBlank { null } ?: state.userProfile.memberTier,
+                    favoriteGenre = genres.firstOrNull() ?: state.userProfile.favoriteGenre
+                )
+            )
+        }
+
+        if (showWelcomeToast) {
+            val name = u.displayName ?: "Member"
+            emitMessage(
+                if (completedSetup) "Selamat datang kembali, $name!"
+                else "Berhasil masuk sebagai $name. Pilih temamu!"
+            )
+        }
+    }
+
+    private fun pushPreferencesToCloud() {
+        val token = authToken ?: return
+        val state = _uiState.value
+        if (!cloudSyncEnabled || state.isGuestSession) return
+        val baseUrl = state.apiConfig.baseUrl
+        val s = state.settings
+        val req = UpdatePreferencesRequestDto(
+            appearanceMode = state.appearanceMode.name,
+            accentTheme = state.accentTheme.name,
+            preferredGenres = state.preferredGenres.toList(),
+            hasCompletedThemeSetup = state.hasCompletedThemeSetup,
+            settings = mapOf(
+                "defaultQuality" to s.defaultQuality,
+                "defaultServer" to s.defaultServer,
+                "defaultSubtitle" to s.defaultSubtitle,
+                "subtitleSize" to s.subtitleSize.name,
+                "autoPlayNext" to s.autoPlayNext,
+                "autoSkipIntro" to s.autoSkipIntro,
+                "wifiOnlyDownloads" to s.wifiOnlyDownloads,
+                "episodeNotifications" to s.episodeNotifications,
+                "isGridCatalogPreferred" to state.exploreFilter.isGridView
+            )
+        )
+        viewModelScope.launch {
+            remoteDataSource.updateUserPreferences(baseUrl, token, req)
+        }
+    }
 
     private fun loadInitialState(): AnimWatchUiState {
         return AnimWatchUiState(
@@ -271,6 +451,24 @@ class AnimWatchViewModel(
 
     fun login(identifier: String, password: String, rememberMe: Boolean = true) {
         val key = identifier.trim().lowercase()
+        if (cloudSyncEnabled) {
+            val baseUrl = _uiState.value.apiConfig.baseUrl
+            _uiState.update { it.copy(authError = null) }
+            authJob?.cancel()
+            authJob = viewModelScope.launch {
+                val res = remoteDataSource.loginUser(baseUrl, key, password)
+                res.onSuccess { snapshot ->
+                    applyCloudAuthSnapshot(snapshot, showWelcomeToast = true)
+                    if (!rememberMe) {
+                        sessionStore.saveAuthToken(null)
+                    }
+                }.onFailure { err ->
+                    _uiState.update { it.copy(authError = err.message ?: "Gagal masuk ke akun") }
+                }
+            }
+            return
+        }
+
         val matched = registeredAccounts[key]
             ?: registeredAccounts.values.find {
                 it.handle.removePrefix("@").equals(key.removePrefix("@"), ignoreCase = true)
@@ -302,7 +500,6 @@ class AnimWatchViewModel(
             return
         }
 
-        // Untuk akun baru / uji cepat tanpa backend auth
         val derivedName = identifier.trim()
             .substringBefore("@")
             .replace(Regex("[._-]+"), " ")
@@ -344,6 +541,22 @@ class AnimWatchViewModel(
     fun register(displayName: String, email: String, password: String) {
         val cleanName = displayName.trim()
         val cleanEmail = email.trim().lowercase()
+        if (cloudSyncEnabled) {
+            val baseUrl = _uiState.value.apiConfig.baseUrl
+            _uiState.update { it.copy(authError = null) }
+            authJob?.cancel()
+            authJob = viewModelScope.launch {
+                val res = remoteDataSource.registerUser(baseUrl, cleanName, cleanEmail, password)
+                res.onSuccess { snapshot ->
+                    applyCloudAuthSnapshot(snapshot, showWelcomeToast = false)
+                    emitMessage("Akun $cleanName tersimpan! Pilih tema kesukaanmu.")
+                }.onFailure { err ->
+                    _uiState.update { it.copy(authError = err.message ?: "Gagal mendaftarkan akun") }
+                }
+            }
+            return
+        }
+
         if (registeredAccounts.containsKey(cleanEmail)) {
             _uiState.update { it.copy(authError = "Email $cleanEmail sudah terdaftar. Silakan masuk.") }
             return
@@ -373,7 +586,7 @@ class AnimWatchViewModel(
                     handle = account.handle,
                     avatarEmblem = account.emblem,
                     memberTier = account.tier,
-                    bio = "Anggota baru AnimWatch Stream Deck."
+                    bio = "Anggota baru AnimWatch."
                 )
             )
         }
@@ -381,11 +594,17 @@ class AnimWatchViewModel(
     }
 
     fun loginDemoVip() {
+        if (cloudSyncEnabled) {
+            login("adrian@animwatch.id", "animwatch123", rememberMe = true)
+            return
+        }
         val demo = registeredAccounts["adrian@animwatch.id"] ?: return
         login(demo.email, demo.password, rememberMe = true)
     }
 
     fun continueAsGuest() {
+        authToken = null
+        sessionStore.saveAuthToken(null)
         _uiState.update { state ->
             state.copy(
                 isAuthenticated = true,
@@ -397,9 +616,9 @@ class AnimWatchViewModel(
                 backStack = listOf(AppRoute.TabsRoot),
                 userProfile = state.userProfile.copy(
                     displayName = "Tamu Watcher",
-                    handle = "@guest_deck",
+                    handle = "@guest",
                     avatarEmblem = "TM",
-                    memberTier = "MODE TAMU",
+                    memberTier = "Mode Tamu",
                     bio = "Menjelajah AnimWatch dalam mode tamu."
                 )
             )
@@ -412,6 +631,15 @@ class AnimWatchViewModel(
     }
 
     fun logout() {
+        val currentToken = authToken
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        authToken = null
+        sessionStore.saveAuthToken(null)
+        if (cloudSyncEnabled && !currentToken.isNullOrBlank()) {
+            viewModelScope.launch {
+                remoteDataSource.logoutUser(baseUrl, currentToken)
+            }
+        }
         closePlayer()
         _uiState.update { state ->
             state.copy(
@@ -432,10 +660,12 @@ class AnimWatchViewModel(
     // ====================
 
     fun setAppearanceMode(mode: AppAppearanceMode) {
+        sessionStore.saveAppearanceMode(mode.name)
         _uiState.update { it.copy(appearanceMode = mode) }
     }
 
     fun setAccentTheme(accent: AppAccentTheme) {
+        sessionStore.saveAccentTheme(accent.name)
         _uiState.update { it.copy(accentTheme = accent) }
     }
 
@@ -464,6 +694,7 @@ class AnimWatchViewModel(
                 userProfile = cur.userProfile.copy(favoriteGenre = favGenre)
             )
         }
+        pushPreferencesToCloud()
         emitMessage(
             if (wasEditing) "Tema ${state.appearanceMode.label} • ${state.accentTheme.displayName} disimpan"
             else "Tema ${state.accentTheme.displayName} diterapkan. Selamat menonton!"
@@ -484,6 +715,7 @@ class AnimWatchViewModel(
 
     fun updateApiBaseUrl(rawUrl: String) {
         val normalized = KumanimeApiClient.normalizeBaseUrl(rawUrl)
+        sessionStore.saveApiBaseUrl(normalized)
         _uiState.update { state ->
             state.copy(
                 apiConfig = state.apiConfig.copy(
@@ -602,6 +834,23 @@ class AnimWatchViewModel(
         val anime = _uiState.value.allAnime.find { it.id == animeId }
         if (anime != null && anime.isRemote && (anime.episodes.isEmpty() || anime.isEpisodeEntry || (anime.characters.isEmpty() && anime.episodes.size <= 1))) {
             fetchRemoteDetailFor(anime)
+        }
+        if (cloudSyncEnabled) {
+            fetchRemoteCommentsFor(animeId)
+        }
+    }
+
+    private fun fetchRemoteCommentsFor(animeId: String) {
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        val token = authToken
+        commentsFetchJob?.cancel()
+        commentsFetchJob = viewModelScope.launch {
+            remoteDataSource.fetchComments(baseUrl, animeId, token).onSuccess { remoteComments ->
+                _uiState.update { state ->
+                    val otherComments = state.comments.filterNot { it.animeId == animeId }
+                    state.copy(comments = remoteComments + otherComments)
+                }
+            }
         }
     }
 
@@ -1121,6 +1370,33 @@ class AnimWatchViewModel(
             val filtered = state.watchHistory.filterNot { it.animeId == anime.id }
             state.copy(watchHistory = listOf(updatedItem) + filtered)
         }
+
+        val token = authToken
+        val state = _uiState.value
+        val now = System.currentTimeMillis()
+        val shouldSync = lastHistorySyncAnimeId != anime.id ||
+            lastHistorySyncEpisodeId != episode.id ||
+            (now - lastHistorySyncAtMs) >= 10_000L
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession && shouldSync) {
+            lastHistorySyncAnimeId = anime.id
+            lastHistorySyncEpisodeId = episode.id
+            lastHistorySyncAtMs = now
+            val baseUrl = state.apiConfig.baseUrl
+            viewModelScope.launch {
+                remoteDataSource.syncHistoryItem(
+                    baseUrl = baseUrl,
+                    token = token,
+                    request = HistoryUpsertRequestDto(
+                        animeId = anime.id,
+                        episodeId = episode.id,
+                        episodeNumber = episode.number,
+                        episodeTitle = episode.title,
+                        positionSeconds = positionSeconds,
+                        durationSeconds = episode.durationSeconds
+                    )
+                )
+            }
+        }
     }
 
     // ====================
@@ -1270,6 +1546,13 @@ class AnimWatchViewModel(
             }
             state.copy(watchlist = nextMap)
         }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.syncWatchlist(state.apiConfig.baseUrl, token, animeId, category?.name)
+            }
+        }
     }
 
     fun toggleQuickBookmark(animeId: String) {
@@ -1285,11 +1568,25 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(watchHistory = state.watchHistory.filterNot { it.animeId == animeId })
         }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.deleteHistoryItem(state.apiConfig.baseUrl, token, animeId)
+            }
+        }
         emitMessage("Dihapus dari riwayat tonton")
     }
 
     fun clearAllHistory() {
         _uiState.update { it.copy(watchHistory = emptyList()) }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.clearHistory(state.apiConfig.baseUrl, token)
+            }
+        }
         emitMessage("Seluruh riwayat tonton dibersihkan")
     }
 
@@ -1426,27 +1723,57 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(userRatings = state.userRatings + (animeId to score))
         }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.syncRating(state.apiConfig.baseUrl, token, animeId, score)
+            }
+        }
         emitMessage("Rating $score/10 berhasil disimpan")
     }
 
     fun postComment(animeId: String, episodeNumber: Int?, text: String, isSpoiler: Boolean) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
-        val profile = _uiState.value.userProfile
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.postComment(
+                    baseUrl = state.apiConfig.baseUrl,
+                    token = token,
+                    animeId = animeId,
+                    episodeNumber = episodeNumber,
+                    content = trimmed,
+                    isSpoiler = isSpoiler
+                ).onSuccess { savedComment ->
+                    _uiState.update { cur ->
+                        cur.copy(comments = listOf(savedComment) + cur.comments.filterNot { it.id == savedComment.id })
+                    }
+                    emitMessage("Komentar terkirim")
+                }.onFailure { err ->
+                    emitMessage(err.message ?: "Gagal mengirim komentar")
+                }
+            }
+            return
+        }
+
+        val profile = state.userProfile
         val newComment = CommentItem(
             id = "user_${System.currentTimeMillis()}",
             animeId = animeId,
             episodeNumber = episodeNumber,
             author = profile.displayName,
-            authorBadge = "PRO VIP",
+            authorBadge = profile.memberTier,
             content = trimmed,
             timeAgo = "Baru saja",
             likes = 0,
             isLiked = false,
             isSpoiler = isSpoiler
         )
-        _uiState.update { state ->
-            state.copy(comments = listOf(newComment) + state.comments)
+        _uiState.update { cur ->
+            cur.copy(comments = listOf(newComment) + cur.comments)
         }
         emitMessage("Komentar terkirim")
     }
@@ -1464,6 +1791,22 @@ class AnimWatchViewModel(
                     } else comment
                 }
             )
+        }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession && commentId.startsWith("db_cmt_")) {
+            viewModelScope.launch {
+                remoteDataSource.toggleCommentLike(state.apiConfig.baseUrl, token, commentId)
+                    .onSuccess { (liked, count) ->
+                        _uiState.update { cur ->
+                            cur.copy(
+                                comments = cur.comments.map { c ->
+                                    if (c.id == commentId) c.copy(isLiked = liked, likes = count) else c
+                                }
+                            )
+                        }
+                    }
+            }
         }
     }
 
@@ -1489,14 +1832,29 @@ class AnimWatchViewModel(
 
     fun updateProfile(displayName: String, bio: String, emblem: String) {
         val cleanName = displayName.trim().ifEmpty { "Anime Watcher" }
+        val cleanBio = bio.trim()
+        val cleanEmblem = emblem.take(2).uppercase().ifEmpty { "AW" }
         _uiState.update { state ->
             state.copy(
                 userProfile = state.userProfile.copy(
                     displayName = cleanName,
-                    bio = bio.trim(),
-                    avatarEmblem = emblem.take(2).uppercase().ifEmpty { "AW" }
+                    bio = cleanBio,
+                    avatarEmblem = cleanEmblem
                 )
             )
+        }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.updateUserProfile(
+                    baseUrl = state.apiConfig.baseUrl,
+                    token = token,
+                    displayName = cleanName,
+                    bio = cleanBio,
+                    avatarEmblem = cleanEmblem
+                )
+            }
         }
         emitMessage("Profil berhasil diperbarui")
     }
@@ -1505,6 +1863,7 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(settings = transform(state.settings))
         }
+        pushPreferencesToCloud()
     }
 
     fun updateSubtitleSize(option: SubtitleSizeOption) {

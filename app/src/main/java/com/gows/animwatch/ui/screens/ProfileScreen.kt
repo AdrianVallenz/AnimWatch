@@ -426,7 +426,7 @@ fun ProfileScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "Adapter: MastayY/kumanime-api",
+                                text = "Backend: Railway PostgreSQL + Kumanime API",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
