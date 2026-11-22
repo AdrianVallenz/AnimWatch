@@ -60,58 +60,58 @@ enum class AnimeArtTheme(
     val motif: ArtMotif
 ) {
     CRIMSON_BLADE(
-        primaryBg = Color(0xFF1F0C10),
-        secondaryBg = Color(0xFF0A080C),
-        accentGlow = Color(0xFFE5B84B),
+        primaryBg = Color(0xFF241016),
+        secondaryBg = Color(0xFF0E0B10),
+        accentGlow = Color(0xFFE0455A),
         kanjiCrest = "鬼刃",
         motif = ArtMotif.KATANA_SLASH
     ),
     CELESTIAL_ASTRAL(
-        primaryBg = Color(0xFF121629),
-        secondaryBg = Color(0xFF07080F),
-        accentGlow = Color(0xFFF8D477),
+        primaryBg = Color(0xFF12182D),
+        secondaryBg = Color(0xFF0A0D16),
+        accentGlow = Color(0xFF4C7CF5),
         kanjiCrest = "星詠",
         motif = ArtMotif.MAGIC_RING
     ),
     ABYSSAL_SHADOW(
-        primaryBg = Color(0xFF0E1220),
-        secondaryBg = Color(0xFF06060A),
-        accentGlow = Color(0xFFE5B84B),
+        primaryBg = Color(0xFF17132A),
+        secondaryBg = Color(0xFF0B0A14),
+        accentGlow = Color(0xFF8B6CE8),
         kanjiCrest = "影王",
         motif = ArtMotif.CROWN_MONOLITH
     ),
     CYBER_PROTOCOL(
-        primaryBg = Color(0xFF0C181C),
-        secondaryBg = Color(0xFF07090C),
-        accentGlow = Color(0xFFF5C95B),
+        primaryBg = Color(0xFF0D1E24),
+        secondaryBg = Color(0xFF080E12),
+        accentGlow = Color(0xFF22B8CF),
         kanjiCrest = "零式",
         motif = ArtMotif.MECHA_GRID
     ),
     SAKURA_TWILIGHT(
-        primaryBg = Color(0xFF21121A),
-        secondaryBg = Color(0xFF0A080C),
-        accentGlow = Color(0xFFF3C66E),
+        primaryBg = Color(0xFF24121E),
+        secondaryBg = Color(0xFF0E0A10),
+        accentGlow = Color(0xFFE0569C),
         kanjiCrest = "桜風",
         motif = ArtMotif.TORII_MOON
     ),
     IMPERIAL_ALCHEMY(
-        primaryBg = Color(0xFF1E170A),
-        secondaryBg = Color(0xFF080709),
-        accentGlow = Color(0xFFFAD776),
+        primaryBg = Color(0xFF231510),
+        secondaryBg = Color(0xFF0E0A0A),
+        accentGlow = Color(0xFFEB6B40),
         kanjiCrest = "錬金",
         motif = ArtMotif.SOLAR_ECLIPSE
     ),
     PHANTOM_VOYAGE(
-        primaryBg = Color(0xFF0E1722),
-        secondaryBg = Color(0xFF06080C),
-        accentGlow = Color(0xFFE5B84B),
+        primaryBg = Color(0xFF0E1E1B),
+        secondaryBg = Color(0xFF080E0D),
+        accentGlow = Color(0xFF2FC480),
         kanjiCrest = "航海",
         motif = ArtMotif.COMPASS_STAR
     ),
     CHRONO_SANCTUM(
-        primaryBg = Color(0xFF181421),
-        secondaryBg = Color(0xFF07070B),
-        accentGlow = Color(0xFFF0C65E),
+        primaryBg = Color(0xFF161529),
+        secondaryBg = Color(0xFF0A0A14),
+        accentGlow = Color(0xFF6B8AFF),
         kanjiCrest = "刻霊",
         motif = ArtMotif.HOURGLASS_SIGIL
     )
@@ -174,7 +174,10 @@ data class Episode(
     val introStartSec: Int = 15,
     val introEndSec: Int = 85,
     val isFiller: Boolean = false,
+    val slug: String = "",
     val streamUrl: String = "",
+    val nextEpisodeSlug: String? = null,
+    val prevEpisodeSlug: String? = null,
     val servers: List<StreamServer> = emptyList(),
     val qualities: List<VideoQuality> = emptyList(),
     val subtitles: List<SubtitleTrack> = emptyList()
@@ -209,6 +212,9 @@ data class Anime(
     val posterTag: String,
     val posterUrl: String = "",
     val bannerUrl: String = "",
+    val isRemote: Boolean = false,
+    val isEpisodeEntry: Boolean = false,
+    val latestEpisodeSlug: String? = null,
     val characters: List<CharacterRole> = emptyList(),
     val relatedIds: List<String> = emptyList(),
     val episodes: List<Episode> = emptyList()
@@ -216,6 +222,21 @@ data class Anime(
     val latestEpisodeNumber: Int
         get() = episodes.maxOfOrNull { it.number } ?: releasedEpisodes
 }
+
+enum class ApiConnectionStatus(val code: String, val label: String) {
+    DEMO_LOCAL("MODE.DEMO", "Mode Demo Lokal"),
+    SYNCING("SYNC.NET", "Menghubungkan API..."),
+    CONNECTED("LIVE.API", "Terhubung Kumanime API"),
+    OFFLINE_FALLBACK("FALLBACK", "Server Offline (Data Lokal)")
+}
+
+data class ApiConfigState(
+    val baseUrl: String = "http://10.0.2.2:3000/api/",
+    val useLiveApi: Boolean = true,
+    val status: ApiConnectionStatus = ApiConnectionStatus.DEMO_LOCAL,
+    val lastSyncMessage: String = "Siap terhubung ke kumanime-api",
+    val remoteCount: Int = 0
+)
 
 data class WatchProgress(
     val animeId: String,

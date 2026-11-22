@@ -276,6 +276,7 @@ private fun WatchlistContent(
                             AnimePosterArtwork(
                                 artTheme = anime.artTheme,
                                 title = anime.title,
+                                posterUrl = anime.posterUrl,
                                 modifier = Modifier.fillMaxSize(),
                                 showKanjiWatermark = false
                             )
@@ -430,6 +431,7 @@ private fun HistoryContent(
                         AnimePosterArtwork(
                             artTheme = anime.artTheme,
                             title = anime.title,
+                            posterUrl = anime.posterUrl,
                             modifier = Modifier.fillMaxSize(),
                             showKanjiWatermark = false
                         )

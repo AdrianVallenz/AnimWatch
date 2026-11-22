@@ -1,9 +1,14 @@
 package com.gows.animwatch.ui.screens
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -97,6 +102,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -108,6 +114,7 @@ import com.gows.animwatch.data.model.VideoAspectMode
 import com.gows.animwatch.data.model.WatchlistCategory
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimatedStreamingSceneCanvas
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
 import com.gows.animwatch.ui.components.GoldTagChip
@@ -125,6 +132,9 @@ import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.MediaScrimDark
+import com.gows.animwatch.ui.theme.MediaTextLight
+import com.gows.animwatch.ui.theme.MediaTextSecondary
 import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
@@ -178,6 +188,7 @@ fun PlayerScreen(
     onCycleAspect: () -> Unit,
     onToggleLock: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    onToggleWebStreamView: () -> Unit,
     onToggleLike: () -> Unit,
     onSelectWatchlist: (String, WatchlistCategory?) -> Unit,
     onDownloadEpisode: (Anime, Episode, String) -> Unit,
@@ -280,48 +291,102 @@ fun PlayerScreen(
             VideoAspectMode.ZOOM -> 1.28f
         }
 
+        val showingLiveWebStream = session.streamUrl.isNotBlank() && session.useWebStreamView
+
         Box(
             modifier = playerBoxModifier
-                .background(ObsidianVoid)
+                .background(MediaScrimDark)
                 .clip(RoundedCornerShape(0.dp))
-                .pointerInput(session.isLocked) {
-                    detectTapGestures(
-                        onTap = { showControls = !showControls },
-                        onDoubleTap = { offset ->
-                            if (session.isLocked) return@detectTapGestures
-                            if (offset.x < size.width * 0.45f) {
-                                onSeekBy(-10)
-                                seekFeedbackLabel = "<< 10 DETIK"
-                            } else if (offset.x > size.width * 0.55f) {
-                                onSeekBy(10)
-                                seekFeedbackLabel = "10 DETIK >>"
-                            } else {
-                                onTogglePlayPause()
+                .let { baseMod ->
+                    if (showingLiveWebStream) {
+                        baseMod
+                    } else {
+                        baseMod
+                            .pointerInput(session.isLocked) {
+                                detectTapGestures(
+                                    onTap = { showControls = !showControls },
+                                    onDoubleTap = { offset ->
+                                        if (session.isLocked) return@detectTapGestures
+                                        if (offset.x < size.width * 0.45f) {
+                                            onSeekBy(-10)
+                                            seekFeedbackLabel = "<< 10 DETIK"
+                                        } else if (offset.x > size.width * 0.55f) {
+                                            onSeekBy(10)
+                                            seekFeedbackLabel = "10 DETIK >>"
+                                        } else {
+                                            onTogglePlayPause()
+                                        }
+                                    }
+                                )
                             }
-                        }
-                    )
-                }
-                .pointerInput(session.isLocked) {
-                    if (!session.isLocked) {
-                        var dragLeft = true
-                        detectVerticalDragGestures(
-                            onDragStart = { start ->
-                                dragLeft = start.x < size.width * 0.5f
-                            },
-                            onVerticalDrag = { _, dragAmount ->
-                                val delta = -dragAmount / (size.height * 0.85f)
-                                if (dragLeft) {
-                                    brightnessLevel = (brightnessLevel + delta).coerceIn(0.15f, 1.0f)
-                                    activeGestureHud = "BRIGHTNESS:${(brightnessLevel * 100).toInt()}"
-                                } else {
-                                    volumeLevel = (volumeLevel + delta).coerceIn(0f, 1.0f)
-                                    activeGestureHud = "VOLUME:${(volumeLevel * 100).toInt()}"
+                            .pointerInput(session.isLocked) {
+                                if (!session.isLocked) {
+                                    var dragLeft = true
+                                    detectVerticalDragGestures(
+                                        onDragStart = { start ->
+                                            dragLeft = start.x < size.width * 0.5f
+                                        },
+                                        onVerticalDrag = { _, dragAmount ->
+                                            val delta = -dragAmount / (size.height * 0.85f)
+                                            if (dragLeft) {
+                                                brightnessLevel = (brightnessLevel + delta).coerceIn(0.15f, 1.0f)
+                                                activeGestureHud = "BRIGHTNESS:${(brightnessLevel * 100).toInt()}"
+                                            } else {
+                                                volumeLevel = (volumeLevel + delta).coerceIn(0f, 1.0f)
+                                                activeGestureHud = "VOLUME:${(volumeLevel * 100).toInt()}"
+                                            }
+                                        }
+                                    )
                                 }
                             }
-                        )
                     }
                 }
         ) {
+            if (showingLiveWebStream) {
+                KumanimeWebStreamPlayer(
+                    streamUrl = session.streamUrl,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Compact floating controls for live embed WebView (minimize & fullscreen)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { if (session.isFullscreen) onToggleFullscreen() else onMinimize() },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ObsidianVoid.copy(alpha = 0.78f))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "Perkecil Player",
+                            tint = TextPrimary
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onToggleFullscreen,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ObsidianVoid.copy(alpha = 0.78f))
+                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
+                    ) {
+                        Icon(
+                            imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                            contentDescription = "Layar Penuh",
+                            tint = GoldBright
+                        )
+                    }
+                }
+            } else {
             AnimatedStreamingSceneCanvas(
                 artTheme = anime.artTheme,
                 isPlaying = session.isPlaying,
@@ -336,7 +401,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(ObsidianVoid.copy(alpha = (1f - brightnessLevel) * 0.65f))
+                    .background(MediaScrimDark.copy(alpha = (1f - brightnessLevel) * 0.65f))
             )
 
             // Live Subtitle Overlay
@@ -350,13 +415,13 @@ fun PlayerScreen(
                             end = 24.dp
                         )
                         .clip(RoundedCornerShape(6.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.78f))
+                        .background(MediaScrimDark.copy(alpha = 0.80f))
                         .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
                         .padding(horizontal = 12.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = subtitleText,
-                        color = TextPrimary,
+                        color = MediaTextLight,
                         fontSize = (13f * uiState.settings.subtitleSize.scale).sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
@@ -534,7 +599,7 @@ fun PlayerScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(ObsidianVoid.copy(alpha = 0.48f))
+                            .background(MediaScrimDark.copy(alpha = 0.56f))
                     ) {
                         // Top Control Bar
                         Row(
@@ -549,14 +614,14 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.KeyboardArrowDown,
                                     contentDescription = "Perkecil Player",
-                                    tint = TextPrimary
+                                    tint = MediaTextLight
                                 )
                             }
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = anime.title,
-                                    color = TextPrimary,
+                                    color = MediaTextLight,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -576,7 +641,7 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.Cast,
                                     contentDescription = "Cast",
-                                    tint = TextPrimary,
+                                    tint = MediaTextLight,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -584,7 +649,7 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.LockOpen,
                                     contentDescription = "Kunci Layar",
-                                    tint = TextPrimary,
+                                    tint = MediaTextLight,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -613,7 +678,7 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.SkipPrevious,
                                     contentDescription = "Episode Sebelumnya",
-                                    tint = TextPrimary,
+                                    tint = MediaTextLight,
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -627,7 +692,7 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.Replay10,
                                     contentDescription = "Mundur 10s",
-                                    tint = TextPrimary,
+                                    tint = MediaTextLight,
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -657,7 +722,7 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.Forward10,
                                     contentDescription = "Maju 10s",
-                                    tint = TextPrimary,
+                                    tint = MediaTextLight,
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -668,7 +733,7 @@ fun PlayerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.SkipNext,
                                     contentDescription = "Episode Berikutnya",
-                                    tint = TextPrimary,
+                                    tint = MediaTextLight,
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -785,6 +850,28 @@ fun PlayerScreen(
                     }
                 }
             }
+            } // end else (!showingLiveWebStream)
+
+            if (session.isLoadingStream) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(ObsidianVoid.copy(alpha = 0.88f))
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "MENGAMBIL STREAM_URL DARI KUMANIME API...",
+                        fontFamily = MonoFont,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldBright
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    CassetteLinearShimmer(modifier = Modifier.fillMaxWidth(0.75f))
+                }
+            }
         }
 
         // ===========================
@@ -807,27 +894,54 @@ fun PlayerScreen(
                     TapeReelSpinner(isSpinning = session.isPlaying, size = 20.dp, tint = GoldPrimary)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = if (session.isPlaying) "TAPE.RUN // ${session.selectedQuality}"
-                        else "TAPE.PAUSE // STANDBY",
+                        text = when {
+                            session.isLoadingStream -> "SYNC // STREAM_URL"
+                            showingLiveWebStream -> "LIVE.EMBED // KUMANIME"
+                            session.isPlaying -> "TAPE.RUN // ${session.selectedQuality}"
+                            else -> "TAPE.PAUSE // STANDBY"
+                        },
                         fontFamily = MonoFont,
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = GoldBright
                     )
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    LedStatusDot(
-                        color = if (session.isPlaying) StatusEmerald else StatusLive,
-                        pulsing = session.isPlaying,
-                        size = 6.dp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "${currentServer?.latencyMs ?: 24}MS",
-                        fontFamily = MonoFont,
-                        fontSize = 10.sp,
-                        color = TextSecondary
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (session.streamUrl.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(GoldTintStrong)
+                                .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
+                                .clickable(onClick = onToggleWebStreamView)
+                                .padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = if (session.useWebStreamView) "DECK MODE" else "LIVE STREAM",
+                                fontFamily = MonoFont,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldBright
+                            )
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LedStatusDot(
+                            color = if (session.isPlaying) StatusEmerald else StatusLive,
+                            pulsing = session.isPlaying,
+                            size = 6.dp
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "${currentServer?.latencyMs ?: 24}MS",
+                            fontFamily = MonoFont,
+                            fontSize = 10.sp,
+                            color = TextSecondary
+                        )
+                    }
                 }
             }
 
@@ -1307,7 +1421,7 @@ private fun PlayerBottomBadge(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(ObsidianVoid.copy(alpha = 0.80f))
+            .background(MediaScrimDark.copy(alpha = 0.82f))
             .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 7.dp, vertical = 4.dp),
@@ -1323,7 +1437,7 @@ private fun PlayerBottomBadge(
         Text(
             text = label.uppercase(),
             fontFamily = MonoFont,
-            color = TextPrimary,
+            color = MediaTextLight,
             fontSize = 9.5.sp,
             fontWeight = FontWeight.Bold
         )
@@ -1461,3 +1575,51 @@ private fun ModalOptionRow(
         }
     }
 }
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun KumanimeWebStreamPlayer(
+    streamUrl: String,
+    modifier: Modifier = Modifier
+) {
+    var currentWebView by remember { mutableStateOf<WebView?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            currentWebView?.apply {
+                stopLoading()
+                loadUrl("about:blank")
+                destroy()
+            }
+            currentWebView = null
+        }
+    }
+
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setBackgroundColor(android.graphics.Color.parseColor("#0C0C10"))
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.mediaPlaybackRequiresUserGesture = false
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                webViewClient = WebViewClient()
+                webChromeClient = WebChromeClient()
+                loadUrl(streamUrl)
+                currentWebView = this
+            }
+        },
+        update = { webView ->
+            if (webView.url != streamUrl && streamUrl.isNotBlank()) {
+                webView.loadUrl(streamUrl)
+            }
+        },
+        modifier = modifier
+    )
+}
+

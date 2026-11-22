@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +53,7 @@ import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldDeep
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
+import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianCardAlt
@@ -73,11 +75,12 @@ fun CrtScanlineOverlay(
     lineAlpha: Float = 0.08f,
     stepPx: Float = 6f
 ) {
+    val effectiveAlpha = if (IsDarkTheme) lineAlpha else (lineAlpha * 0.35f)
     Canvas(modifier = modifier) {
         var y = 0f
         while (y < size.height) {
             drawLine(
-                color = Color(0xFF060608).copy(alpha = lineAlpha),
+                color = Color(0xFF0C0F14).copy(alpha = effectiveAlpha),
                 start = Offset(0f, y),
                 end = Offset(size.width, y),
                 strokeWidth = 1.6f
@@ -283,6 +286,7 @@ fun TactileInputField(
     errorText: String? = null,
     leadingIcon: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
@@ -332,6 +336,7 @@ fun TactileInputField(
                     maxLines = maxLines,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
                     cursorBrush = SolidColor(GoldBright),
+                    visualTransformation = visualTransformation,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
                     modifier = Modifier

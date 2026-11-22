@@ -13,13 +13,13 @@
                 android:gradientRadius="76"
                 android:type="radial">
                 <item
-                    android:color="#FF1E1910"
+                    android:color="#FF1A2238"
                     android:offset="0.0" />
                 <item
-                    android:color="#FF09090D"
+                    android:color="#FF111520"
                     android:offset="0.7" />
                 <item
-                    android:color="#FF050507"
+                    android:color="#FF0D0F14"
                     android:offset="1.0" />
             </gradient>
         </aapt:attr>
@@ -28,5 +28,5 @@
         android:fillColor="#00000000"
         android:pathData="M54,14 A40,40 0 1,1 53.99,14 Z"
         android:strokeWidth="1.2"
-        android:strokeColor="#33E5B84B" />
+        android:strokeColor="#444C7CF5" />
 </vector>

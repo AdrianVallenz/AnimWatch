@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.AnimeType
+import com.gows.animwatch.data.model.ApiConnectionStatus
 import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.ui.components.AnimWatchCrestLogo
 import com.gows.animwatch.ui.components.AnimePosterArtwork
@@ -78,9 +79,14 @@ import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
+import com.gows.animwatch.ui.theme.MediaScrimDark
+import com.gows.animwatch.ui.theme.MediaTextLight
+import com.gows.animwatch.ui.theme.MediaTextSecondary
 import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianVoid
+import com.gows.animwatch.ui.theme.StatusAmber
+import com.gows.animwatch.ui.theme.StatusEmerald
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
@@ -130,12 +136,25 @@ fun HomeScreen(
 
         // 2. Telemetry Strip + Hero Featured Carousel
         item {
+            val apiStatus = uiState.apiConfig.status
+            val ledColor = when (apiStatus) {
+                ApiConnectionStatus.CONNECTED -> StatusEmerald
+                ApiConnectionStatus.SYNCING -> GoldBright
+                ApiConnectionStatus.OFFLINE_FALLBACK -> StatusAmber
+                ApiConnectionStatus.DEMO_LOCAL -> GoldPrimary
+            }
             CassetteTelemetryStrip(
-                code = "CH-01 // SIARAN UTAMA",
-                statusText = "${uiState.allAnime.size} ANIME • SUB INDO",
-                ledColor = GoldBright,
+                code = "CH-01 // ${apiStatus.code}",
+                statusText = if (apiStatus == ApiConnectionStatus.CONNECTED) {
+                    "${uiState.apiConfig.remoteCount} LIVE // KUMANIME API"
+                } else {
+                    "${uiState.allAnime.size} ANIME // SUB INDO"
+                },
+                ledColor = ledColor,
                 pulsing = true,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clickable(onClick = onOpenProfile)
             )
             Spacer(modifier = Modifier.height(8.dp))
             HeroCarouselSection(
@@ -351,7 +370,7 @@ private fun HomeTopBar(
                     letterSpacing = 0.8.sp
                 )
                 Text(
-                    text = "CASSETTE DECK // GOLD",
+                    text = "CASSETTE DECK // STREAM",
                     fontFamily = MonoFont,
                     color = GoldPrimary,
                     fontSize = 9.sp,
@@ -478,20 +497,21 @@ private fun HeroCarouselSection(
                 AnimePosterArtwork(
                     artTheme = anime.artTheme,
                     title = anime.title,
+                    posterUrl = anime.posterUrl,
                     modifier = Modifier.fillMaxSize(),
                     showVignette = false
                 )
 
-                // Deep editorial vignette
+                // Deep editorial vignette (always dark over hero artwork for crisp legibility in Dark & Light modes)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
                                 0.0f to Color.Transparent,
-                                0.38f to ObsidianVoid.copy(alpha = 0.25f),
-                                0.68f to ObsidianVoid.copy(alpha = 0.88f),
-                                1.0f to ObsidianVoid
+                                0.38f to MediaScrimDark.copy(alpha = 0.25f),
+                                0.68f to MediaScrimDark.copy(alpha = 0.88f),
+                                1.0f to MediaScrimDark
                             )
                         )
                 )
@@ -531,7 +551,7 @@ private fun HeroCarouselSection(
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(ObsidianVoid.copy(alpha = 0.88f))
+                            .background(MediaScrimDark.copy(alpha = 0.88f))
                             .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -546,7 +566,7 @@ private fun HeroCarouselSection(
                         Text(
                             text = "${anime.rating} // EP ${anime.releasedEpisodes}/${anime.totalEpisodes}",
                             fontFamily = MonoFont,
-                            color = GoldBright,
+                            color = MediaTextLight,
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -569,7 +589,7 @@ private fun HeroCarouselSection(
                     Text(
                         text = anime.title,
                         style = MaterialTheme.typography.headlineSmall,
-                        color = TextPrimary,
+                        color = MediaTextLight,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -577,7 +597,7 @@ private fun HeroCarouselSection(
                     Text(
                         text = anime.synopsis,
                         style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
+                        color = MediaTextSecondary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )

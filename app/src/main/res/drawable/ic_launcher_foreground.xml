@@ -5,7 +5,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Gold Diamond Crest Frame -->
+    <!-- Sapphire Diamond Crest Frame -->
     <path
         android:fillColor="#00000000"
         android:pathData="M54,24 L84,54 L54,84 L24,54 Z"
@@ -19,18 +19,18 @@
                 android:startY="24"
                 android:type="linear">
                 <item
-                    android:color="#FFF8D477"
+                    android:color="#FF7CA4FF"
                     android:offset="0.0" />
                 <item
-                    android:color="#FFE5B84B"
+                    android:color="#FF4C7CF5"
                     android:offset="0.5" />
                 <item
-                    android:color="#FFA67819"
+                    android:color="#FF2B54C7"
                     android:offset="1.0" />
             </gradient>
         </aapt:attr>
     </path>
-    <!-- Gold Play Triangle -->
+    <!-- Sapphire Play Triangle -->
     <path android:pathData="M46,41 L69,54 L46,67 Z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -40,10 +40,10 @@
                 android:startY="41"
                 android:type="linear">
                 <item
-                    android:color="#FFF8D477"
+                    android:color="#FF7CA4FF"
                     android:offset="0.0" />
                 <item
-                    android:color="#FFE5B84B"
+                    android:color="#FF4C7CF5"
                     android:offset="1.0" />
             </gradient>
         </aapt:attr>

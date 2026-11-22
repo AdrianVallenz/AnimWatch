@@ -10,6 +10,8 @@ import com.gows.animwatch.data.repository.MockAnimeRepository
 import com.gows.animwatch.ui.state.AnimWatchViewModel
 import com.gows.animwatch.ui.state.AppRoute
 import com.gows.animwatch.ui.state.MainTab
+import com.gows.animwatch.ui.theme.AppAccentTheme
+import com.gows.animwatch.ui.theme.AppAppearanceMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -93,5 +95,60 @@ class AnimWatchRepositoryAndViewModelTest {
 
         val topRated = vm.getCatalogAnime(CatalogPreset.TOP_RATED, null)
         assertEquals(10, topRated.size)
+    }
+
+    @Test
+    fun authenticationFlowWorksEndToEnd() {
+        val vm = AnimWatchViewModel()
+
+        // Starts unauthenticated (shows AuthScreen first)
+        assertFalse(vm.uiState.value.isAuthenticated)
+
+        // Wrong password on pre-seeded account sets error
+        vm.login("adrian@animwatch.id", "wrongpass")
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertTrue(vm.uiState.value.authError != null)
+
+        // Register a new user
+        vm.register("Rina Takahashi", "rina@animwatch.id", "secret123")
+        assertTrue(vm.uiState.value.isAuthenticated)
+        assertFalse(vm.uiState.value.isGuestSession)
+        assertEquals("Rina Takahashi", vm.uiState.value.userProfile.displayName)
+        assertEquals("RT", vm.uiState.value.userProfile.avatarEmblem)
+
+        // Logout returns to AuthScreen
+        vm.logout()
+        assertFalse(vm.uiState.value.isAuthenticated)
+
+        // Duplicate registration is rejected
+        vm.register("Rina Duplicate", "rina@animwatch.id", "secret123")
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertTrue(vm.uiState.value.authError != null)
+
+        // Guest mode works
+        vm.continueAsGuest()
+        assertTrue(vm.uiState.value.isAuthenticated)
+        assertTrue(vm.uiState.value.isGuestSession)
+
+        // Logout then Demo VIP login -> enters Theme Onboarding first
+        vm.logout()
+        vm.loginDemoVip()
+        assertTrue(vm.uiState.value.isAuthenticated)
+        assertFalse(vm.uiState.value.isGuestSession)
+        assertFalse(vm.uiState.value.hasCompletedThemeSetup)
+        assertEquals("Adrian Vallenz", vm.uiState.value.userProfile.displayName)
+
+        // Customize Light/Dark + non-gold accent + preferences and complete onboarding
+        vm.setAppearanceMode(AppAppearanceMode.LIGHT)
+        vm.setAccentTheme(AppAccentTheme.CRIMSON_RUBY)
+        vm.togglePreferredGenre("Romance")
+        vm.setGridCatalogPreferred(false)
+        vm.completeThemeOnboarding()
+
+        assertTrue(vm.uiState.value.hasCompletedThemeSetup)
+        assertEquals(AppAppearanceMode.LIGHT, vm.uiState.value.appearanceMode)
+        assertEquals(AppAccentTheme.CRIMSON_RUBY, vm.uiState.value.accentTheme)
+        assertTrue("Romance" in vm.uiState.value.preferredGenres)
+        assertFalse(vm.uiState.value.exploreFilter.isGridView)
     }
 }

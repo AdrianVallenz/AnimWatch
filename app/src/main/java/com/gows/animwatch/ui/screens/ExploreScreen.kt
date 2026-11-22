@@ -79,6 +79,7 @@ import com.gows.animwatch.data.model.ReleaseDay
 import com.gows.animwatch.data.model.SortOption
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.AnimePosterCard
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.CompactAnimeRowCard
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldTagChip
@@ -518,6 +519,20 @@ private fun CatalogExploreContent(
             }
         }
 
+        if (uiState.isSearchingRemote) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text(
+                    text = "MENCARI DI KUMANIME API...",
+                    fontFamily = MonoFont,
+                    fontSize = 10.sp,
+                    color = GoldBright,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+            }
+        }
+
         if (filteredAnime.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -775,6 +790,7 @@ private fun ScheduleExploreContent(
                             AnimePosterArtwork(
                                 artTheme = anime.artTheme,
                                 title = anime.title,
+                                posterUrl = anime.posterUrl,
                                 modifier = Modifier.fillMaxSize(),
                                 showKanjiWatermark = false
                             )

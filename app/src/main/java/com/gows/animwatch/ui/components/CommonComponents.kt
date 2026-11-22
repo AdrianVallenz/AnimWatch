@@ -91,6 +91,9 @@ import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.GoldTintStrong
+import com.gows.animwatch.ui.theme.MediaScrimDark
+import com.gows.animwatch.ui.theme.MediaTextLight
+import com.gows.animwatch.ui.theme.MediaTextSecondary
 import com.gows.animwatch.ui.theme.MonoFont
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
@@ -381,10 +384,11 @@ fun AnimePosterCard(
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
                 title = anime.title,
+                posterUrl = anime.posterUrl,
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Top row: Rating & Bookmark Switch
+            // Top row: Rating & Bookmark Switch (always crisp dark scrim over poster)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -395,7 +399,7 @@ fun AnimePosterCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.88f))
+                        .background(MediaScrimDark.copy(alpha = 0.88f))
                         .border(1.dp, GoldBorder, RoundedCornerShape(4.dp))
                         .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
@@ -410,7 +414,7 @@ fun AnimePosterCard(
                         Text(
                             text = anime.rating.toString(),
                             fontFamily = MonoFont,
-                            color = TextPrimary,
+                            color = MediaTextLight,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -421,7 +425,7 @@ fun AnimePosterCard(
                     modifier = Modifier
                         .size(26.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .background(ObsidianVoid.copy(alpha = 0.85f))
+                        .background(MediaScrimDark.copy(alpha = 0.85f))
                         .border(1.dp, if (isBookmarked) GoldBright else GoldSubtleBorder, RoundedCornerShape(6.dp))
                         .clickable(onClick = onBookmarkClick),
                     contentAlignment = Alignment.Center
@@ -429,7 +433,7 @@ fun AnimePosterCard(
                     Icon(
                         imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
                         contentDescription = "Simpan ke Daftar Tonton",
-                        tint = if (isBookmarked) GoldBright else TextSecondary,
+                        tint = if (isBookmarked) GoldBright else MediaTextSecondary,
                         modifier = Modifier.size(14.dp)
                     )
                 }
@@ -440,7 +444,7 @@ fun AnimePosterCard(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .background(ObsidianVoid.copy(alpha = 0.72f))
+                    .background(MediaScrimDark.copy(alpha = 0.78f))
                     .padding(horizontal = 8.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -454,7 +458,7 @@ fun AnimePosterCard(
                         text = if (anime.type.label == "Movie") "MOVIE // 4K"
                         else "EP ${anime.releasedEpisodes}/${anime.totalEpisodes}",
                         fontFamily = MonoFont,
-                        color = GoldBright,
+                        color = MediaTextLight,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -462,7 +466,7 @@ fun AnimePosterCard(
                 Text(
                     text = "${anime.year}",
                     fontFamily = MonoFont,
-                    color = TextTertiary,
+                    color = MediaTextSecondary,
                     fontSize = 9.5.sp
                 )
             }
@@ -514,6 +518,7 @@ fun ContinueWatchingCard(
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
                 title = anime.title,
+                posterUrl = anime.posterUrl,
                 modifier = Modifier.fillMaxSize(),
                 showKanjiWatermark = false
             )
@@ -633,6 +638,7 @@ fun TopRankedCard(
                 AnimePosterArtwork(
                     artTheme = anime.artTheme,
                     title = anime.title,
+                    posterUrl = anime.posterUrl,
                     modifier = Modifier.fillMaxSize()
                 )
                 Box(
@@ -747,6 +753,7 @@ fun CompactAnimeRowCard(
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
                 title = anime.title,
+                posterUrl = anime.posterUrl,
                 modifier = Modifier.fillMaxSize(),
                 showKanjiWatermark = false
             )
@@ -988,6 +995,7 @@ fun MiniPlayerBar(
                 AnimePosterArtwork(
                     artTheme = anime.artTheme,
                     title = anime.title,
+                    posterUrl = anime.posterUrl,
                     modifier = Modifier.fillMaxSize(),
                     showKanjiWatermark = false
                 )

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CleaningServices
@@ -30,7 +31,9 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircleOutline
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
@@ -55,9 +58,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gows.animwatch.data.model.ApiConnectionStatus
 import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.data.model.SubtitleSizeOption
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.GoldGradientButton
+import com.gows.animwatch.ui.components.GoldOutlinedButton
 import com.gows.animwatch.ui.components.GoldTagChip
 import com.gows.animwatch.ui.components.LedStatusDot
 import com.gows.animwatch.ui.components.TactileInputField
@@ -76,7 +82,9 @@ import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianGoldCardBrush
 import com.gows.animwatch.ui.theme.ObsidianVoid
+import com.gows.animwatch.ui.theme.StatusAmber
 import com.gows.animwatch.ui.theme.StatusEmerald
+import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
@@ -89,13 +97,21 @@ fun ProfileScreen(
     onUpdateProfile: (String, String, String) -> Unit,
     onUpdateSettings: ((PlaybackSettings) -> PlaybackSettings) -> Unit,
     onUpdateSubtitleSize: (SubtitleSizeOption) -> Unit,
+    onUpdateApiBaseUrl: (String) -> Unit,
+    onSetUseLiveApi: (Boolean) -> Unit,
+    onSyncApi: () -> Unit,
+    onOpenThemeEditor: () -> Unit,
     onClearCache: () -> Unit,
+    onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val profile = uiState.userProfile
     val settings = uiState.settings
+    val apiConfig = uiState.apiConfig
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showApiUrlDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showServerDialog by remember { mutableStateOf(false) }
     var showSubtitleLangDialog by remember { mutableStateOf(false) }
@@ -216,6 +232,18 @@ fun ProfileScreen(
             }
         }
 
+        // Theme & Appearance Quick Access Card
+        item {
+            SettingsGroupCard(title = "TEMA & TAMPILAN") {
+                SettingRowItem(
+                    icon = Icons.Rounded.Palette,
+                    title = "Ubah Mode & Warna Tema",
+                    value = "${uiState.appearanceMode.code} • ${uiState.accentTheme.displayName}",
+                    onClick = onOpenThemeEditor
+                )
+            }
+        }
+
         // Playback Preferences
         item {
             SettingsGroupCard(title = "PREFERENSI STREAMING") {
@@ -294,8 +322,15 @@ fun ProfileScreen(
             }
         }
 
-        // Command-line style API Readiness Console Card
+        // Interactive Kumanime API Terminal Card
         item {
+            val ledColor = when (apiConfig.status) {
+                ApiConnectionStatus.CONNECTED -> StatusEmerald
+                ApiConnectionStatus.SYNCING -> GoldBright
+                ApiConnectionStatus.OFFLINE_FALLBACK -> StatusAmber
+                ApiConnectionStatus.DEMO_LOCAL -> TextSecondary
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -318,7 +353,7 @@ fun ProfileScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "TERMINAL KONEKSI API",
+                            text = "TERMINAL KUMANIME API",
                             fontFamily = MonoFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -326,12 +361,17 @@ fun ProfileScreen(
                         )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        LedStatusDot(color = StatusEmerald, pulsing = true, size = 7.dp)
+                        LedStatusDot(
+                            color = ledColor,
+                            pulsing = apiConfig.status == ApiConnectionStatus.SYNCING ||
+                                apiConfig.status == ApiConnectionStatus.CONNECTED,
+                            size = 7.dp
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "SYS.RDY",
+                            text = apiConfig.status.code,
                             fontFamily = MonoFont,
-                            color = StatusEmerald,
+                            color = ledColor,
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -348,22 +388,77 @@ fun ProfileScreen(
                     verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
-                        text = "> PROVIDER : MockAnimeRepository (Lokal)",
+                        text = "> BASE_URL : ${apiConfig.baseUrl}",
                         fontFamily = MonoFont,
-                        fontSize = 10.5.sp,
-                        color = GoldBright
+                        fontSize = 10.sp,
+                        color = GoldBright,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "> TARGET   : animeindo-api REST Adapter",
+                        text = "> ADAPTER  : MastayY/kumanime-api (Retrofit)",
                         fontFamily = MonoFont,
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         color = TextSecondary
                     )
                     Text(
-                        text = "> STATUS   : Menunggu integrasi endpoint",
+                        text = "> STATUS   : ${apiConfig.lastSyncMessage}",
                         fontFamily = MonoFont,
-                        fontSize = 10.5.sp,
-                        color = TextTertiary
+                        fontSize = 10.sp,
+                        color = TextTertiary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (apiConfig.status == ApiConnectionStatus.SYNCING) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Aktifkan Kumanime Live API",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                    Switch(
+                        checked = apiConfig.useLiveApi,
+                        onCheckedChange = onSetUseLiveApi,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = TextOnGold,
+                            checkedTrackColor = GoldBright,
+                            uncheckedThumbColor = TextSecondary,
+                            uncheckedTrackColor = ObsidianVoid,
+                            uncheckedBorderColor = GoldBorder
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    GoldOutlinedButton(
+                        text = "Ubah URL",
+                        icon = Icons.Rounded.Edit,
+                        onClick = { showApiUrlDialog = true },
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
+                    )
+                    GoldGradientButton(
+                        text = "Sinkronkan",
+                        icon = Icons.Rounded.Refresh,
+                        onClick = onSyncApi,
+                        modifier = Modifier.weight(1f),
+                        height = 40.dp
                     )
                 }
             }
@@ -387,6 +482,75 @@ fun ProfileScreen(
                 )
             }
         }
+
+        // Logout / Switch Account Action
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(StatusLive.copy(alpha = 0.14f))
+                    .border(1.2.dp, StatusLive.copy(alpha = 0.65f), RoundedCornerShape(8.dp))
+                    .clickable {
+                        if (uiState.isGuestSession) onLogout() else showLogoutDialog = true
+                    }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Logout,
+                    contentDescription = null,
+                    tint = StatusLive,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (uiState.isGuestSession) "MASUK / DAFTAR AKUN" else "KELUAR DARI AKUN",
+                    fontFamily = MonoFont,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = StatusLive,
+                    letterSpacing = 0.7.sp
+                )
+            }
+        }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            containerColor = ObsidianElevated,
+            shape = RoundedCornerShape(10.dp),
+            titleContentColor = GoldBright,
+            textContentColor = TextSecondary,
+            title = {
+                Text(
+                    text = "KONFIRMASI KELUAR",
+                    fontFamily = MonoFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            },
+            text = {
+                Text("Kamu akan kembali ke halaman Masuk / Daftar. Daftar tonton dan riwayat lokal tetap tersimpan di sesi ini.")
+            },
+            confirmButton = {
+                GoldGradientButton(
+                    text = "Keluar",
+                    onClick = {
+                        showLogoutDialog = false
+                        onLogout()
+                    },
+                    height = 38.dp
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+                }
+            }
+        )
     }
 
     if (showEditProfileDialog) {
@@ -396,6 +560,14 @@ fun ProfileScreen(
             currentEmblem = profile.avatarEmblem,
             onSave = onUpdateProfile,
             onDismiss = { showEditProfileDialog = false }
+        )
+    }
+
+    if (showApiUrlDialog) {
+        EditApiBaseUrlDialog(
+            currentUrl = apiConfig.baseUrl,
+            onSave = onUpdateApiBaseUrl,
+            onDismiss = { showApiUrlDialog = false }
         )
     }
 
@@ -453,7 +625,7 @@ fun ProfileScreen(
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = GoldBright)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "ANIMWATCH // CASSETTE GOLD",
+                        "ANIMWATCH // STREAM DECK",
                         fontFamily = MonoFont,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -462,7 +634,7 @@ fun ProfileScreen(
             },
             text = {
                 Text(
-                    "AnimWatch adalah aplikasi streaming anime bergaya Cassette Futurism dengan palet Charcoal Black & Royal Gold. Dibangun dengan arsitektur Compose modular yang siap disambungkan ke backend REST API animeindo-api."
+                    "AnimWatch adalah aplikasi streaming anime bergaya Cassette Futurism dengan dukungan Mode Gelap & Terang serta pilihan warna tema personal. Terintegrasi dengan adapter REST API kumanime-api."
                 )
             },
             confirmButton = {
@@ -759,3 +931,107 @@ private fun EditProfileDialog(
         }
     )
 }
+
+@Composable
+private fun EditApiBaseUrlDialog(
+    currentUrl: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var urlInput by remember { mutableStateOf(currentUrl) }
+    var urlError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = ObsidianElevated,
+        shape = RoundedCornerShape(10.dp),
+        titleContentColor = GoldBright,
+        title = {
+            Text(
+                "KONFIGURASI KUMANIME API",
+                fontFamily = MonoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Masukkan Base URL server kumanime-api (lokal Emulator gunakan 10.0.2.2:3000 atau URL deploy Vercel/Railway).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                TactileInputField(
+                    label = "Base URL Server",
+                    value = urlInput,
+                    onValueChange = {
+                        urlInput = it
+                        urlError = if (it.isBlank()) "Base URL tidak boleh kosong" else null
+                    },
+                    placeholder = "http://10.0.2.2:3000/api/",
+                    errorText = urlError
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(GoldTint)
+                            .border(1.dp, GoldBorder, RoundedCornerShape(6.dp))
+                            .clickable {
+                                urlInput = "http://10.0.2.2:3000/api/"
+                                urlError = null
+                            }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = "EMULATOR LOKAL",
+                            fontFamily = MonoFont,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GoldBright
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ObsidianCard)
+                            .border(1.dp, GoldSubtleBorder, RoundedCornerShape(6.dp))
+                            .clickable {
+                                urlInput = "http://192.168.1.10:3000/api/"
+                                urlError = null
+                            }
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = "IP WI-FI LAN",
+                            fontFamily = MonoFont,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            GoldGradientButton(
+                text = "Hubungkan",
+                onClick = {
+                    if (urlInput.isBlank()) {
+                        urlError = "Base URL tidak boleh kosong"
+                    } else {
+                        onSave(urlInput)
+                        onDismiss()
+                    }
+                },
+                height = 40.dp
+            )
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("BATAL", fontFamily = MonoFont, color = TextSecondary)
+            }
+        }
+    )
+}
+

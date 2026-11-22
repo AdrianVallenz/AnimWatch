@@ -73,6 +73,7 @@ import com.gows.animwatch.data.model.WatchlistCategory
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.AnimePosterCard
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldTagChip
 import com.gows.animwatch.ui.components.RatingDialog
@@ -169,6 +170,7 @@ fun AnimeDetailScreen(
                 AnimePosterArtwork(
                     artTheme = anime.artTheme,
                     title = anime.title,
+                    posterUrl = anime.posterUrl,
                     modifier = Modifier.fillMaxSize(),
                     showVignette = false
                 )
@@ -263,6 +265,7 @@ fun AnimeDetailScreen(
                         AnimePosterArtwork(
                             artTheme = anime.artTheme,
                             title = anime.title,
+                            posterUrl = anime.posterUrl,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -513,6 +516,26 @@ fun AnimeDetailScreen(
         }
 
         // 4. Tab Content
+        if (uiState.isLoadingDetail) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "MEMUAT DETAIL & EPISODE DARI KUMANIME API...",
+                        fontFamily = MonoFont,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldBright
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+                }
+            }
+        }
+
         when (selectedTab) {
             DetailTab.EPISODES -> {
                 item {
@@ -901,6 +924,7 @@ private fun EpisodeRowItem(
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
                 title = anime.title,
+                posterUrl = anime.posterUrl,
                 modifier = Modifier.fillMaxSize(),
                 showKanjiWatermark = false
             )
@@ -1062,7 +1086,7 @@ fun CommentCardItem(
                     color = TextPrimary
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                GoldTagChip(text = comment.authorBadge, highlighted = comment.authorBadge == "GOLD VIP")
+                GoldTagChip(text = comment.authorBadge, highlighted = comment.authorBadge == "PRO VIP")
             }
             Text(
                 text = comment.timeAgo,

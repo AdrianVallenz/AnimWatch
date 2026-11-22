@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.AnimeType
+import com.gows.animwatch.data.model.ApiConfigState
+import com.gows.animwatch.data.model.ApiConnectionStatus
 import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.data.model.CommentItem
 import com.gows.animwatch.data.model.DownloadStatus
@@ -21,8 +23,12 @@ import com.gows.animwatch.data.model.UserProfile
 import com.gows.animwatch.data.model.VideoAspectMode
 import com.gows.animwatch.data.model.WatchProgress
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.data.remote.KumanimeApiClient
+import com.gows.animwatch.data.remote.KumanimeRemoteDataSource
 import com.gows.animwatch.data.repository.AnimeRepository
 import com.gows.animwatch.data.repository.MockAnimeRepository
+import com.gows.animwatch.ui.theme.AppAccentTheme
+import com.gows.animwatch.ui.theme.AppAppearanceMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -101,11 +107,22 @@ data class PlayerSession(
     val isLocked: Boolean = false,
     val isFullscreen: Boolean = false,
     val autoNextCountdownSec: Int? = null,
-    val isEpisodeLiked: Boolean = false
+    val isEpisodeLiked: Boolean = false,
+    val streamUrl: String = "",
+    val isLoadingStream: Boolean = false,
+    val useWebStreamView: Boolean = true
 )
 
 @Immutable
 data class AnimWatchUiState(
+    val isAuthenticated: Boolean = false,
+    val isGuestSession: Boolean = false,
+    val hasCompletedThemeSetup: Boolean = false,
+    val isEditingTheme: Boolean = false,
+    val appearanceMode: AppAppearanceMode = AppAppearanceMode.DARK,
+    val accentTheme: AppAccentTheme = AppAccentTheme.COBALT_SAPPHIRE,
+    val preferredGenres: Set<String> = setOf("Action", "Fantasy", "Sci-Fi"),
+    val authError: String? = null,
     val currentTab: MainTab = MainTab.HOME,
     val backStack: List<AppRoute> = listOf(AppRoute.TabsRoot),
     val allAnime: List<Anime> = emptyList(),
@@ -128,14 +145,17 @@ data class AnimWatchUiState(
         handle = "@adrianvallenz",
         bio = "",
         avatarEmblem = "AV",
-        memberTier = "GOLD ROYAL PASS",
+        memberTier = "PRO STREAM PASS",
         watchedHours = 0,
         completedAnimeCount = 0,
         favoriteGenre = "Action"
     ),
     val settings: PlaybackSettings = PlaybackSettings(),
     val playerSession: PlayerSession? = null,
-    val cacheSizeMb: Int = 184
+    val cacheSizeMb: Int = 184,
+    val apiConfig: ApiConfigState = ApiConfigState(),
+    val isLoadingDetail: Boolean = false,
+    val isSearchingRemote: Boolean = false
 ) {
     val currentRoute: AppRoute
         get() = backStack.lastOrNull() ?: AppRoute.TabsRoot
@@ -162,7 +182,8 @@ data class AnimWatchUiState(
 }
 
 class AnimWatchViewModel(
-    private val repository: AnimeRepository = MockAnimeRepository()
+    private val repository: AnimeRepository = MockAnimeRepository(),
+    private val remoteDataSource: KumanimeRemoteDataSource = KumanimeRemoteDataSource()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(loadInitialState())
@@ -171,7 +192,31 @@ class AnimWatchViewModel(
     private val _toastMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val toastMessages: SharedFlow<String> = _toastMessages.asSharedFlow()
 
+    private data class LocalAccount(
+        val displayName: String,
+        val email: String,
+        val password: String,
+        val handle: String,
+        val emblem: String,
+        val tier: String
+    )
+
+    private val registeredAccounts = mutableMapOf(
+        "adrian@animwatch.id" to LocalAccount(
+            displayName = "Adrian Vallenz",
+            email = "adrian@animwatch.id",
+            password = "123456",
+            handle = "@adrianvallenz",
+            emblem = "AV",
+            tier = "PRO STREAM PASS"
+        )
+    )
+
     private var playerTickerJob: Job? = null
+    private var apiSyncJob: Job? = null
+    private var detailFetchJob: Job? = null
+    private var streamFetchJob: Job? = null
+    private var remoteSearchJob: Job? = null
     private val downloadJobs = mutableMapOf<String, Job>()
 
     private fun loadInitialState(): AnimWatchUiState {
@@ -185,12 +230,356 @@ class AnimWatchViewModel(
             notifications = repository.getInitialNotifications(),
             reminders = repository.getInitialReminders(),
             userProfile = repository.getInitialUserProfile(),
-            settings = repository.getInitialPlaybackSettings()
+            settings = repository.getInitialPlaybackSettings(),
+            apiConfig = ApiConfigState(
+                baseUrl = KumanimeApiClient.DEFAULT_BASE_URL,
+                useLiveApi = true,
+                status = ApiConnectionStatus.DEMO_LOCAL,
+                lastSyncMessage = "Menunggu sinkronisasi ke kumanime-api"
+            )
         )
     }
 
     fun emitMessage(message: String) {
         _toastMessages.tryEmit(message)
+    }
+
+    // ====================
+    // Authentication
+    // ====================
+
+    private fun buildEmblem(name: String): String {
+        val parts = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return when {
+            parts.size >= 2 -> "${parts[0].first()}${parts[1].first()}".uppercase()
+            parts.isNotEmpty() -> parts[0].take(2).uppercase()
+            else -> "AW"
+        }
+    }
+
+    private fun buildHandle(nameOrEmail: String): String {
+        val base = nameOrEmail.substringBefore("@")
+            .lowercase()
+            .replace(Regex("[^a-z0-9_]"), "")
+            .ifEmpty { "watcher" }
+        return "@$base"
+    }
+
+    fun clearAuthError() {
+        _uiState.update { it.copy(authError = null) }
+    }
+
+    fun login(identifier: String, password: String, rememberMe: Boolean = true) {
+        val key = identifier.trim().lowercase()
+        val matched = registeredAccounts[key]
+            ?: registeredAccounts.values.find {
+                it.handle.removePrefix("@").equals(key.removePrefix("@"), ignoreCase = true)
+            }
+
+        if (matched != null) {
+            if (matched.password != password) {
+                _uiState.update { it.copy(authError = "Kata sandi salah untuk ${matched.email}") }
+                return
+            }
+            _uiState.update { state ->
+                state.copy(
+                    isAuthenticated = true,
+                    isGuestSession = false,
+                    hasCompletedThemeSetup = false,
+                    isEditingTheme = false,
+                    authError = null,
+                    currentTab = MainTab.HOME,
+                    backStack = listOf(AppRoute.TabsRoot),
+                    userProfile = state.userProfile.copy(
+                        displayName = matched.displayName,
+                        handle = matched.handle,
+                        avatarEmblem = matched.emblem,
+                        memberTier = matched.tier
+                    )
+                )
+            }
+            emitMessage("Selamat datang kembali, ${matched.displayName}. Pilih temamu!")
+            return
+        }
+
+        // Untuk akun baru / uji cepat tanpa backend auth
+        val derivedName = identifier.trim()
+            .substringBefore("@")
+            .replace(Regex("[._-]+"), " ")
+            .split(" ")
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
+            .ifEmpty { "Anime Watcher" }
+
+        val newAccount = LocalAccount(
+            displayName = derivedName,
+            email = key,
+            password = password,
+            handle = buildHandle(identifier),
+            emblem = buildEmblem(derivedName),
+            tier = if (rememberMe) "PRO MEMBER" else "STANDARD PASS"
+        )
+        registeredAccounts[key] = newAccount
+
+        _uiState.update { state ->
+            state.copy(
+                isAuthenticated = true,
+                isGuestSession = false,
+                hasCompletedThemeSetup = false,
+                isEditingTheme = false,
+                authError = null,
+                currentTab = MainTab.HOME,
+                backStack = listOf(AppRoute.TabsRoot),
+                userProfile = state.userProfile.copy(
+                    displayName = newAccount.displayName,
+                    handle = newAccount.handle,
+                    avatarEmblem = newAccount.emblem,
+                    memberTier = newAccount.tier
+                )
+            )
+        }
+        emitMessage("Berhasil masuk sebagai ${newAccount.displayName}. Pilih temamu!")
+    }
+
+    fun register(displayName: String, email: String, password: String) {
+        val cleanName = displayName.trim()
+        val cleanEmail = email.trim().lowercase()
+        if (registeredAccounts.containsKey(cleanEmail)) {
+            _uiState.update { it.copy(authError = "Email $cleanEmail sudah terdaftar. Silakan masuk.") }
+            return
+        }
+
+        val account = LocalAccount(
+            displayName = cleanName,
+            email = cleanEmail,
+            password = password,
+            handle = buildHandle(cleanName),
+            emblem = buildEmblem(cleanName),
+            tier = "PRO STREAM PASS"
+        )
+        registeredAccounts[cleanEmail] = account
+
+        _uiState.update { state ->
+            state.copy(
+                isAuthenticated = true,
+                isGuestSession = false,
+                hasCompletedThemeSetup = false,
+                isEditingTheme = false,
+                authError = null,
+                currentTab = MainTab.HOME,
+                backStack = listOf(AppRoute.TabsRoot),
+                userProfile = state.userProfile.copy(
+                    displayName = account.displayName,
+                    handle = account.handle,
+                    avatarEmblem = account.emblem,
+                    memberTier = account.tier,
+                    bio = "Anggota baru AnimWatch Stream Deck."
+                )
+            )
+        }
+        emitMessage("Akun ${account.displayName} dibuat! Pilih tema kesukaanmu.")
+    }
+
+    fun loginDemoVip() {
+        val demo = registeredAccounts["adrian@animwatch.id"] ?: return
+        login(demo.email, demo.password, rememberMe = true)
+    }
+
+    fun continueAsGuest() {
+        _uiState.update { state ->
+            state.copy(
+                isAuthenticated = true,
+                isGuestSession = true,
+                hasCompletedThemeSetup = false,
+                isEditingTheme = false,
+                authError = null,
+                currentTab = MainTab.HOME,
+                backStack = listOf(AppRoute.TabsRoot),
+                userProfile = state.userProfile.copy(
+                    displayName = "Tamu Watcher",
+                    handle = "@guest_deck",
+                    avatarEmblem = "TM",
+                    memberTier = "MODE TAMU",
+                    bio = "Menjelajah AnimWatch dalam mode tamu."
+                )
+            )
+        }
+        emitMessage("Masuk dalam Mode Tamu. Atur tema tampilanmu!")
+    }
+
+    fun requestPasswordReset(email: String) {
+        emitMessage("Tautan pemulihan kata sandi dikirim ke $email")
+    }
+
+    fun logout() {
+        closePlayer()
+        _uiState.update { state ->
+            state.copy(
+                isAuthenticated = false,
+                isGuestSession = false,
+                hasCompletedThemeSetup = false,
+                isEditingTheme = false,
+                authError = null,
+                currentTab = MainTab.HOME,
+                backStack = listOf(AppRoute.TabsRoot)
+            )
+        }
+        emitMessage("Berhasil keluar dari akun")
+    }
+
+    // ====================
+    // Theme & Preferences
+    // ====================
+
+    fun setAppearanceMode(mode: AppAppearanceMode) {
+        _uiState.update { it.copy(appearanceMode = mode) }
+    }
+
+    fun setAccentTheme(accent: AppAccentTheme) {
+        _uiState.update { it.copy(accentTheme = accent) }
+    }
+
+    fun togglePreferredGenre(genre: String) {
+        _uiState.update { state ->
+            val current = state.preferredGenres
+            val next = if (genre in current) current - genre else current + genre
+            state.copy(preferredGenres = next)
+        }
+    }
+
+    fun setGridCatalogPreferred(isGrid: Boolean) {
+        _uiState.update { state ->
+            state.copy(exploreFilter = state.exploreFilter.copy(isGridView = isGrid))
+        }
+    }
+
+    fun completeThemeOnboarding() {
+        val state = _uiState.value
+        val favGenre = state.preferredGenres.firstOrNull() ?: state.userProfile.favoriteGenre
+        val wasEditing = state.isEditingTheme
+        _uiState.update { cur ->
+            cur.copy(
+                hasCompletedThemeSetup = true,
+                isEditingTheme = false,
+                userProfile = cur.userProfile.copy(favoriteGenre = favGenre)
+            )
+        }
+        emitMessage(
+            if (wasEditing) "Tema ${state.appearanceMode.label} • ${state.accentTheme.displayName} disimpan"
+            else "Tema ${state.accentTheme.displayName} diterapkan. Selamat menonton!"
+        )
+    }
+
+    fun openThemeEditorFromProfile() {
+        _uiState.update { it.copy(isEditingTheme = true) }
+    }
+
+    fun closeThemeEditor() {
+        _uiState.update { it.copy(isEditingTheme = false) }
+    }
+
+    // ====================
+    // Kumanime API Sync
+    // ====================
+
+    fun updateApiBaseUrl(rawUrl: String) {
+        val normalized = KumanimeApiClient.normalizeBaseUrl(rawUrl)
+        _uiState.update { state ->
+            state.copy(
+                apiConfig = state.apiConfig.copy(
+                    baseUrl = normalized,
+                    useLiveApi = true
+                )
+            )
+        }
+        emitMessage("Base URL diset: $normalized")
+        syncKumanimeCatalog(silentIfOffline = false)
+    }
+
+    fun setUseLiveApi(enabled: Boolean) {
+        if (!enabled) {
+            apiSyncJob?.cancel()
+            _uiState.update { state ->
+                state.copy(
+                    allAnime = repository.getAllAnime(),
+                    genres = repository.getAllGenres(),
+                    apiConfig = state.apiConfig.copy(
+                        useLiveApi = false,
+                        status = ApiConnectionStatus.DEMO_LOCAL,
+                        lastSyncMessage = "Menggunakan katalog lokal (Mode Demo)",
+                        remoteCount = 0
+                    )
+                )
+            }
+            emitMessage("Beralih ke Mode Demo Lokal")
+        } else {
+            _uiState.update { state ->
+                state.copy(apiConfig = state.apiConfig.copy(useLiveApi = true))
+            }
+            syncKumanimeCatalog(silentIfOffline = false)
+        }
+    }
+
+    fun syncKumanimeCatalog(silentIfOffline: Boolean = false) {
+        val config = _uiState.value.apiConfig
+        if (!config.useLiveApi) return
+
+        apiSyncJob?.cancel()
+        apiSyncJob = viewModelScope.launch {
+            _uiState.update { state ->
+                state.copy(
+                    apiConfig = state.apiConfig.copy(
+                        status = ApiConnectionStatus.SYNCING,
+                        lastSyncMessage = "Menghubungi ${config.baseUrl}..."
+                    )
+                )
+            }
+
+            val result = remoteDataSource.fetchInitialCatalog(config.baseUrl)
+            result.onSuccess { remoteItems ->
+                val mockItems = repository.getAllAnime()
+                val combinedMap = LinkedHashMap<String, Anime>()
+                remoteItems.forEach { combinedMap[it.id] = it }
+                // Pertahankan item lokal yang memiliki jadwal mingguan agar tab Jadwal tetap terisi
+                mockItems.forEach { local ->
+                    if (!combinedMap.containsKey(local.id)) {
+                        combinedMap[local.id] = local.copy(isFeatured = false, isNewRelease = false)
+                    }
+                }
+
+                val dynamicGenres = (remoteItems.flatMap { it.genres } + repository.getAllGenres())
+                    .distinct()
+
+                _uiState.update { state ->
+                    state.copy(
+                        allAnime = combinedMap.values.toList(),
+                        genres = dynamicGenres,
+                        apiConfig = state.apiConfig.copy(
+                            status = ApiConnectionStatus.CONNECTED,
+                            lastSyncMessage = "Terhubung (${remoteItems.size} anime live dimuat)",
+                            remoteCount = remoteItems.size
+                        )
+                    )
+                }
+                if (!silentIfOffline) {
+                    emitMessage("Kumanime API terhubung: ${remoteItems.size} anime dimuat")
+                }
+            }.onFailure { err ->
+                val reason = err.localizedMessage?.take(72) ?: "Server tidak dapat dijangkau"
+                _uiState.update { state ->
+                    state.copy(
+                        apiConfig = state.apiConfig.copy(
+                            status = ApiConnectionStatus.OFFLINE_FALLBACK,
+                            lastSyncMessage = "Fallback lokal ($reason)",
+                            remoteCount = 0
+                        )
+                    )
+                }
+                if (!silentIfOffline) {
+                    emitMessage("Server Kumanime tidak aktif — memakai katalog lokal")
+                }
+            }
+        }
     }
 
     // ====================
@@ -213,6 +602,39 @@ class AnimWatchViewModel(
                 state
             } else {
                 state.copy(backStack = state.backStack + AppRoute.AnimeDetail(animeId))
+            }
+        }
+        val anime = _uiState.value.allAnime.find { it.id == animeId }
+        if (anime != null && anime.isRemote && (anime.episodes.isEmpty() || anime.isEpisodeEntry)) {
+            fetchRemoteDetailFor(anime)
+        }
+    }
+
+    private fun fetchRemoteDetailFor(anime: Anime) {
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        detailFetchJob?.cancel()
+        detailFetchJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingDetail = true) }
+            val res = remoteDataSource.fetchAnimeDetail(baseUrl, anime)
+            res.onSuccess { detailed ->
+                _uiState.update { state ->
+                    val updatedList = state.allAnime.map {
+                        if (it.id == anime.id) detailed else it
+                    }.distinctBy { it.id }
+                    val updatedBackStack = state.backStack.map { route ->
+                        if (route is AppRoute.AnimeDetail && route.animeId == anime.id) {
+                            AppRoute.AnimeDetail(detailed.id)
+                        } else route
+                    }
+                    state.copy(
+                        allAnime = updatedList,
+                        backStack = updatedBackStack,
+                        isLoadingDetail = false
+                    )
+                }
+            }.onFailure {
+                _uiState.update { it.copy(isLoadingDetail = false) }
+                emitMessage("Gagal memuat detail dari Kumanime API")
             }
         }
     }
@@ -268,6 +690,10 @@ class AnimWatchViewModel(
 
     fun navigateBack(): Boolean {
         val state = _uiState.value
+        if (state.isEditingTheme) {
+            closeThemeEditor()
+            return true
+        }
         val player = state.playerSession
         if (player != null && player.isExpanded) {
             if (player.isFullscreen) {
@@ -295,13 +721,45 @@ class AnimWatchViewModel(
     fun playAnime(animeId: String, episodeId: String? = null, startFromZero: Boolean = false) {
         val state = _uiState.value
         val anime = state.allAnime.find { it.id == animeId } ?: return
-        val historyForAnime = state.watchHistory.find { it.animeId == animeId }
 
+        // Jika anime dari Kumanime API belum memuat daftar episode, ambil detailnya terlebih dahulu
+        if (anime.isRemote && anime.episodes.isEmpty()) {
+            val baseUrl = state.apiConfig.baseUrl
+            emitMessage("Memuat episode dari Kumanime API...")
+            detailFetchJob?.cancel()
+            detailFetchJob = viewModelScope.launch {
+                val detailRes = remoteDataSource.fetchAnimeDetail(baseUrl, anime)
+                detailRes.onSuccess { detailed ->
+                    _uiState.update { cur ->
+                        cur.copy(
+                            allAnime = cur.allAnime.map { if (it.id == anime.id) detailed else it }.distinctBy { it.id }
+                        )
+                    }
+                    if (detailed.episodes.isNotEmpty()) {
+                        startPlayerWithEpisode(detailed, detailed.episodes.first(), startFromZero)
+                    } else {
+                        emitMessage("Belum ada episode tersedia untuk ${detailed.title}")
+                    }
+                }.onFailure {
+                    emitMessage("Gagal mengambil daftar episode dari API")
+                }
+            }
+            return
+        }
+
+        val historyForAnime = state.watchHistory.find { it.animeId == animeId }
         val targetEpisode: Episode = when {
             episodeId != null -> anime.episodes.find { it.id == episodeId }
             historyForAnime != null -> anime.episodes.find { it.id == historyForAnime.episodeId }
             else -> anime.episodes.firstOrNull()
         } ?: anime.episodes.firstOrNull() ?: return
+
+        startPlayerWithEpisode(anime, targetEpisode, startFromZero)
+    }
+
+    private fun startPlayerWithEpisode(anime: Anime, targetEpisode: Episode, startFromZero: Boolean) {
+        val state = _uiState.value
+        val historyForAnime = state.watchHistory.find { it.animeId == anime.id }
 
         val resumePos = if (!startFromZero && historyForAnime?.episodeId == targetEpisode.id) {
             if (historyForAnime.positionSeconds >= targetEpisode.durationSeconds - 15) 0
@@ -317,7 +775,9 @@ class AnimWatchViewModel(
         }
         val serverId = targetEpisode.servers.find {
             it.name.equals(state.settings.defaultServer, ignoreCase = true)
-        }?.id ?: "sanka"
+        }?.id ?: targetEpisode.servers.firstOrNull()?.id ?: "sanka"
+
+        val needsRemoteStream = anime.isRemote && targetEpisode.slug.isNotBlank() && targetEpisode.streamUrl.isBlank()
 
         val session = PlayerSession(
             animeId = anime.id,
@@ -331,12 +791,68 @@ class AnimWatchViewModel(
             bufferedSeconds = (resumePos + 220).coerceAtMost(targetEpisode.durationSeconds),
             selectedQuality = state.settings.defaultQuality,
             selectedServerId = serverId,
-            selectedSubtitleId = subtitleId
+            selectedSubtitleId = subtitleId,
+            streamUrl = targetEpisode.streamUrl,
+            isLoadingStream = needsRemoteStream,
+            useWebStreamView = true
         )
 
         _uiState.update { it.copy(playerSession = session) }
         recordWatchProgress(anime, targetEpisode, resumePos)
         startPlayerTicker()
+
+        if (needsRemoteStream) {
+            fetchRemoteEpisodeStream(anime, targetEpisode)
+        }
+    }
+
+    private fun fetchRemoteEpisodeStream(anime: Anime, episode: Episode) {
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        streamFetchJob?.cancel()
+        streamFetchJob = viewModelScope.launch {
+            val result = remoteDataSource.fetchEpisodeStream(baseUrl, episode)
+            result.onSuccess { streamResult ->
+                val enrichedEp = streamResult.episode
+                _uiState.update { cur ->
+                    val updatedAnimeList = cur.allAnime.map { item ->
+                        if (item.id == anime.id) {
+                            item.copy(
+                                episodes = item.episodes.map { ep ->
+                                    if (ep.id == episode.id) enrichedEp else ep
+                                }
+                            )
+                        } else item
+                    }
+                    val curSession = cur.playerSession
+                    val updatedSession = if (curSession?.episodeId == episode.id) {
+                        curSession.copy(
+                            episodeTitle = enrichedEp.title,
+                            streamUrl = enrichedEp.streamUrl,
+                            isLoadingStream = false
+                        )
+                    } else curSession
+                    cur.copy(allAnime = updatedAnimeList, playerSession = updatedSession)
+                }
+                if (enrichedEp.streamUrl.isBlank()) {
+                    emitMessage("Link stream tidak tersedia, memakai mode simulasi")
+                }
+            }.onFailure {
+                _uiState.update { cur ->
+                    val curSession = cur.playerSession
+                    if (curSession?.episodeId == episode.id) {
+                        cur.copy(playerSession = curSession.copy(isLoadingStream = false))
+                    } else cur
+                }
+                emitMessage("Gagal memuat link video dari Kumanime API")
+            }
+        }
+    }
+
+    fun togglePlayerWebStreamView() {
+        _uiState.update { state ->
+            val session = state.playerSession ?: return@update state
+            state.copy(playerSession = session.copy(useWebStreamView = !session.useWebStreamView))
+        }
     }
 
     fun togglePlayPause() {
@@ -635,6 +1151,30 @@ class AnimWatchViewModel(
             }).take(8)
             state.copy(searchHistory = updated)
         }
+        val cfg = _uiState.value.apiConfig
+        if (cfg.useLiveApi && cfg.status == ApiConnectionStatus.CONNECTED) {
+            remoteSearchJob?.cancel()
+            remoteSearchJob = viewModelScope.launch {
+                _uiState.update { it.copy(isSearchingRemote = true) }
+                val res = remoteDataSource.searchAnime(cfg.baseUrl, trimmed)
+                res.onSuccess { found ->
+                    if (found.isNotEmpty()) {
+                        _uiState.update { state ->
+                            val merged = LinkedHashMap<String, Anime>()
+                            found.forEach { merged[it.id] = it }
+                            state.allAnime.forEach { existing ->
+                                if (!merged.containsKey(existing.id)) merged[existing.id] = existing
+                            }
+                            state.copy(allAnime = merged.values.toList(), isSearchingRemote = false)
+                        }
+                    } else {
+                        _uiState.update { it.copy(isSearchingRemote = false) }
+                    }
+                }.onFailure {
+                    _uiState.update { it.copy(isSearchingRemote = false) }
+                }
+            }
+        }
     }
 
     fun removeSearchHistoryItem(term: String) {
@@ -903,7 +1443,7 @@ class AnimWatchViewModel(
             animeId = animeId,
             episodeNumber = episodeNumber,
             author = profile.displayName,
-            authorBadge = "GOLD VIP",
+            authorBadge = "PRO VIP",
             content = trimmed,
             timeAgo = "Baru saja",
             likes = 0,

@@ -30,16 +30,24 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.gows.animwatch.data.model.AnimeArtTheme
 import com.gows.animwatch.data.model.ArtMotif
 import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldDeep
 import com.gows.animwatch.ui.theme.GoldPrimary
+import com.gows.animwatch.ui.theme.MediaScrimDark
+import com.gows.animwatch.ui.theme.MediaTextLight
+import com.gows.animwatch.ui.theme.ObsidianBase
+import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.TextPrimary
 import kotlin.math.PI
@@ -57,7 +65,7 @@ fun AnimWatchCrestLogo(
             .clip(RoundedCornerShape(8.dp))
             .background(
                 Brush.linearGradient(
-                    colors = listOf(Color(0xFF211A0E), Color(0xFF0F0F14))
+                    colors = listOf(GoldPrimary.copy(alpha = 0.24f), ObsidianCard, ObsidianBase)
                 )
             )
             .border(1.2.dp, GoldPrimary.copy(alpha = 0.78f), RoundedCornerShape(8.dp)),
@@ -97,17 +105,20 @@ fun AnimePosterArtwork(
     artTheme: AnimeArtTheme,
     title: String,
     modifier: Modifier = Modifier,
+    posterUrl: String = "",
     showKanjiWatermark: Boolean = true,
     showVignette: Boolean = true
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, ObsidianVoid)
+                    colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, MediaScrimDark)
                 )
             )
     ) {
+        // Fallback Cassette Futurism procedural artwork (always visible while loading or offline)
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawArtMotif(
                 motif = artTheme.motif,
@@ -117,7 +128,7 @@ fun AnimePosterArtwork(
             )
         }
 
-        if (showKanjiWatermark) {
+        if (showKanjiWatermark && posterUrl.isBlank()) {
             Text(
                 text = artTheme.kanjiCrest,
                 color = artTheme.accentGlow.copy(alpha = 0.14f),
@@ -131,6 +142,18 @@ fun AnimePosterArtwork(
             )
         }
 
+        if (posterUrl.isNotBlank()) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(posterUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
         if (showVignette) {
             Box(
                 modifier = Modifier
@@ -140,7 +163,7 @@ fun AnimePosterArtwork(
                             colorStops = arrayOf(
                                 0.0f to Color.Transparent,
                                 0.55f to Color.Transparent,
-                                1.0f to ObsidianVoid.copy(alpha = 0.92f)
+                                1.0f to MediaScrimDark.copy(alpha = 0.92f)
                             )
                         )
                     )
@@ -187,7 +210,7 @@ fun AnimatedStreamingSceneCanvas(
     Box(
         modifier = modifier.background(
             Brush.radialGradient(
-                colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, ObsidianVoid),
+                colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, MediaScrimDark),
                 radius = 900f
             )
         )
@@ -239,10 +262,10 @@ fun AnimatedStreamingSceneCanvas(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0f to ObsidianVoid.copy(alpha = 0.35f),
+                        0f to MediaScrimDark.copy(alpha = 0.35f),
                         0.2f to Color.Transparent,
                         0.8f to Color.Transparent,
-                        1f to ObsidianVoid.copy(alpha = 0.55f)
+                        1f to MediaScrimDark.copy(alpha = 0.55f)
                     )
                 )
         )
@@ -262,14 +285,14 @@ fun AnimatedStreamingSceneCanvas(
             verticalAlignment = Alignment.CenterVertically
         ) {
             LedStatusDot(
-                color = if (isPlaying) GoldBright else TextPrimary.copy(alpha = 0.3f),
+                color = if (isPlaying) GoldBright else MediaTextLight.copy(alpha = 0.3f),
                 pulsing = isPlaying,
                 size = 6.dp
             )
             androidx.compose.foundation.layout.Spacer(modifier = Modifier.size(6.dp))
             Text(
                 text = "ANIMWATCH // ${artTheme.kanjiCrest}",
-                color = TextPrimary.copy(alpha = 0.28f),
+                color = MediaTextLight.copy(alpha = 0.32f),
                 fontFamily = com.gows.animwatch.ui.theme.MonoFont,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
@@ -447,7 +470,7 @@ private fun DrawScope.drawArtMotif(
                 style = Stroke(width = 3.5f)
             )
             drawCircle(
-                color = ObsidianVoid,
+                color = MediaScrimDark,
                 radius = r * 0.88f,
                 center = Offset(cx, cy)
             )

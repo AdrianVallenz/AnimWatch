@@ -40,12 +40,14 @@ import com.gows.animwatch.ui.components.FloatingGoldBottomNav
 import com.gows.animwatch.ui.components.MiniPlayerBar
 import com.gows.animwatch.ui.components.NotificationsBottomSheet
 import com.gows.animwatch.ui.screens.AnimeDetailScreen
+import com.gows.animwatch.ui.screens.AuthScreen
 import com.gows.animwatch.ui.screens.CatalogListScreen
 import com.gows.animwatch.ui.screens.ExploreScreen
 import com.gows.animwatch.ui.screens.HomeScreen
 import com.gows.animwatch.ui.screens.LibraryScreen
 import com.gows.animwatch.ui.screens.PlayerScreen
 import com.gows.animwatch.ui.screens.ProfileScreen
+import com.gows.animwatch.ui.screens.ThemeOnboardingScreen
 import com.gows.animwatch.ui.state.AnimWatchViewModel
 import com.gows.animwatch.ui.state.AppRoute
 import com.gows.animwatch.ui.state.ExploreMode
@@ -65,39 +67,82 @@ fun AnimWatchApp(
     val snackbarHostState = remember { SnackbarHostState() }
     var showNotificationsSheet by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        viewModel.toastMessages.collect { msg ->
-            snackbarHostState.currentSnackbarData?.dismiss()
-            snackbarHostState.showSnackbar(
-                message = msg,
-                duration = SnackbarDuration.Short
-            )
-        }
-    }
-
-    val shouldHandleBack = (uiState.playerSession?.isExpanded == true) ||
-        uiState.backStack.size > 1 ||
-        uiState.currentTab != MainTab.HOME
-
-    BackHandler(enabled = shouldHandleBack) {
-        viewModel.navigateBack()
-    }
-
-    val isTabsRoot = uiState.currentRoute is AppRoute.TabsRoot
-    val hasMiniPlayer = uiState.playerSession != null && uiState.playerSession?.isExpanded == false
-
-    val bottomContentPadding = when {
-        isTabsRoot && hasMiniPlayer -> 178.dp
-        isTabsRoot -> 106.dp
-        hasMiniPlayer -> 96.dp
-        else -> 28.dp
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(ObsidianVoid)
+    AnimWatchTheme(
+        appearanceMode = uiState.appearanceMode,
+        accentTheme = uiState.accentTheme
     ) {
+        LaunchedEffect(uiState.isAuthenticated, uiState.hasCompletedThemeSetup) {
+            if (uiState.isAuthenticated && uiState.hasCompletedThemeSetup) {
+                viewModel.syncKumanimeCatalog(silentIfOffline = true)
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            viewModel.toastMessages.collect { msg ->
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(
+                    message = msg,
+                    duration = SnackbarDuration.Short
+                )
+            }
+        }
+
+        val shouldHandleBack = uiState.isEditingTheme || (
+            uiState.isAuthenticated && uiState.hasCompletedThemeSetup && (
+                (uiState.playerSession?.isExpanded == true) ||
+                    uiState.backStack.size > 1 ||
+                    uiState.currentTab != MainTab.HOME
+                )
+            )
+
+        BackHandler(enabled = shouldHandleBack) {
+            viewModel.navigateBack()
+        }
+
+        val isTabsRoot = uiState.currentRoute is AppRoute.TabsRoot
+        val hasMiniPlayer = uiState.playerSession != null && uiState.playerSession?.isExpanded == false
+
+        val bottomContentPadding = when {
+            isTabsRoot && hasMiniPlayer -> 178.dp
+            isTabsRoot -> 106.dp
+            hasMiniPlayer -> 96.dp
+            else -> 28.dp
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ObsidianVoid)
+        ) {
+            if (!uiState.isAuthenticated) {
+                AuthScreen(
+                    authError = uiState.authError,
+                    onClearAuthError = viewModel::clearAuthError,
+                    onLogin = viewModel::login,
+                    onRegister = viewModel::register,
+                    onContinueAsGuest = viewModel::continueAsGuest,
+                    onDemoVipLogin = viewModel::loginDemoVip,
+                    onResetPasswordRequested = viewModel::requestPasswordReset
+                )
+            } else if (!uiState.hasCompletedThemeSetup || uiState.isEditingTheme) {
+                ThemeOnboardingScreen(
+                    userName = uiState.userProfile.displayName,
+                    appearanceMode = uiState.appearanceMode,
+                    accentTheme = uiState.accentTheme,
+                    preferredGenres = uiState.preferredGenres,
+                    availableGenres = uiState.genres,
+                    settings = uiState.settings,
+                    isGridCatalogPreferred = uiState.exploreFilter.isGridView,
+                    isFromProfile = uiState.isEditingTheme,
+                    onSelectAppearance = viewModel::setAppearanceMode,
+                    onSelectAccent = viewModel::setAccentTheme,
+                    onTogglePreferredGenre = viewModel::togglePreferredGenre,
+                    onUpdateSettings = viewModel::updateSettings,
+                    onSetGridCatalogPreferred = viewModel::setGridCatalogPreferred,
+                    onComplete = viewModel::completeThemeOnboarding,
+                    onBack = if (uiState.isEditingTheme) viewModel::closeThemeEditor else null
+                )
+            } else {
         // 1. Main Route Content
         AnimatedContent(
             targetState = uiState.currentRoute,
@@ -187,7 +232,12 @@ fun AnimWatchApp(
                                 onUpdateProfile = viewModel::updateProfile,
                                 onUpdateSettings = viewModel::updateSettings,
                                 onUpdateSubtitleSize = viewModel::updateSubtitleSize,
-                                onClearCache = viewModel::clearAppCache
+                                onUpdateApiBaseUrl = viewModel::updateApiBaseUrl,
+                                onSetUseLiveApi = viewModel::setUseLiveApi,
+                                onSyncApi = { viewModel.syncKumanimeCatalog(silentIfOffline = false) },
+                                onOpenThemeEditor = viewModel::openThemeEditorFromProfile,
+                                onClearCache = viewModel::clearAppCache,
+                                onLogout = viewModel::logout
                             )
                         }
                     }
@@ -312,6 +362,7 @@ fun AnimWatchApp(
                     onCycleAspect = viewModel::cycleAspectMode,
                     onToggleLock = viewModel::togglePlayerLock,
                     onToggleFullscreen = { viewModel.setPlayerFullscreen(!activeSession.isFullscreen) },
+                    onToggleWebStreamView = viewModel::togglePlayerWebStreamView,
                     onToggleLike = viewModel::toggleEpisodeLike,
                     onSelectWatchlist = viewModel::setWatchlistCategory,
                     onDownloadEpisode = viewModel::handleEpisodeDownloadAction,
@@ -325,15 +376,16 @@ fun AnimWatchApp(
                 )
             }
         }
+        } // end else (uiState.isAuthenticated)
 
-        // 4. Global Gold Snackbar Toast
+        // 4. Global Accent Snackbar Toast
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(
-                    bottom = if (isTabsRoot) 84.dp else 20.dp,
+                    bottom = if (uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme && isTabsRoot) 84.dp else 20.dp,
                     start = 16.dp,
                     end = 16.dp
                 )
@@ -366,12 +418,11 @@ fun AnimWatchApp(
             onDismiss = { showNotificationsSheet = false }
         )
     }
+    } // end AnimWatchTheme
 }
 
 @Preview(showBackground = true)
 @Composable
 fun AnimWatchAppPreview() {
-    AnimWatchTheme {
-        AnimWatchApp()
-    }
+    AnimWatchApp()
 }
