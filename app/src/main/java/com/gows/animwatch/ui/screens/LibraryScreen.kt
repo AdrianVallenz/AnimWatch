@@ -18,30 +18,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.DownloadDone
-import androidx.compose.material.icons.rounded.Downloading
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Star
-import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,18 +46,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gows.animwatch.data.local.DeviceStorageInfo
-import com.gows.animwatch.data.local.formatStorageBytes
 import com.gows.animwatch.data.model.Anime
-import com.gows.animwatch.data.model.DownloadStatus
-import com.gows.animwatch.data.model.DownloadTask
 import com.gows.animwatch.data.model.WatchProgress
 import com.gows.animwatch.data.model.WatchlistCategory
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.GoldTagChip
-import com.gows.animwatch.ui.components.TapeReelSpinner
-import com.gows.animwatch.ui.components.WatchlistCategorySheet
 import com.gows.animwatch.ui.components.formatTimeSeconds
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.state.LibraryTab
@@ -74,7 +60,6 @@ import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
-import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.MediaScrimDark
 import com.gows.animwatch.ui.theme.MediaTextLight
 import com.gows.animwatch.ui.theme.ObsidianCard
@@ -91,13 +76,9 @@ fun LibraryScreen(
     uiState: AnimWatchUiState,
     bottomInsetPadding: Dp,
     onSelectLibraryTab: (LibraryTab) -> Unit,
-    onSelectWatchlistFilter: (WatchlistCategory?) -> Unit,
     onUpdateWatchlistCategory: (String, WatchlistCategory?) -> Unit,
     onRemoveHistory: (String) -> Unit,
     onClearAllHistory: () -> Unit,
-    onPauseDownload: (String) -> Unit,
-    onResumeDownload: (String) -> Unit,
-    onRemoveDownload: (String) -> Unit,
     onAnimeClick: (String) -> Unit,
     onPlayAnime: (String, String?) -> Unit,
     modifier: Modifier = Modifier
@@ -138,7 +119,6 @@ fun LibraryScreen(
                     val count = when (tab) {
                         LibraryTab.WATCHLIST -> visibleSavedCount
                         LibraryTab.HISTORY -> visibleHistoryCount
-                        LibraryTab.DOWNLOADS -> uiState.downloads.size
                     }
                     Box(
                         modifier = Modifier
@@ -182,17 +162,6 @@ fun LibraryScreen(
                 onRemoveItem = onRemoveHistory,
                 onAnimeClick = onAnimeClick,
                 onResumeClick = { progress -> onPlayAnime(progress.animeId, progress.episodeId) }
-            )
-
-            LibraryTab.DOWNLOADS -> DownloadsContent(
-                downloads = uiState.downloads,
-                deviceStorage = uiState.deviceStorage,
-                bottomInsetPadding = bottomInsetPadding,
-                onPause = onPauseDownload,
-                onResume = onResumeDownload,
-                onRemove = onRemoveDownload,
-                onPlayOffline = { task -> onPlayAnime(task.animeId, task.episodeId) },
-                onAnimeClick = onAnimeClick
             )
         }
     }
@@ -447,345 +416,74 @@ private fun HistoryContent(
                             showKanjiWatermark = false,
                             decodeSizePx = 280
                         )
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .size(30.dp)
-                                    .clip(CircleShape)
-                                    .background(MediaScrimDark.copy(alpha = 0.72f))
-                                    .border(1.dp, GoldBright.copy(alpha = 0.8f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = "Lanjut",
-                                    tint = MediaTextLight,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column(
+                        Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .clickable { onAnimeClick(anime.id) }
+                                .align(Alignment.Center)
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(MediaScrimDark.copy(alpha = 0.72f))
+                                .border(1.dp, GoldBright.copy(alpha = 0.8f), CircleShape),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                GoldTagChip(text = "Ep ${progress.episodeNumber}", highlighted = true)
-                                Text(
-                                    text = progress.updatedAtLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextTertiary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(5.dp))
-                            Text(
-                                text = anime.title,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(5.dp))
-                            AnalogMeterGauge(
-                                progress = progress.progressFraction.coerceAtLeast(0.06f),
-                                height = 5.dp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "${formatTimeSeconds(progress.positionSeconds)} / ${formatTimeSeconds(progress.durationSeconds)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextTertiary
-                            )
-                        }
-
-                        IconButton(onClick = { onRemoveItem(anime.id) }) {
                             Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
-                                contentDescription = "Hapus",
-                                tint = TextTertiary,
-                                modifier = Modifier.size(20.dp)
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = "Lanjut",
+                                tint = MediaTextLight,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DownloadsContent(
-    downloads: List<DownloadTask>,
-    deviceStorage: DeviceStorageInfo,
-    bottomInsetPadding: Dp,
-    onPause: (String) -> Unit,
-    onResume: (String) -> Unit,
-    onRemove: (String) -> Unit,
-    onPlayOffline: (DownloadTask) -> Unit,
-    onAnimeClick: (String) -> Unit
-) {
-    LazyColumn(
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = 8.dp,
-            bottom = bottomInsetPadding
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(ObsidianCard)
-                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
-                    .padding(16.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Storage,
-                            contentDescription = null,
-                            tint = GoldPrimary,
-                            modifier = Modifier.size(19.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Penyimpanan Perangkat",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = TextPrimary
-                        )
-                    }
-                    Text(
-                        text = if (deviceStorage.totalDeviceBytes > 0L) {
-                            "Tersedia ${deviceStorage.availableLabel}"
-                        } else {
-                            "Memindai..."
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GoldPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-                AnalogMeterGauge(
-                    progress = deviceStorage.deviceUsedFraction.coerceIn(0.02f, 1f),
-                    height = 7.dp
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Terpakai ${deviceStorage.usedLabel} / ${deviceStorage.totalLabel}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                    Text(
-                        text = "AnimWatch: ${deviceStorage.offlineUsedLabel}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GoldPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${deviceStorage.storagePathLabel} • Cache ${deviceStorage.cacheLabel}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextTertiary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-
-        if (downloads.isEmpty()) {
-            item {
-                EmptyLibraryState(
-                    icon = Icons.Rounded.DownloadDone,
-                    title = "Belum ada paket episode offline",
-                    subtitle = "Tekan tombol Unduh di Detail Anime atau Player untuk menyimpan paket episode (poster, sinopsis & subtitle) ke penyimpanan perangkat."
-                )
-            }
-        } else {
-            items(downloads, key = { it.episodeId }) { task ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(ObsidianCard)
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                        .clickable {
-                            if (task.status == DownloadStatus.COMPLETED) onPlayOffline(task)
-                            else onAnimeClick(task.animeId)
-                        }
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(60.dp)
-                            .aspectRatio(0.76f)
-                            .clip(RoundedCornerShape(12.dp))
-                    ) {
-                        AnimePosterArtwork(
-                            artTheme = task.artTheme,
-                            title = task.animeTitle,
-                            posterUrl = task.posterUrl,
-                            modifier = Modifier.fillMaxSize(),
-                            showKanjiWatermark = false,
-                            decodeSizePx = 220
-                        )
                     }
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onAnimeClick(anime.id) }
+                    ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            GoldTagChip(
-                                text = "Ep ${task.episodeNumber} • ${task.qualityLabel}",
-                                highlighted = task.status == DownloadStatus.COMPLETED
-                            )
+                            GoldTagChip(text = "Ep ${progress.episodeNumber}", highlighted = true)
                             Text(
-                                text = when (task.status) {
-                                    DownloadStatus.COMPLETED -> formatStorageBytes(task.sizeBytes)
-                                    DownloadStatus.DOWNLOADING -> "${(task.progress * 100).toInt()}%"
-                                    DownloadStatus.PAUSED -> "Jeda ${(task.progress * 100).toInt()}%"
-                                },
+                                text = progress.updatedAtLabel,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (task.status == DownloadStatus.COMPLETED) StatusEmerald else GoldPrimary
+                                color = TextTertiary
                             )
                         }
                         Spacer(modifier = Modifier.height(5.dp))
                         Text(
-                            text = task.animeTitle,
+                            text = anime.title,
                             style = MaterialTheme.typography.titleSmall,
                             color = TextPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(5.dp))
+                        AnalogMeterGauge(
+                            progress = progress.progressFraction.coerceAtLeast(0.06f),
+                            height = 5.dp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = task.episodeTitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            text = "${formatTimeSeconds(progress.positionSeconds)} / ${formatTimeSeconds(progress.durationSeconds)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                    }
 
-                            if (task.status != DownloadStatus.COMPLETED) {
-                                Spacer(modifier = Modifier.height(7.dp))
-                                AnalogMeterGauge(
-                                    progress = task.progress.coerceIn(0.02f, 1f),
-                                    height = 5.dp
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        when (task.status) {
-                            DownloadStatus.COMPLETED -> {
-                                IconButton(
-                                    onClick = { onPlayOffline(task) },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(GoldGradientBrush)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.PlayArrow,
-                                        contentDescription = "Putar Offline",
-                                        tint = TextOnGold
-                                    )
-                                }
-                            }
-
-                            DownloadStatus.DOWNLOADING -> {
-                                IconButton(
-                                    onClick = { onPause(task.episodeId) },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(GoldTint)
-                                ) {
-                                    TapeReelSpinner(isSpinning = true, size = 18.dp, tint = GoldPrimary)
-                                }
-                            }
-
-                            DownloadStatus.PAUSED -> {
-                                IconButton(
-                                    onClick = { onResume(task.episodeId) },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(GoldTint)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Downloading,
-                                        contentDescription = "Lanjutkan",
-                                        tint = GoldPrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        IconButton(onClick = { onRemove(task.episodeId) }) {
-                            Icon(
-                                imageVector = Icons.Rounded.DeleteOutline,
-                                contentDescription = "Hapus Unduhan",
-                                tint = TextTertiary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                    IconButton(onClick = { onRemoveItem(anime.id) }) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = "Hapus",
+                            tint = TextTertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun FilterChipPill(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(
-                if (selected) GoldGradientBrush
-                else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
-            )
-            .border(
-                if (selected) 0.dp else 0.75.dp,
-                if (selected) Color.Transparent else GoldSubtleBorder,
-                CircleShape
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) TextOnGold else TextSecondary,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-        )
     }
 }
 

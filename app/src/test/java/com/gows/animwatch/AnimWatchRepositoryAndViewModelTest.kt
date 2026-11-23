@@ -133,13 +133,28 @@ class AnimWatchRepositoryAndViewModelTest {
         assertTrue(vm.uiState.value.isAuthenticated)
         assertTrue(vm.uiState.value.isGuestSession)
 
-        // Logout then Demo VIP login -> enters Theme Onboarding first
+        // Google Profile Sign-In works directly and Custom Profile editor updates user profile + comments
         vm.logout()
-        vm.loginDemoVip()
+        assertFalse(vm.uiState.value.isAuthenticated)
+        vm.loginWithGoogleProfile("adrian.google@gmail.com", "Adrian Google", "https://example.com/avatar.png")
         assertTrue(vm.uiState.value.isAuthenticated)
         assertFalse(vm.uiState.value.isGuestSession)
-        assertFalse(vm.uiState.value.hasCompletedThemeSetup)
-        assertEquals("Adrian Vallenz", vm.uiState.value.userProfile.displayName)
+        assertEquals("Adrian Google", vm.uiState.value.userProfile.displayName)
+        assertEquals("Google Member", vm.uiState.value.userProfile.memberTier)
+
+        vm.updateProfile(
+            displayName = "Adrian Custom",
+            handle = "@adriancustom",
+            bio = "Custom bio wibu sejati",
+            emblem = "AC",
+            avatarUrl = "https://example.com/custom.png",
+            memberTier = "Wibu Sejati",
+            favoriteGenre = "Fantasy"
+        )
+        assertEquals("Adrian Custom", vm.uiState.value.userProfile.displayName)
+        assertEquals("@adriancustom", vm.uiState.value.userProfile.handle)
+        assertEquals("Wibu Sejati", vm.uiState.value.userProfile.memberTier)
+        assertEquals("Fantasy", vm.uiState.value.userProfile.favoriteGenre)
 
         // Customize Light/Dark + non-gold accent + preferences and complete onboarding
         vm.setAppearanceMode(AppAppearanceMode.LIGHT)
@@ -159,6 +174,15 @@ class AnimWatchRepositoryAndViewModelTest {
         vm.markAnimeCompleted(sampleAnime.id)
         assertEquals(WatchlistCategory.COMPLETED, vm.uiState.value.watchlist[sampleAnime.id])
         assertTrue((vm.uiState.value.watchedEpisodes[sampleAnime.id] ?: 0) >= sampleAnime.totalEpisodes)
+
+        // Delete own comment works
+        val beforeCount = vm.uiState.value.comments.size
+        vm.postComment(sampleAnime.id, 1, "Komentar uji coba hapus", isSpoiler = false)
+        val createdComment = vm.uiState.value.comments.first()
+        assertEquals("Adrian Custom", createdComment.author)
+        assertEquals("Wibu Sejati", createdComment.authorBadge)
+        vm.deleteComment(createdComment.id)
+        assertEquals(beforeCount, vm.uiState.value.comments.size)
 
         // Opening "Dub Indo" genre routes cleanly to AudioFilter.DUB_INDO instead of genre tag
         vm.openExploreWithGenre("Dub Indo")

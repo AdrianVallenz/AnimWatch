@@ -485,12 +485,17 @@ data class CommentItem(
     val animeId: String,
     val episodeNumber: Int?,
     val author: String,
+    val authorHandle: String = "",
     val authorBadge: String,
+    val authorEmblem: String = "",
+    val authorAvatarUrl: String = "",
     val content: String,
     val timeAgo: String,
     val likes: Int,
     val isLiked: Boolean = false,
-    val isSpoiler: Boolean = false
+    val isSpoiler: Boolean = false,
+    val isOwn: Boolean = false,
+    val parentId: String? = null
 )
 
 data class NotificationItem(
@@ -520,6 +525,7 @@ data class UserProfile(
     val handle: String,
     val bio: String,
     val avatarEmblem: String,
+    val avatarUrl: String = "",
     val memberTier: String,
     val watchedHours: Int,
     val completedAnimeCount: Int,
@@ -533,6 +539,5 @@ data class PlaybackSettings(
     val subtitleSize: SubtitleSizeOption = SubtitleSizeOption.NORMAL,
     val autoPlayNext: Boolean = true,
     val autoSkipIntro: Boolean = false,
-    val wifiOnlyDownloads: Boolean = true,
     val episodeNotifications: Boolean = true
 )

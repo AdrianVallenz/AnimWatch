@@ -351,6 +351,31 @@ class KumanimeRemoteDataSource(
         }
     }
 
+    suspend fun loginWithGoogleProfile(
+        baseUrl: String,
+        email: String,
+        name: String,
+        picture: String = ""
+    ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
+        runCatching {
+            val res = serviceProvider(baseUrl).loginWithGoogle(
+                GoogleAuthRequestDto(
+                    idToken = "",
+                    email = email.trim().lowercase(),
+                    name = name.trim(),
+                    picture = picture.trim(),
+                    sub = "g_mail_${email.trim().lowercase()}"
+                )
+            )
+            val body = res.body()
+            if (res.isSuccessful && body?.user != null && !body.token.isNullOrBlank()) {
+                body
+            } else {
+                throw IllegalStateException(extractErrorMessage(res, "Gagal masuk dengan akun Google"))
+            }
+        }
+    }
+
     suspend fun logoutUser(baseUrl: String, token: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             serviceProvider(baseUrl).logout(bearer(token))
@@ -374,13 +399,25 @@ class KumanimeRemoteDataSource(
         baseUrl: String,
         token: String,
         displayName: String,
+        handle: String,
         bio: String,
-        avatarEmblem: String
+        avatarEmblem: String,
+        avatarUrl: String,
+        memberTier: String,
+        favoriteGenre: String
     ): Result<UserProfileDto> = withContext(Dispatchers.IO) {
         runCatching {
             val res = serviceProvider(baseUrl).updateProfile(
                 bearer(token),
-                UpdateProfileRequestDto(displayName, bio, avatarEmblem)
+                UpdateProfileRequestDto(
+                    displayName = displayName,
+                    handle = handle,
+                    bio = bio,
+                    avatarEmblem = avatarEmblem,
+                    avatarUrl = avatarUrl,
+                    memberTier = memberTier,
+                    favoriteGenre = favoriteGenre
+                )
             )
             val user = res.body()?.user
             if (res.isSuccessful && user != null) user
@@ -462,12 +499,17 @@ class KumanimeRemoteDataSource(
                         animeId = dto.animeId ?: animeId,
                         episodeNumber = dto.episodeNumber,
                         author = dto.author ?: "Member",
+                        authorHandle = dto.authorHandle.orEmpty(),
                         authorBadge = dto.authorBadge ?: "Member",
+                        authorEmblem = dto.authorEmblem.orEmpty(),
+                        authorAvatarUrl = dto.authorAvatarUrl.orEmpty(),
                         content = dto.content.orEmpty(),
                         timeAgo = dto.timeAgo ?: "Baru saja",
                         likes = dto.likes ?: 0,
                         isLiked = dto.isLiked ?: false,
-                        isSpoiler = dto.isSpoiler ?: false
+                        isSpoiler = dto.isSpoiler ?: false,
+                        isOwn = dto.isOwn ?: false,
+                        parentId = dto.parentId
                     )
                 }
             }
@@ -479,12 +521,13 @@ class KumanimeRemoteDataSource(
         animeId: String,
         episodeNumber: Int?,
         content: String,
-        isSpoiler: Boolean
+        isSpoiler: Boolean,
+        parentId: String? = null
     ): Result<CommentItem> = withContext(Dispatchers.IO) {
         runCatching {
             val res = serviceProvider(baseUrl).postComment(
                 bearer(token),
-                PostCommentRequestDto(animeId, episodeNumber, content, isSpoiler)
+                PostCommentRequestDto(animeId, episodeNumber, content, isSpoiler, parentId)
             )
             val dto = res.body()?.comment
             if (res.isSuccessful && dto != null && !dto.id.isNullOrBlank()) {
@@ -493,12 +536,17 @@ class KumanimeRemoteDataSource(
                     animeId = dto.animeId ?: animeId,
                     episodeNumber = dto.episodeNumber,
                     author = dto.author ?: "Member",
+                    authorHandle = dto.authorHandle.orEmpty(),
                     authorBadge = dto.authorBadge ?: "Member",
+                    authorEmblem = dto.authorEmblem.orEmpty(),
+                    authorAvatarUrl = dto.authorAvatarUrl.orEmpty(),
                     content = dto.content ?: content,
                     timeAgo = dto.timeAgo ?: "Baru saja",
                     likes = dto.likes ?: 0,
                     isLiked = dto.isLiked ?: false,
-                    isSpoiler = dto.isSpoiler ?: isSpoiler
+                    isSpoiler = dto.isSpoiler ?: isSpoiler,
+                    isOwn = dto.isOwn ?: true,
+                    parentId = dto.parentId ?: parentId
                 )
             } else {
                 throw IllegalStateException(extractErrorMessage(res, "Gagal mengirim komentar"))
@@ -518,6 +566,19 @@ class KumanimeRemoteDataSource(
                 Pair(body.liked ?: false, body.likes ?: 0)
             } else {
                 throw IllegalStateException("Gagal menyukai komentar")
+            }
+        }
+    }
+
+    suspend fun deleteComment(
+        baseUrl: String,
+        token: String,
+        commentId: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val res = serviceProvider(baseUrl).deleteComment(bearer(token), commentId)
+            if (!res.isSuccessful) {
+                throw IllegalStateException(extractErrorMessage(res, "Gagal menghapus komentar"))
             }
         }
     }

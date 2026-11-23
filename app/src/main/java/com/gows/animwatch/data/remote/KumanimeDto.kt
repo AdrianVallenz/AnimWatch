@@ -212,7 +212,11 @@ data class LoginRequestDto(
 )
 
 data class GoogleAuthRequestDto(
-    @SerializedName("idToken") val idToken: String
+    @SerializedName("idToken") val idToken: String = "",
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("picture") val picture: String? = null,
+    @SerializedName("sub") val sub: String? = null
 )
 
 data class AuthConfigDto(
@@ -229,6 +233,7 @@ data class UserProfileDto(
     @SerializedName("handle") val handle: String? = null,
     @SerializedName("bio") val bio: String? = null,
     @SerializedName("avatarEmblem") val avatarEmblem: String? = null,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
     @SerializedName("memberTier") val memberTier: String? = null,
     @SerializedName("appearanceMode") val appearanceMode: String? = null,
     @SerializedName("accentTheme") val accentTheme: String? = null,
@@ -260,8 +265,12 @@ data class AuthResponseDto(
 
 data class UpdateProfileRequestDto(
     @SerializedName("displayName") val displayName: String,
+    @SerializedName("handle") val handle: String? = null,
     @SerializedName("bio") val bio: String,
-    @SerializedName("avatarEmblem") val avatarEmblem: String
+    @SerializedName("avatarEmblem") val avatarEmblem: String,
+    @SerializedName("avatarUrl") val avatarUrl: String? = null,
+    @SerializedName("memberTier") val memberTier: String? = null,
+    @SerializedName("favoriteGenre") val favoriteGenre: String? = null
 )
 
 data class UpdatePreferencesRequestDto(
@@ -297,12 +306,17 @@ data class CommentDto(
     @SerializedName("animeId") val animeId: String? = null,
     @SerializedName("episodeNumber") val episodeNumber: Int? = null,
     @SerializedName("author") val author: String? = null,
+    @SerializedName("authorHandle") val authorHandle: String? = null,
     @SerializedName("authorBadge") val authorBadge: String? = null,
+    @SerializedName("authorEmblem") val authorEmblem: String? = null,
+    @SerializedName("authorAvatarUrl") val authorAvatarUrl: String? = null,
     @SerializedName("content") val content: String? = null,
     @SerializedName("timeAgo") val timeAgo: String? = null,
     @SerializedName("likes") val likes: Int? = null,
     @SerializedName("isLiked") val isLiked: Boolean? = null,
-    @SerializedName("isSpoiler") val isSpoiler: Boolean? = null
+    @SerializedName("isSpoiler") val isSpoiler: Boolean? = null,
+    @SerializedName("isOwn") val isOwn: Boolean? = null,
+    @SerializedName("parentId") val parentId: String? = null
 )
 
 data class CommentsListResponseDto(
@@ -314,7 +328,8 @@ data class PostCommentRequestDto(
     @SerializedName("animeId") val animeId: String,
     @SerializedName("episodeNumber") val episodeNumber: Int?,
     @SerializedName("content") val content: String,
-    @SerializedName("isSpoiler") val isSpoiler: Boolean
+    @SerializedName("isSpoiler") val isSpoiler: Boolean,
+    @SerializedName("parentId") val parentId: String? = null
 )
 
 data class PostCommentResponseDto(

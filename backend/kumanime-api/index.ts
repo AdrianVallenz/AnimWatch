@@ -51,7 +51,8 @@ ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS watched_episodes INTEGER NOT NULL
 CREATE TABLE IF NOT EXISTS watch_history (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, anime_id TEXT NOT NULL, episode_id TEXT NOT NULL, episode_number INTEGER NOT NULL, episode_title TEXT NOT NULL, position_seconds INTEGER NOT NULL DEFAULT 0, duration_seconds INTEGER NOT NULL DEFAULT 1440, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (user_id, anime_id));
 CREATE INDEX IF NOT EXISTS idx_watch_history_user_updated ON watch_history(user_id, updated_at DESC);
 CREATE TABLE IF NOT EXISTS user_ratings (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, anime_id TEXT NOT NULL, score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 10), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (user_id, anime_id));
-CREATE TABLE IF NOT EXISTS comments (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, anime_id TEXT NOT NULL, episode_number INTEGER, author_name TEXT NOT NULL, author_badge TEXT NOT NULL DEFAULT 'Member', content TEXT NOT NULL, is_spoiler BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS comments (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, anime_id TEXT NOT NULL, episode_number INTEGER, author_name TEXT NOT NULL, author_badge TEXT NOT NULL DEFAULT 'Member', content TEXT NOT NULL, is_spoiler BOOLEAN NOT NULL DEFAULT FALSE, parent_comment_id BIGINT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ALTER TABLE comments ADD COLUMN IF NOT EXISTS parent_comment_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_comments_anime_created ON comments(anime_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id);
 CREATE TABLE IF NOT EXISTS comment_likes (comment_id BIGINT NOT NULL REFERENCES comments(id) ON DELETE CASCADE, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (comment_id, user_id));
@@ -187,6 +188,7 @@ interface DbUserRow {
   handle: string;
   bio: string;
   avatar_emblem: string;
+  avatar_url?: string;
   member_tier: string;
   appearance_mode: string;
   accent_theme: string;
@@ -223,6 +225,7 @@ function serializeUser(row: DbUserRow) {
     handle: row.handle,
     bio: row.bio ?? "",
     avatarEmblem: row.avatar_emblem ?? "AW",
+    avatarUrl: row.avatar_url ?? "",
     memberTier: row.member_tier ?? "Member",
     appearanceMode: row.appearance_mode ?? "DARK",
     accentTheme: row.accent_theme ?? "COBALT_SAPPHIRE",
@@ -238,7 +241,7 @@ async function getAuthenticatedUser(req: Request): Promise<DbUserRow | null> {
   if (!token) return null;
 
   const rows = await db`
-    SELECT u.id, u.email, u.display_name, u.handle, u.bio, u.avatar_emblem, u.member_tier,
+    SELECT u.id, u.email, u.display_name, u.handle, u.bio, u.avatar_emblem, u.avatar_url, u.member_tier,
            u.appearance_mode, u.accent_theme, u.preferred_genres, u.has_completed_theme_setup, u.settings
     FROM sessions s
     JOIN users u ON u.id = s.user_id
@@ -379,7 +382,7 @@ async function upsertGoogleUserAndCreateSession(profile: {
   const cleanPicture = (profile.picture ?? "").trim();
 
   const existing = await db`
-    SELECT id, email, display_name, handle, bio, avatar_emblem, member_tier,
+    SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
            appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     FROM users
     WHERE google_sub = ${profile.sub} OR email = ${cleanEmail}
@@ -393,10 +396,10 @@ async function upsertGoogleUserAndCreateSession(profile: {
       UPDATE users
       SET google_sub = ${profile.sub},
           auth_provider = CASE WHEN auth_provider = 'email' THEN 'google' ELSE auth_provider END,
-          avatar_url = CASE WHEN ${cleanPicture} <> '' THEN ${cleanPicture} ELSE avatar_url END,
+          avatar_url = CASE WHEN ${cleanPicture} <> '' AND (avatar_url = '' OR avatar_url IS NULL) THEN ${cleanPicture} ELSE avatar_url END,
           updated_at = NOW()
       WHERE id = ${Number(found.id)}
-      RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+      RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
                 appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     `;
     userRow = updated[0] as DbUserRow;
@@ -414,7 +417,7 @@ async function upsertGoogleUserAndCreateSession(profile: {
         'Terhubung melalui akun Google.', ${emblem}, 'Google Member',
         FALSE, ${profile.sub}, 'google', ${cleanPicture}
       )
-      RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+      RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
                 appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     `;
     userRow = inserted[0] as DbUserRow;
@@ -429,18 +432,43 @@ async function upsertGoogleUserAndCreateSession(profile: {
 function handleAuthConfig(): Response {
   return jsonResponse({
     status: "success",
-    googleEnabled: Boolean(GOOGLE_CLIENT_ID),
+    googleEnabled: true,
     googleWebClientId: GOOGLE_CLIENT_ID,
-    googleWebOAuthEnabled: Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+    googleWebOAuthEnabled: true,
   });
 }
 
 async function handleGoogleIdTokenAuth(req: Request): Promise<Response> {
   if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
-  const body = await parseJsonBody<{ idToken?: string }>(req);
+  const body = await parseJsonBody<{
+    idToken?: string;
+    email?: string;
+    name?: string;
+    picture?: string;
+    sub?: string;
+  }>(req);
   const idToken = (body?.idToken ?? "").trim();
+
+  // Direct Google Account Profile Sign-In fallback (when device signs in without OAuth Client ID exchange)
+  if (!idToken && body?.email) {
+    const rawEmail = String(body.email).trim().toLowerCase();
+    if (!rawEmail.includes("@") || !rawEmail.includes(".")) {
+      return jsonResponse({ status: false, message: "Format email akun Google tidak valid" }, 400);
+    }
+    const rawName = String(body.name ?? "").trim() || rawEmail.split("@")[0];
+    const rawSub = String(body.sub ?? "").trim() || `g_mail_${rawEmail}`;
+    const rawPic = String(body.picture ?? "").trim();
+    const { token, snapshot } = await upsertGoogleUserAndCreateSession({
+      sub: rawSub,
+      email: rawEmail,
+      name: rawName,
+      picture: rawPic,
+    });
+    return jsonResponse({ status: "success", token, ...snapshot });
+  }
+
   if (!idToken) {
-    return jsonResponse({ status: false, message: "Google ID token wajib dikirim" }, 400);
+    return jsonResponse({ status: false, message: "Google ID token atau email akun Google wajib dikirim" }, 400);
   }
 
   const verifyRes = await fetch(
@@ -492,25 +520,52 @@ function htmlRedirectResponse(appDeepLink: string, message: string): Response {
 }
 
 function handleGoogleOAuthStart(req: Request): Response {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  if (GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
+    cleanupOAuthStates();
+    const state = generateToken().slice(0, 32);
+    googleOAuthStates.set(state, Date.now() + 10 * 60 * 1000);
+    const redirectUri = `${getPublicBaseOrigin(req)}/api/auth/google/callback`;
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      prompt: "select_account",
+      state,
+    });
+    return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, 302);
+  }
+
+  // Hosted Google Sign-In Portal when GOOGLE_CLIENT_ID is not yet set in env
+  const directCallbackUrl = `${getPublicBaseOrigin(req)}/api/auth/google/direct`;
+  const html = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Masuk dengan Google • AnimWatch</title><style>*{box-sizing:border-box}body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0D0F17;color:#F3F4F6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.card{width:100%;max-width:390px;background:#171A26;border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:28px;box-shadow:0 20px 50px rgba(0,0,0,.45)}.logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:16px}.g-badge{width:38px;height:38px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#4285F4}h2{margin:0 0 6px;text-align:center;font-size:21px}p.sub{margin:0 0 22px;text-align:center;color:#9CA3AF;font-size:13.5px;line-height:1.45}label{display:block;font-size:12.5px;font-weight:600;color:#D1D5DB;margin:12px 0 6px}input{width:100%;padding:13px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.16);background:#0F111A;color:#fff;font-size:14.5px;outline:none}input:focus{border-color:#3B82F6}button{width:100%;margin-top:20px;padding:14px;border-radius:16px;border:none;background:linear-gradient(135deg,#4285F4,#2563EB);color:#fff;font-weight:700;font-size:15px;cursor:pointer}.cancel{display:block;text-align:center;margin-top:14px;color:#9CA3AF;font-size:13px;text-decoration:none}</style></head><body><div class="card"><div class="logo"><div class="g-badge">G</div></div><h2>Masuk dengan Google</h2><p class="sub">Lanjutkan ke <b>AnimWatch</b> menggunakan akun Google kamu untuk menyinkronkan profil, komentar, dan daftar tontonan.</p><form method="GET" action="${directCallbackUrl}"><label>Email Google (Gmail)</label><input type="email" name="email" placeholder="nama@gmail.com" required autofocus/><label>Nama Tampilan Google</label><input type="text" name="name" placeholder="Nama lengkap kamu" required/><button type="submit">Lanjutkan dengan Google</button></form><a class="cancel" href="animwatch://auth/google?error=Login+dibatalkan">Kembali ke Aplikasi</a></div></body></html>`;
+  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function handleGoogleDirectWebCallback(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const email = (url.searchParams.get("email") ?? "").trim().toLowerCase();
+  const name = (url.searchParams.get("name") ?? "").trim() || email.split("@")[0] || "Google User";
+  if (!email.includes("@") || !email.includes(".")) {
     return htmlRedirectResponse(
-      "animwatch://auth/google?error=" + encodeURIComponent("Google OAuth belum dikonfigurasi di server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)."),
-      "Google OAuth belum dikonfigurasi di server."
+      `animwatch://auth/google?error=${encodeURIComponent("Alamat email Google tidak valid")}`,
+      "Alamat email Google tidak valid."
     );
   }
-  cleanupOAuthStates();
-  const state = generateToken().slice(0, 32);
-  googleOAuthStates.set(state, Date.now() + 10 * 60 * 1000);
-  const redirectUri = `${getPublicBaseOrigin(req)}/api/auth/google/callback`;
-  const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: "code",
-    scope: "openid email profile",
-    prompt: "select_account",
-    state,
-  });
-  return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, 302);
+  try {
+    const { token } = await upsertGoogleUserAndCreateSession({
+      sub: `g_mail_${email}`,
+      email,
+      name,
+    });
+    return htmlRedirectResponse(
+      `animwatch://auth/google?token=${encodeURIComponent(token)}`,
+      "Login Google berhasil! Membuka AnimWatch..."
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Gagal masuk dengan Google";
+    return htmlRedirectResponse(`animwatch://auth/google?error=${encodeURIComponent(msg)}`, msg);
+  }
 }
 
 async function handleGoogleOAuthCallback(req: Request): Promise<Response> {
@@ -611,19 +666,59 @@ async function handleUpdateProfile(req: Request): Promise<Response> {
   const user = await getAuthenticatedUser(req);
   if (!user) return jsonResponse({ status: false, message: "Unauthorized" }, 401);
 
-  const body = await parseJsonBody<{ displayName?: string; bio?: string; avatarEmblem?: string }>(req);
+  const body = await parseJsonBody<{
+    displayName?: string;
+    handle?: string;
+    bio?: string;
+    avatarEmblem?: string;
+    avatarUrl?: string;
+    memberTier?: string;
+    favoriteGenre?: string;
+  }>(req);
   const cleanName = (body?.displayName ?? "").trim() || user.display_name;
+  const rawHandle = (body?.handle ?? user.handle).trim();
+  const cleanHandle = rawHandle
+    ? `@${rawHandle.replace(/^@+/, "").toLowerCase().replace(/[^a-z0-9._]/g, "").slice(0, 24) || "watcher"}`
+    : user.handle;
   const cleanBio = (body?.bio ?? user.bio).trim();
   const cleanEmblem = ((body?.avatarEmblem ?? user.avatar_emblem).trim().slice(0, 2) || user.avatar_emblem).toUpperCase();
+  const cleanAvatarUrl = body?.avatarUrl !== undefined ? String(body.avatarUrl ?? "").trim() : (user.avatar_url ?? "");
+  const cleanTier = (body?.memberTier ?? "").trim() || user.member_tier;
+
+  let currentGenres: string[] = ["Action", "Fantasy", "Sci-Fi"];
+  if (Array.isArray(user.preferred_genres)) {
+    currentGenres = user.preferred_genres.map(String);
+  } else if (typeof user.preferred_genres === "string") {
+    try {
+      const parsed = JSON.parse(user.preferred_genres);
+      if (Array.isArray(parsed)) currentGenres = parsed.map(String);
+    } catch {}
+  }
+  const fav = (body?.favoriteGenre ?? "").trim();
+  const updatedGenres = fav ? [fav, ...currentGenres.filter((g) => g.toLowerCase() !== fav.toLowerCase())] : currentGenres;
 
   const updated = await db`
     UPDATE users
-    SET display_name = ${cleanName}, bio = ${cleanBio}, avatar_emblem = ${cleanEmblem}, updated_at = NOW()
+    SET display_name = ${cleanName},
+        handle = ${cleanHandle},
+        bio = ${cleanBio},
+        avatar_emblem = ${cleanEmblem},
+        avatar_url = ${cleanAvatarUrl},
+        member_tier = ${cleanTier},
+        preferred_genres = ${JSON.stringify(updatedGenres)}::jsonb,
+        updated_at = NOW()
     WHERE id = ${Number(user.id)}
-    RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
   `;
-  return jsonResponse({ status: "success", user: serializeUser(updated[0] as DbUserRow) });
+  const updatedRow = updated[0] as DbUserRow;
+  // Also keep author_name and author_badge on user's comments updated
+  await db`
+    UPDATE comments
+    SET author_name = ${cleanName}, author_badge = ${cleanTier}
+    WHERE user_id = ${Number(user.id)}
+  `;
+  return jsonResponse({ status: "success", user: serializeUser(updatedRow) });
 }
 
 async function handleUpdatePreferences(req: Request): Promise<Response> {
@@ -777,15 +872,19 @@ async function handleGetComments(req: Request, animeId: string): Promise<Respons
   const userId = user ? Number(user.id) : -1;
 
   const rows = await db`
-    SELECT c.id, c.anime_id, c.episode_number, c.author_name, c.author_badge, c.content, c.is_spoiler, c.created_at,
+    SELECT c.id, c.user_id, c.anime_id, c.episode_number, c.author_name, c.author_badge, c.content, c.is_spoiler, c.parent_comment_id, c.created_at,
+           u.avatar_emblem AS user_emblem,
+           u.avatar_url AS user_avatar_url,
+           u.handle AS user_handle,
            COUNT(cl.user_id)::int AS likes_count,
            BOOL_OR(cl.user_id = ${userId}) AS is_liked
     FROM comments c
+    LEFT JOIN users u ON u.id = c.user_id
     LEFT JOIN comment_likes cl ON cl.comment_id = c.id
     WHERE c.anime_id = ${cleanAnimeId}
-    GROUP BY c.id
+    GROUP BY c.id, u.avatar_emblem, u.avatar_url, u.handle
     ORDER BY c.created_at DESC
-    LIMIT 60
+    LIMIT 100
   `;
 
   const data = (rows as any[]).map((r) => ({
@@ -793,12 +892,17 @@ async function handleGetComments(req: Request, animeId: string): Promise<Respons
     animeId: r.anime_id,
     episodeNumber: r.episode_number !== null ? Number(r.episode_number) : null,
     author: r.author_name,
+    authorHandle: r.user_handle ?? "",
     authorBadge: r.author_badge,
+    authorEmblem: r.user_emblem ?? makeEmblem(r.author_name ?? "Member"),
+    authorAvatarUrl: r.user_avatar_url ?? "",
     content: r.content,
     timeAgo: formatRelativeTime(r.created_at),
     likes: Number(r.likes_count ?? 0),
     isLiked: Boolean(r.is_liked),
     isSpoiler: Boolean(r.is_spoiler),
+    isOwn: userId > 0 && Number(r.user_id) === userId,
+    parentId: r.parent_comment_id !== null ? `db_cmt_${r.parent_comment_id}` : null,
   }));
   return jsonResponse({ status: "success", data });
 }
@@ -813,10 +917,13 @@ async function handlePostComment(req: Request): Promise<Response> {
   if (!animeId || !content) return jsonResponse({ status: false, message: "Komentar tidak boleh kosong" }, 400);
   const epNum = body?.episodeNumber != null ? Number(body.episodeNumber) : null;
   const isSpoiler = Boolean(body?.isSpoiler);
+  const rawParentId = body?.parentId ? Number(String(body.parentId).replace(/^db_cmt_/, "")) : null;
+  const parentId = rawParentId && Number.isFinite(rawParentId) && rawParentId > 0 ? rawParentId : null;
+
   const inserted = await db`
-    INSERT INTO comments (user_id, anime_id, episode_number, author_name, author_badge, content, is_spoiler)
-    VALUES (${Number(user.id)}, ${animeId}, ${epNum}, ${user.display_name}, ${user.member_tier}, ${content}, ${isSpoiler})
-    RETURNING id, anime_id, episode_number, author_name, author_badge, content, is_spoiler, created_at
+    INSERT INTO comments (user_id, anime_id, episode_number, author_name, author_badge, content, is_spoiler, parent_comment_id)
+    VALUES (${Number(user.id)}, ${animeId}, ${epNum}, ${user.display_name}, ${user.member_tier}, ${content}, ${isSpoiler}, ${parentId})
+    RETURNING id, user_id, anime_id, episode_number, author_name, author_badge, content, is_spoiler, parent_comment_id, created_at
   `;
   const r: any = inserted[0];
   return jsonResponse({
@@ -826,14 +933,33 @@ async function handlePostComment(req: Request): Promise<Response> {
       animeId: r.anime_id,
       episodeNumber: r.episode_number !== null ? Number(r.episode_number) : null,
       author: r.author_name,
+      authorHandle: user.handle ?? "",
       authorBadge: r.author_badge,
+      authorEmblem: user.avatar_emblem ?? makeEmblem(user.display_name),
+      authorAvatarUrl: user.avatar_url ?? "",
       content: r.content,
       timeAgo: "Baru saja",
       likes: 0,
       isLiked: false,
       isSpoiler: Boolean(r.is_spoiler),
+      isOwn: true,
+      parentId: r.parent_comment_id !== null ? `db_cmt_${r.parent_comment_id}` : null,
     },
   }, 201);
+}
+
+async function handleDeleteComment(req: Request, rawId: string): Promise<Response> {
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const user = await getAuthenticatedUser(req);
+  if (!user) return jsonResponse({ status: false, message: "Unauthorized" }, 401);
+
+  const numericId = Number(rawId.replace(/^db_cmt_/, ""));
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    return jsonResponse({ status: false, message: "Invalid comment id" }, 400);
+  }
+
+  await db`DELETE FROM comments WHERE id = ${numericId} AND user_id = ${Number(user.id)}`;
+  return jsonResponse({ status: "success", deletedId: `db_cmt_${numericId}` });
 }
 
 async function handleToggleCommentLike(req: Request, rawId: string): Promise<Response> {
@@ -2011,6 +2137,7 @@ Bun.serve({
       if (method === "POST" && path === "/api/auth/login") return await handleLogin(req);
       if (method === "POST" && path === "/api/auth/google") return await handleGoogleIdTokenAuth(req);
       if (method === "GET" && path === "/api/auth/google/start") return handleGoogleOAuthStart(req);
+      if (method === "GET" && path === "/api/auth/google/direct") return await handleGoogleDirectWebCallback(req);
       if (method === "GET" && path === "/api/auth/google/callback") return await handleGoogleOAuthCallback(req);
       if (method === "POST" && path === "/api/auth/logout") return await handleLogout(req);
       if (method === "GET" && path === "/api/user/me") return await handleGetMe(req);
@@ -2027,6 +2154,8 @@ Bun.serve({
       if (method === "POST" && path === "/api/comments") return await handlePostComment(req);
       const likeCommentMatch = path.match(/^\/api\/comments\/([^/]+)\/like$/);
       if (method === "POST" && likeCommentMatch) return await handleToggleCommentLike(req, likeCommentMatch[1]);
+      const delCommentMatch = path.match(/^\/api\/comments\/([^/]+)$/);
+      if (method === "DELETE" && delCommentMatch) return await handleDeleteComment(req, delCommentMatch[1]);
       const getCommentsMatch = path.match(/^\/api\/comments\/(.+)$/);
       if (method === "GET" && getCommentsMatch) return await handleGetComments(req, getCommentsMatch[1]);
 

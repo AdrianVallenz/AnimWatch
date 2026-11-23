@@ -356,6 +356,12 @@ class KumanimeIntegrationTest {
             id: String
         ): Response<ToggleCommentLikeResponseDto> =
             Response.success(ToggleCommentLikeResponseDto("success", liked = true, likes = 4))
+
+        override suspend fun deleteComment(
+            authHeader: String,
+            id: String
+        ): Response<SimpleStatusResponseDto> =
+            Response.success(SimpleStatusResponseDto("success"))
     }
 
     @Test

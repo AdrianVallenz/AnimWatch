@@ -193,8 +193,6 @@ fun AnimWatchApp(
                     authError = uiState.authError,
                     isGoogleLoading = uiState.isGoogleAuthLoading,
                     onClearAuthError = viewModel::clearAuthError,
-                    onLogin = viewModel::login,
-                    onRegister = viewModel::register,
                     onGoogleSignIn = {
                         val activity = localContext.findHostActivity()
                         if (activity == null) {
@@ -231,9 +229,9 @@ fun AnimWatchApp(
                             }
                         }
                     },
-                    onContinueAsGuest = viewModel::continueAsGuest,
-                    onDemoVipLogin = viewModel::loginDemoVip,
-                    onResetPasswordRequested = viewModel::requestPasswordReset
+                    onGoogleDirectSignIn = { email, displayName ->
+                        viewModel.loginWithGoogleProfile(email, displayName)
+                    }
                 )
             } else if (!uiState.hasCompletedThemeSetup || uiState.isEditingTheme) {
                 ThemeOnboardingScreen(
@@ -333,13 +331,9 @@ fun AnimWatchApp(
                                 uiState = uiState,
                                 bottomInsetPadding = bottomContentPadding,
                                 onSelectLibraryTab = viewModel::setLibraryTab,
-                                onSelectWatchlistFilter = viewModel::setWatchlistCategoryFilter,
                                 onUpdateWatchlistCategory = viewModel::setWatchlistCategory,
                                 onRemoveHistory = viewModel::removeHistoryItem,
                                 onClearAllHistory = viewModel::clearAllHistory,
-                                onPauseDownload = viewModel::pauseDownload,
-                                onResumeDownload = viewModel::resumeDownload,
-                                onRemoveDownload = viewModel::removeDownload,
                                 onAnimeClick = viewModel::openAnimeDetail,
                                 onPlayAnime = { id, epId -> viewModel.playAnime(id, epId) }
                             )
@@ -377,12 +371,12 @@ fun AnimWatchApp(
                             onUpdateWatchedEpisodes = viewModel::updateWatchedEpisodes,
                             onRateAnime = viewModel::rateAnime,
                             onToggleReminder = viewModel::toggleAnimeReminder,
-                            onDownloadEpisode = { a, ep -> viewModel.handleEpisodeDownloadAction(a, ep) },
                             onGenreClick = viewModel::openExploreWithGenre,
                             onRelatedAnimeClick = viewModel::openAnimeDetail,
                             onBookmarkClick = viewModel::toggleQuickBookmark,
                             onPostComment = viewModel::postComment,
                             onToggleCommentLike = viewModel::toggleCommentLike,
+                            onDeleteComment = viewModel::deleteComment,
                             onShowMessage = viewModel::emitMessage,
                             onShareClick = { title ->
                                 viewModel.emitMessage("Tautan '$title' disalin ke papan klip")
@@ -490,7 +484,7 @@ fun AnimWatchApp(
             if (isTabsRoot) {
                 FloatingGoldBottomNav(
                     currentTab = uiState.currentTab,
-                    libraryBadgeCount = uiState.activeDownloadCount,
+                    libraryBadgeCount = 0,
                     onSelectTab = viewModel::selectTab
                 )
             }
@@ -540,9 +534,9 @@ fun AnimWatchApp(
                     onMarkAnimeCompleted = viewModel::markAnimeCompleted,
                     onToggleLike = viewModel::toggleEpisodeLike,
                     onSelectWatchlist = viewModel::setWatchlistCategory,
-                    onDownloadEpisode = viewModel::handleEpisodeDownloadAction,
                     onPostComment = viewModel::postComment,
                     onToggleCommentLike = viewModel::toggleCommentLike,
+                    onDeleteComment = viewModel::deleteComment,
                     onOpenAnimeDetail = { animeId ->
                         viewModel.minimizePlayer()
                         viewModel.openAnimeDetail(animeId)
@@ -595,7 +589,7 @@ fun AnimWatchApp(
     }
 
     val pendingRuntimePermissions = remember(uiState.appPermissions) {
-        uiState.appPermissions.filter { it.canRequestRuntime && it.androidPermission != null }
+        uiState.appPermissions.filter { it.id != "storage" && it.canRequestRuntime && it.androidPermission != null }
     }
     val showPermissionsWelcome = uiState.isAuthenticated &&
         uiState.hasCompletedThemeSetup &&

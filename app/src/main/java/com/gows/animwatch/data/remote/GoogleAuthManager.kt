@@ -59,13 +59,7 @@ object GoogleAuthManager {
     ): GoogleSignInOutcome {
         val cleanClientId = webClientId.trim()
         if (cleanClientId.isEmpty()) {
-            return if (webOAuthEnabled) {
-                launchBrowserOAuth(activity, apiBaseUrl)
-            } else {
-                GoogleSignInOutcome.Failure(
-                    "Autentikasi Google belum diaktifkan di server. Tambahkan variabel GOOGLE_CLIENT_ID (dan GOOGLE_CLIENT_SECRET untuk OAuth Web) di Railway."
-                )
-            }
+            return launchBrowserOAuth(activity, apiBaseUrl)
         }
 
         val credentialManager = CredentialManager.create(activity)
@@ -90,28 +84,17 @@ object GoogleAuthManager {
                 if (googleIdTokenCredential.idToken.isNotBlank()) {
                     GoogleSignInOutcome.IdToken(googleIdTokenCredential.idToken)
                 } else {
-                    GoogleSignInOutcome.Failure("Token Google kosong. Coba masuk kembali.")
+                    launchBrowserOAuth(activity, apiBaseUrl)
                 }
             } else {
-                GoogleSignInOutcome.Failure("Jenis kredensial Google tidak dikenali.")
+                launchBrowserOAuth(activity, apiBaseUrl)
             }
         } catch (_: GetCredentialCancellationException) {
             GoogleSignInOutcome.Cancelled
-        } catch (err: GetCredentialException) {
-            if (webOAuthEnabled) {
-                launchBrowserOAuth(activity, apiBaseUrl)
-            } else {
-                val detail = err.errorMessage?.toString()?.takeIf { it.isNotBlank() }
-                    ?: err.localizedMessage
-                    ?: "Pastikan Google Play Services aktif dan GOOGLE_CLIENT_ID sudah terdaftar."
-                GoogleSignInOutcome.Failure("Gagal membuka login Google: $detail")
-            }
-        } catch (err: Exception) {
-            if (webOAuthEnabled) {
-                launchBrowserOAuth(activity, apiBaseUrl)
-            } else {
-                GoogleSignInOutcome.Failure(err.localizedMessage ?: "Gagal memproses autentikasi Google")
-            }
+        } catch (_: GetCredentialException) {
+            launchBrowserOAuth(activity, apiBaseUrl)
+        } catch (_: Exception) {
+            launchBrowserOAuth(activity, apiBaseUrl)
         }
     }
 

@@ -574,16 +574,6 @@ fun ThemeOnboardingScreen(
                             )
                             HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
                             OnboardingToggleRow(
-                                icon = Icons.Rounded.Wifi,
-                                title = "Unduh Hanya via Wi-Fi",
-                                subtitle = "Hemat kuota data seluler saat mengunduh",
-                                checked = settings.wifiOnlyDownloads,
-                                onCheckedChange = { checked ->
-                                    onUpdateSettings { it.copy(wifiOnlyDownloads = checked) }
-                                }
-                            )
-                            HorizontalDivider(color = DividerSubtle, modifier = Modifier.padding(horizontal = 16.dp))
-                            OnboardingToggleRow(
                                 icon = Icons.Rounded.NotificationsActive,
                                 title = "Notifikasi Episode Baru",
                                 subtitle = "Dapatkan info rilis terbaru dari daftar tontonmu",

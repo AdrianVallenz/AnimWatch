@@ -27,14 +27,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Reply
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsNone
@@ -130,12 +132,12 @@ fun AnimeDetailScreen(
     onUpdateWatchedEpisodes: (String, Int) -> Unit,
     onRateAnime: (String, Int) -> Unit,
     onToggleReminder: (String) -> Unit,
-    onDownloadEpisode: (Anime, Episode) -> Unit,
     onGenreClick: (String) -> Unit,
     onRelatedAnimeClick: (String) -> Unit,
     onBookmarkClick: (String) -> Unit,
     onPostComment: (String, Int?, String, Boolean) -> Unit,
     onToggleCommentLike: (String) -> Unit,
+    onDeleteComment: (String) -> Unit = {},
     onShowMessage: (String) -> Unit = {},
     onShareClick: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -149,6 +151,10 @@ fun AnimeDetailScreen(
 
     var commentDraft by remember { mutableStateOf("") }
     var isSpoilerDraft by remember { mutableStateOf(false) }
+    var selectedCommentEpisode by remember { mutableStateOf<Int?>(null) }
+    var filterCommentEpisode by remember { mutableStateOf<Int?>(null) }
+    var sortCommentsByTop by remember { mutableStateOf(false) }
+    var replyTargetAuthor by remember { mutableStateOf<String?>(null) }
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
 
     val watchlistCategory = uiState.watchlist[anime.id]
@@ -421,23 +427,11 @@ fun AnimeDetailScreen(
                         onClick = { showRatingDialog = true },
                         modifier = Modifier.weight(1f)
                     )
-                    val latestEp = anime.episodes.lastOrNull()
-                    val latestDownload = latestEp?.let { ep -> uiState.downloads.find { it.episodeId == ep.id } }
                     DetailQuickAction(
-                        icon = if (latestDownload?.status == DownloadStatus.COMPLETED) Icons.Rounded.CheckCircle else Icons.Rounded.Download,
-                        label = when (latestDownload?.status) {
-                            DownloadStatus.COMPLETED -> "Ep ${latestEp.number} Offline"
-                            DownloadStatus.DOWNLOADING -> "Unduh ${(latestDownload.progress * 100).toInt()}%"
-                            else -> "Unduh Ep ${latestEp?.number ?: 1}"
-                        },
-                        active = latestDownload != null,
-                        onClick = {
-                            if (latestEp != null) {
-                                onDownloadEpisode(anime, latestEp)
-                            } else {
-                                onShowMessage("Daftar episode sedang dimuat, coba sesaat lagi")
-                            }
-                        },
+                        icon = Icons.Rounded.ChatBubbleOutline,
+                        label = "Komentar (${animeComments.size})",
+                        active = selectedTab == DetailTab.COMMENTS,
+                        onClick = { selectedTab = DetailTab.COMMENTS },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -924,15 +918,12 @@ fun AnimeDetailScreen(
                     }
                 } else {
                     items(displayedEpisodes, key = { it.id }) { ep ->
-                        val downloadTask = uiState.downloads.find { it.episodeId == ep.id }
                         val epProgress = if (watchProgress?.episodeId == ep.id) watchProgress.progressFraction else 0f
                         EpisodeRowItem(
                             anime = anime,
                             episode = ep,
                             watchFraction = epProgress,
-                            downloadTask = downloadTask,
                             onPlayClick = { onPlayEpisode(anime.id, ep.id) },
-                            onDownloadClick = { onDownloadEpisode(anime, ep) },
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
                         )
                     }
@@ -1042,6 +1033,13 @@ fun AnimeDetailScreen(
             }
 
             DetailTab.COMMENTS -> {
+                val filteredComments = animeComments
+                    .filter { filterCommentEpisode == null || it.episodeNumber == filterCommentEpisode }
+                    .let { list ->
+                        if (sortCommentsByTop) list.sortedByDescending { it.likes }
+                        else list
+                    }
+
                 item {
                     Surface(
                         modifier = Modifier
@@ -1056,11 +1054,98 @@ fun AnimeDetailScreen(
                                 .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
                                 .padding(14.dp)
                         ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    UserAvatarBadge(
+                                        avatarUrl = uiState.userProfile.avatarUrl,
+                                        emblem = uiState.userProfile.avatarEmblem,
+                                        size = 32.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = uiState.userProfile.displayName,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = TextPrimary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = uiState.userProfile.memberTier,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = GoldPrimary
+                                        )
+                                    }
+                                }
+                                if (replyTargetAuthor != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(GoldTint)
+                                            .clickable { replyTargetAuthor = null }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Membalas @$replyTargetAuthor ✕",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = GoldPrimary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Episode selector for comment post
+                            if (anime.episodes.isNotEmpty()) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    item {
+                                        val isGeneral = selectedCommentEpisode == null
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(if (isGeneral) GoldGradientBrush else Brush.linearGradient(listOf(ObsidianCardAlt, ObsidianCardAlt)))
+                                                .clickable { selectedCommentEpisode = null }
+                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = "Umum",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isGeneral) TextOnGold else TextSecondary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                    items(anime.episodes.take(24), key = { "post_ep_${it.number}" }) { ep ->
+                                        val isSel = selectedCommentEpisode == ep.number
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(if (isSel) GoldGradientBrush else Brush.linearGradient(listOf(ObsidianCardAlt, ObsidianCardAlt)))
+                                                .clickable { selectedCommentEpisode = ep.number }
+                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(
+                                                text = "Ep ${ep.number}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isSel) TextOnGold else TextSecondary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+
                             TactileInputField(
-                                label = "Tulis Komentar",
+                                label = if (selectedCommentEpisode != null) "Tulis Komentar (Episode $selectedCommentEpisode)" else "Tulis Komentar Umum",
                                 value = commentDraft,
                                 onValueChange = { commentDraft = it },
-                                placeholder = "Bagikan pendapatmu tentang anime ini...",
+                                placeholder = if (replyTargetAuthor != null) "Tulis balasan untuk @$replyTargetAuthor..." else "Bagikan pendapat atau ulasanmu tentang anime ini...",
                                 singleLine = false,
                                 maxLines = 3
                             )
@@ -1095,19 +1180,122 @@ fun AnimeDetailScreen(
                                     height = 40.dp,
                                     onClick = {
                                         if (commentDraft.isNotBlank()) {
-                                            onPostComment(anime.id, null, commentDraft, isSpoilerDraft)
+                                            val finalContent = if (replyTargetAuthor != null && !commentDraft.startsWith("@")) {
+                                                "@$replyTargetAuthor $commentDraft"
+                                            } else commentDraft
+                                            onPostComment(anime.id, selectedCommentEpisode, finalContent, isSpoilerDraft)
                                             commentDraft = ""
                                             isSpoilerDraft = false
+                                            replyTargetAuthor = null
                                         }
                                     }
                                 )
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                if (animeComments.isEmpty()) {
+                // Filter & Sort Bar for Comments
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Diskusi Penonton (${filteredComments.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(if (!sortCommentsByTop) GoldTintStrong else ObsidianCard)
+                                        .border(0.75.dp, if (!sortCommentsByTop) GoldPrimary else GoldSubtleBorder, CircleShape)
+                                        .clickable { sortCommentsByTop = false }
+                                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = "Terbaru",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (!sortCommentsByTop) GoldPrimary else TextSecondary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(if (sortCommentsByTop) GoldTintStrong else ObsidianCard)
+                                        .border(0.75.dp, if (sortCommentsByTop) GoldPrimary else GoldSubtleBorder, CircleShape)
+                                        .clickable { sortCommentsByTop = true }
+                                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = "Terpopuler",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (sortCommentsByTop) GoldPrimary else TextSecondary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+
+                        if (anime.episodes.size > 1) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item {
+                                    val allSel = filterCommentEpisode == null
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(if (allSel) GoldTintStrong else ObsidianCard)
+                                            .border(0.75.dp, if (allSel) GoldPrimary else GoldSubtleBorder, CircleShape)
+                                            .clickable { filterCommentEpisode = null }
+                                            .padding(horizontal = 11.dp, vertical = 5.dp)
+                                    ) {
+                                        Text(
+                                            text = "Semua Episode",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (allSel) GoldPrimary else TextSecondary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                                items(anime.episodes.take(24), key = { "flt_ep_${it.number}" }) { ep ->
+                                    val epSel = filterCommentEpisode == ep.number
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(if (epSel) GoldTintStrong else ObsidianCard)
+                                            .border(0.75.dp, if (epSel) GoldPrimary else GoldSubtleBorder, CircleShape)
+                                            .clickable {
+                                                filterCommentEpisode = if (epSel) null else ep.number
+                                                selectedCommentEpisode = ep.number
+                                            }
+                                            .padding(horizontal = 11.dp, vertical = 5.dp)
+                                    ) {
+                                        Text(
+                                            text = "Ep ${ep.number}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (epSel) GoldPrimary else TextSecondary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (filteredComments.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -1115,16 +1303,30 @@ fun AnimeDetailScreen(
                                 .padding(32.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Jadilah yang pertama berkomentar!", style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+                            Text(
+                                text = if (filterCommentEpisode != null) "Belum ada komentar di Episode $filterCommentEpisode. Jadilah yang pertama!"
+                                else "Jadilah yang pertama berkomentar di anime ini!",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextTertiary
+                            )
                         }
                     }
                 } else {
-                    items(animeComments, key = { it.id }) { comment ->
+                    items(filteredComments, key = { it.id }) { comment ->
                         CommentCardItem(
                             comment = comment,
                             spoilerRevealed = comment.id in revealedSpoilers,
                             onRevealSpoiler = { revealedSpoilers = revealedSpoilers + comment.id },
                             onLikeClick = { onToggleCommentLike(comment.id) },
+                            onReplyClick = {
+                                replyTargetAuthor = comment.author
+                                if (comment.episodeNumber != null) {
+                                    selectedCommentEpisode = comment.episodeNumber
+                                }
+                            },
+                            onDeleteClick = if (comment.isOwn || comment.author.equals(uiState.userProfile.displayName, ignoreCase = true)) {
+                                { onDeleteComment(comment.id) }
+                            } else null,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
                         )
                     }
@@ -1276,9 +1478,7 @@ private fun EpisodeRowItem(
     anime: Anime,
     episode: Episode,
     watchFraction: Float,
-    downloadTask: DownloadTask?,
     onPlayClick: () -> Unit,
-    onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1373,48 +1573,21 @@ private fun EpisodeRowItem(
             }
         }
 
-        Spacer(modifier = Modifier.width(6.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-        when (downloadTask?.status) {
-            DownloadStatus.COMPLETED -> {
-                IconButton(onClick = onDownloadClick) {
-                    Icon(
-                        imageVector = Icons.Rounded.CheckCircle,
-                        contentDescription = "Tersimpan",
-                        tint = StatusEmerald
-                    )
-                }
-            }
-
-            DownloadStatus.DOWNLOADING -> {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable(onClick = onDownloadClick)
-                        .padding(4.dp)
-                ) {
-                    TapeReelSpinner(isSpinning = true, size = 20.dp, tint = GoldPrimary)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "${(downloadTask.progress * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontSize = 9.5.sp,
-                        color = GoldPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            else -> {
-                IconButton(onClick = onDownloadClick) {
-                    Icon(
-                        imageVector = Icons.Rounded.Download,
-                        contentDescription = "Unduh Episode",
-                        tint = GoldPrimary
-                    )
-                }
-            }
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(GoldGradientBrush),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = "Tonton Episode",
+                tint = TextOnGold,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -1425,6 +1598,8 @@ fun CommentCardItem(
     spoilerRevealed: Boolean,
     onRevealSpoiler: () -> Unit,
     onLikeClick: () -> Unit,
+    onReplyClick: (() -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1435,93 +1610,170 @@ fun CommentCardItem(
             .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
             .padding(14.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(GoldTintStrong),
-                        contentAlignment = Alignment.Center
-                    ) {
+                UserAvatarBadge(
+                    avatarUrl = comment.authorAvatarUrl,
+                    emblem = comment.authorEmblem.ifBlank { comment.author.take(2).uppercase() },
+                    size = 34.dp
+                )
+                Spacer(modifier = Modifier.width(9.dp))
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = comment.author.take(1).uppercase(),
-                            color = GoldPrimary,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Bold
+                            text = comment.author,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        GoldTagChip(
+                            text = comment.authorBadge,
+                            highlighted = comment.isOwn
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = comment.author,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    GoldTagChip(text = comment.authorBadge, highlighted = comment.authorBadge == "PRO VIP")
+                    if (comment.authorHandle.isNotBlank()) {
+                        Text(
+                            text = comment.authorHandle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary,
+                            fontSize = 10.5.sp
+                        )
+                    }
                 }
+            }
+            Text(
+                text = comment.timeAgo,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(9.dp))
+
+        if (comment.isSpoiler && !spoilerRevealed) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(StatusLive.copy(alpha = 0.08f))
+                    .border(0.75.dp, StatusLive.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .clickable(onClick = onRevealSpoiler)
+                    .padding(11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.VisibilityOff,
+                    contentDescription = null,
+                    tint = StatusLive,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = comment.timeAgo,
+                    text = "Mengandung spoiler — ketuk untuk membuka",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = StatusLive,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        } else {
+            Text(
+                text = comment.content,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (comment.episodeNumber != null) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(GoldTint)
+                        .padding(horizontal = 9.dp, vertical = 3.5.dp)
+                ) {
+                    Text(
+                        text = "Episode ${comment.episodeNumber}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            } else {
+                Text(
+                    text = "Diskusi Umum",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextTertiary
                 )
             }
 
-            Spacer(modifier = Modifier.height(9.dp))
-
-            if (comment.isSpoiler && !spoilerRevealed) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(StatusLive.copy(alpha = 0.08f))
-                        .border(0.75.dp, StatusLive.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-                        .clickable(onClick = onRevealSpoiler)
-                        .padding(11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.VisibilityOff,
-                        contentDescription = null,
-                        tint = StatusLive,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Mengandung spoiler — ketuk untuk membuka",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = StatusLive,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            } else {
-                Text(
-                    text = comment.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-            }
-
-            Spacer(modifier = Modifier.height(9.dp))
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (comment.episodeNumber != null) {
-                    Text(
-                        text = "Episode ${comment.episodeNumber}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GoldPrimary
-                    )
-                } else {
-                    Spacer(modifier = Modifier.width(1.dp))
+                if (onReplyClick != null) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(ObsidianCardAlt)
+                            .clickable(onClick = onReplyClick)
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.Reply,
+                            contentDescription = "Balas",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Balas",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                if (onDeleteClick != null) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(StatusLive.copy(alpha = 0.12f))
+                            .clickable(onClick = onDeleteClick)
+                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = "Hapus Komentar",
+                            tint = StatusLive,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Hapus",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = StatusLive,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
 
                 Row(
@@ -1549,3 +1801,4 @@ fun CommentCardItem(
             }
         }
     }
+}

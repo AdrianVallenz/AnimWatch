@@ -77,6 +77,8 @@ import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -209,9 +211,9 @@ fun PlayerScreen(
     onMarkAnimeCompleted: (String) -> Unit,
     onToggleLike: () -> Unit,
     onSelectWatchlist: (String, WatchlistCategory?) -> Unit,
-    onDownloadEpisode: (Anime, Episode, String) -> Unit,
     onPostComment: (String, Int?, String, Boolean) -> Unit,
     onToggleCommentLike: (String) -> Unit,
+    onDeleteComment: (String) -> Unit = {},
     onOpenAnimeDetail: (String) -> Unit,
     onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -276,6 +278,9 @@ fun PlayerScreen(
     var scrubSeconds by remember(session.episodeId) { mutableIntStateOf(session.positionSeconds) }
 
     var commentDraft by remember { mutableStateOf("") }
+    var isSpoilerDraft by remember { mutableStateOf(false) }
+    var filterThisEpisodeOnly by remember { mutableStateOf(false) }
+    var replyTargetAuthor by remember { mutableStateOf<String?>(null) }
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
 
     // Manage landscape orientation, immersive bars & keep-screen-on safely via Context.findActivity()
@@ -328,10 +333,11 @@ fun PlayerScreen(
 
     val currentServer = episode.servers.find { it.id == session.selectedServerId }
         ?: episode.servers.firstOrNull()
-    val downloadTask = uiState.downloads.find { it.episodeId == episode.id }
     val watchlistCategory = uiState.watchlist[anime.id]
-    val episodeComments = remember(uiState.comments, anime.id) {
-        uiState.comments.filter { it.animeId == anime.id }
+    val episodeComments = remember(uiState.comments, anime.id, episode.number, filterThisEpisodeOnly) {
+        uiState.comments.filter { c ->
+            c.animeId == anime.id && (!filterThisEpisodeOnly || c.episodeNumber == episode.number)
+        }
     }
 
     Column(
@@ -1193,7 +1199,7 @@ fun PlayerScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceEvenly
                         ) {
                             PlayerActionChip(
                                 icon = Icons.Rounded.TaskAlt,
@@ -1211,19 +1217,6 @@ fun PlayerScreen(
                                         if (watchlistCategory == null) WatchlistCategory.WATCHING else null
                                     )
                                 }
-                            )
-                            PlayerActionChip(
-                                icon = when (downloadTask?.status) {
-                                    DownloadStatus.COMPLETED -> Icons.Rounded.CheckCircle
-                                    else -> Icons.Rounded.Download
-                                },
-                                label = when (downloadTask?.status) {
-                                    DownloadStatus.COMPLETED -> "Tersimpan"
-                                    DownloadStatus.DOWNLOADING -> "${(downloadTask.progress * 100).toInt()}%"
-                                    else -> "Unduh"
-                                },
-                                active = downloadTask != null,
-                                onClick = { onDownloadEpisode(anime, episode, session.selectedQuality) }
                             )
                             PlayerActionChip(
                                 icon = Icons.Rounded.ThumbUp,
@@ -1384,11 +1377,58 @@ fun PlayerScreen(
                 // Comments Section inside Player
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Komentar Penonton (${episodeComments.size})",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TextPrimary
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Komentar Penonton (${episodeComments.size})",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(if (!filterThisEpisodeOnly) GoldTintStrong else ObsidianCard)
+                                        .border(0.75.dp, if (!filterThisEpisodeOnly) GoldPrimary else GoldSubtleBorder, CircleShape)
+                                        .clickable { filterThisEpisodeOnly = false }
+                                        .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                                ) {
+                                    Text(
+                                        text = "Semua",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (!filterThisEpisodeOnly) GoldPrimary else TextSecondary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(if (filterThisEpisodeOnly) GoldTintStrong else ObsidianCard)
+                                        .border(0.75.dp, if (filterThisEpisodeOnly) GoldPrimary else GoldSubtleBorder, CircleShape)
+                                        .clickable { filterThisEpisodeOnly = true }
+                                        .padding(horizontal = 10.dp, vertical = 4.5.dp)
+                                ) {
+                                    Text(
+                                        text = "Ep ${episode.number}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (filterThisEpisodeOnly) GoldPrimary else TextSecondary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                        if (replyTargetAuthor != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Membalas @$replyTargetAuthor (Ketuk untuk batal)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GoldPrimary,
+                                modifier = Modifier.clickable { replyTargetAuthor = null }
+                            )
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
                         Row(
                             verticalAlignment = Alignment.Bottom,
@@ -1398,14 +1438,19 @@ fun PlayerScreen(
                                 label = "Komentar Episode ${episode.number}",
                                 value = commentDraft,
                                 onValueChange = { commentDraft = it },
-                                placeholder = "Tulis komentar untuk episode ini...",
+                                placeholder = if (replyTargetAuthor != null) "Balas @$replyTargetAuthor..." else "Tulis komentar untuk episode ini...",
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(
                                 onClick = {
                                     if (commentDraft.isNotBlank()) {
-                                        onPostComment(anime.id, episode.number, commentDraft, false)
+                                        val finalContent = if (replyTargetAuthor != null && !commentDraft.startsWith("@")) {
+                                            "@$replyTargetAuthor $commentDraft"
+                                        } else commentDraft
+                                        onPostComment(anime.id, episode.number, finalContent, isSpoilerDraft)
                                         commentDraft = ""
+                                        isSpoilerDraft = false
+                                        replyTargetAuthor = null
                                     }
                                 },
                                 modifier = Modifier
@@ -1420,6 +1465,27 @@ fun PlayerScreen(
                                 )
                             }
                         }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clickable { isSpoilerDraft = !isSpoilerDraft }
+                        ) {
+                            Checkbox(
+                                checked = isSpoilerDraft,
+                                onCheckedChange = { isSpoilerDraft = it },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = GoldPrimary,
+                                    uncheckedColor = TextTertiary,
+                                    checkmarkColor = TextOnGold
+                                )
+                            )
+                            Text(
+                                text = "Tandai komentar ini mengandung spoiler",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                        }
                     }
                 }
 
@@ -1429,6 +1495,10 @@ fun PlayerScreen(
                         spoilerRevealed = comment.id in revealedSpoilers,
                         onRevealSpoiler = { revealedSpoilers = revealedSpoilers + comment.id },
                         onLikeClick = { onToggleCommentLike(comment.id) },
+                        onReplyClick = { replyTargetAuthor = comment.author },
+                        onDeleteClick = if (comment.isOwn || comment.author.equals(uiState.userProfile.displayName, ignoreCase = true)) {
+                            { onDeleteComment(comment.id) }
+                        } else null,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
                     )
                 }

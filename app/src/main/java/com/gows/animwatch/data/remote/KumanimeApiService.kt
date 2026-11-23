@@ -138,6 +138,12 @@ interface KumanimeApiService {
         @Header("Authorization") authHeader: String,
         @Path("id") id: String
     ): Response<ToggleCommentLikeResponseDto>
+
+    @DELETE("comments/{id}")
+    suspend fun deleteComment(
+        @Header("Authorization") authHeader: String,
+        @Path("id") id: String
+    ): Response<SimpleStatusResponseDto>
 }
 
 object KumanimeApiClient {

@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,6 +41,7 @@ import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
@@ -65,13 +70,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.gows.animwatch.data.local.AndroidDeviceStorageManager
 import com.gows.animwatch.data.local.AppPermissionStatus
 import com.gows.animwatch.data.local.DeviceStorageInfo
@@ -103,12 +111,46 @@ import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
 import com.gows.animwatch.ui.theme.TextTertiary
 
+private data class AnimeAvatarPreset(
+    val label: String,
+    val url: String
+)
+
+private val ANIME_AVATAR_PRESETS = listOf(
+    AnimeAvatarPreset("Frieren", "https://s4.anilist.co/file/anilistcdn/character/large/b176754-Ya46QWtQuXzQ.png"),
+    AnimeAvatarPreset("Gojo Satoru", "https://s4.anilist.co/file/anilistcdn/character/large/b127691-UmP85236325F.png"),
+    AnimeAvatarPreset("Sung Jinwoo", "https://s4.anilist.co/file/anilistcdn/character/large/b129928-BCEj21b2217k.png"),
+    AnimeAvatarPreset("Anya Forger", "https://s4.anilist.co/file/anilistcdn/character/large/b138100-3B2V93T1R48u.png"),
+    AnimeAvatarPreset("Rimuru", "https://s4.anilist.co/file/anilistcdn/character/large/b124051-C4pM2T7kL13W.png"),
+    AnimeAvatarPreset("Ayanokoji", "https://s4.anilist.co/file/anilistcdn/character/large/b88750-24136x8dO04r.png"),
+    AnimeAvatarPreset("Maomao", "https://s4.anilist.co/file/anilistcdn/character/large/b160602-H5y11C9nO35K.png"),
+    AnimeAvatarPreset("Killua", "https://s4.anilist.co/file/anilistcdn/character/large/b27-Z91v6776118z.png")
+)
+
+private val MEMBER_BADGE_OPTIONS = listOf(
+    "Google Member",
+    "Wibu Sejati",
+    "Otaku Legend",
+    "Marathoner",
+    "Sub Indo Enthusiast",
+    "Dub Indo Enjoyer",
+    "Reviewer Anime"
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     uiState: AnimWatchUiState,
     bottomInsetPadding: Dp,
-    onUpdateProfile: (String, String, String) -> Unit,
+    onUpdateProfile: (
+        displayName: String,
+        handle: String,
+        bio: String,
+        emblem: String,
+        avatarUrl: String,
+        memberTier: String,
+        favoriteGenre: String
+    ) -> Unit,
     onUpdateSettings: ((PlaybackSettings) -> PlaybackSettings) -> Unit,
     onUpdateSubtitleSize: (SubtitleSizeOption) -> Unit,
     onUpdateApiBaseUrl: (String) -> Unit,
@@ -132,7 +174,7 @@ fun ProfileScreen(
         onRefreshDeviceState()
     }
 
-    var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showEditProfileSheet by remember { mutableStateOf(false) }
     var showPlaybackSheet by remember { mutableStateOf(false) }
     var showStoragePermissionsSheet by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
@@ -141,6 +183,12 @@ fun ProfileScreen(
     var showQualityDialog by remember { mutableStateOf(false) }
     var showSubtitleLangDialog by remember { mutableStateOf(false) }
     var showSubtitleSizeDialog by remember { mutableStateOf(false) }
+
+    val userCommentCount = remember(uiState.comments, profile.displayName) {
+        uiState.comments.count {
+            it.isOwn || it.author.equals(profile.displayName, ignoreCase = true)
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -156,14 +204,43 @@ fun ProfileScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text(
-                text = "Profil",
-                style = MaterialTheme.typography.headlineMedium,
-                color = TextPrimary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Profil Saya",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = TextPrimary
+                )
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(GoldTint)
+                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                        .clickable { showEditProfileSheet = true }
+                        .padding(horizontal = 13.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = "Custom Profil",
+                        tint = GoldPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Custom Profil",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
 
-        // 1. Compact Member Profile Header & Stats
+        // 1. Custom Member Profile Card & Stats
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -181,26 +258,26 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(58.dp)
-                                .clip(CircleShape)
-                                .background(GoldGradientBrush),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = profile.avatarEmblem,
-                                color = TextOnGold,
-                                fontSize = 21.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        UserAvatarBadge(
+                            avatarUrl = profile.avatarUrl,
+                            emblem = profile.avatarEmblem,
+                            size = 66.dp,
+                            onClick = { showEditProfileSheet = true }
+                        )
 
                         Spacer(modifier = Modifier.width(14.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            GoldTagChip(text = profile.memberTier, highlighted = true)
-                            Spacer(modifier = Modifier.height(5.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                GoldTagChip(text = profile.memberTier, highlighted = true)
+                                if (profile.favoriteGenre.isNotBlank()) {
+                                    GoldTagChip(text = profile.favoriteGenre)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = profile.displayName,
                                 style = MaterialTheme.typography.titleLarge,
@@ -222,28 +299,26 @@ fun ProfileScreen(
                                 .size(38.dp)
                                 .clip(CircleShape)
                                 .background(GoldTint)
-                                .clickable { showEditProfileDialog = true },
+                                .clickable { showEditProfileSheet = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Rounded.Edit,
-                                contentDescription = "Edit Profil",
+                                contentDescription = "Custom Profil",
                                 tint = GoldPrimary,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    if (profile.bio.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = profile.bio,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = profile.bio.ifBlank { "Ketuk 'Custom Profil' untuk menambahkan bio, mengganti foto karakter anime, gelar, dan username kamu." },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (profile.bio.isNotBlank()) TextSecondary else TextTertiary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
 
                     HorizontalDivider(
                         color = DividerSubtle,
@@ -257,17 +332,24 @@ fun ProfileScreen(
                         val totalTrackedEps = uiState.watchedEpisodes.values.sum()
                         val completedCount = uiState.watchlist.values.count { it == WatchlistCategory.COMPLETED }
                         ProfileStatItem("$totalTrackedEps", "Ep Ditonton")
-                        ProfileStatItem("${uiState.watchlist.size}", "Koleksi")
-                        ProfileStatItem("${uiState.downloads.size}", "Offline")
+                        ProfileStatItem("${uiState.watchlist.size}", "Disimpan")
                         ProfileStatItem("$completedCount", "Tamat")
+                        ProfileStatItem("$userCommentCount", "Komentar")
                     }
                 }
             }
         }
 
-        // 2. Clean 4-Row Unified Settings Menu
+        // 2. Clean Settings Menu (Custom Profile + Tema + Pemutar + Penyimpanan Cache + Tentang)
         item {
-            SettingsGroupCard(title = "Pengaturan") {
+            SettingsGroupCard(title = "Kustomisasi & Pengaturan") {
+                SettingRowItem(
+                    icon = Icons.Rounded.Person,
+                    title = "Kustomisasi Profil & Avatar",
+                    value = "${profile.avatarEmblem} • ${profile.memberTier}",
+                    onClick = { showEditProfileSheet = true }
+                )
+                SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Palette,
                     title = "Tema & Tampilan",
@@ -277,15 +359,15 @@ fun ProfileScreen(
                 SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Tune,
-                    title = "Pemutar & Unduhan",
+                    title = "Preferensi Pemutar Video",
                     value = "${settings.defaultQuality} • ${settings.defaultSubtitle}",
                     onClick = { showPlaybackSheet = true }
                 )
                 SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Storage,
-                    title = "Penyimpanan & Izin",
-                    value = if (deviceStorage.totalDeviceBytes > 0L) deviceStorage.availableLabel else "Kelola",
+                    title = "Cache & Izin Aplikasi",
+                    value = deviceStorage.cacheLabel,
                     onClick = {
                         onRefreshDeviceState()
                         showStoragePermissionsSheet = true
@@ -295,13 +377,13 @@ fun ProfileScreen(
                 SettingRowItem(
                     icon = Icons.Rounded.Info,
                     title = "Tentang Aplikasi",
-                    value = "v1.2.0",
+                    value = "v1.3.0",
                     onClick = { showAboutDialog = true }
                 )
             }
         }
 
-        // 3. Clean Account Action
+        // 3. Google Account Sign Out Action
         item {
             Row(
                 modifier = Modifier
@@ -309,9 +391,7 @@ fun ProfileScreen(
                     .clip(RoundedCornerShape(18.dp))
                     .background(StatusLive.copy(alpha = 0.11f))
                     .border(0.75.dp, StatusLive.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
-                    .clickable {
-                        if (uiState.isGuestSession) onLogout() else showLogoutDialog = true
-                    }
+                    .clickable { showLogoutDialog = true }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -324,7 +404,7 @@ fun ProfileScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (uiState.isGuestSession) "Masuk atau Daftar Akun" else "Keluar dari Akun",
+                    text = "Keluar dari Akun Google",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = StatusLive
@@ -333,7 +413,28 @@ fun ProfileScreen(
         }
     }
 
-    // Bottom Sheet: Pemutar & Unduhan
+    // Bottom Sheet: Custom Profile Editor
+    if (showEditProfileSheet) {
+        CustomProfileEditorSheet(
+            currentName = profile.displayName,
+            currentHandle = profile.handle,
+            currentBio = profile.bio,
+            currentEmblem = profile.avatarEmblem,
+            currentAvatarUrl = profile.avatarUrl,
+            currentTier = profile.memberTier,
+            currentFavoriteGenre = profile.favoriteGenre,
+            availableGenres = uiState.genres.ifEmpty {
+                listOf("Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Slice of Life")
+            },
+            onSave = { name, handle, bio, emblem, avatarUrl, tier, favGenre ->
+                onUpdateProfile(name, handle, bio, emblem, avatarUrl, tier, favGenre)
+                showEditProfileSheet = false
+            },
+            onDismiss = { showEditProfileSheet = false }
+        )
+    }
+
+    // Bottom Sheet: Preferensi Pemutar Video
     if (showPlaybackSheet) {
         ModalBottomSheet(
             onDismissRequest = { showPlaybackSheet = false },
@@ -348,7 +449,7 @@ fun ProfileScreen(
                     .padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = "Pemutar & Unduhan",
+                    text = "Preferensi Pemutar Video",
                     style = MaterialTheme.typography.titleLarge,
                     color = TextPrimary,
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -404,19 +505,9 @@ fun ProfileScreen(
                         )
                         SettingDivider()
                         SettingSwitchItem(
-                            icon = Icons.Rounded.Wifi,
-                            title = "Unduh via Wi-Fi Saja",
-                            subtitle = "Hemat kuota data seluler",
-                            checked = settings.wifiOnlyDownloads,
-                            onCheckedChange = { checked ->
-                                onUpdateSettings { it.copy(wifiOnlyDownloads = checked) }
-                            }
-                        )
-                        SettingDivider()
-                        SettingSwitchItem(
                             icon = Icons.Rounded.NotificationsActive,
                             title = "Notifikasi Rilis Episode",
-                            subtitle = "Ingatkan episode baru di Koleksiku",
+                            subtitle = "Ingatkan episode baru di daftar Disimpan",
                             checked = settings.episodeNotifications,
                             onCheckedChange = { checked ->
                                 onUpdateSettings { it.copy(episodeNotifications = checked) }
@@ -429,7 +520,7 @@ fun ProfileScreen(
         }
     }
 
-    // Bottom Sheet: Penyimpanan Perangkat & Izin Penggunaan
+    // Bottom Sheet: Cache & Izin Aplikasi
     if (showStoragePermissionsSheet) {
         StorageAndPermissionsSheet(
             deviceStorage = deviceStorage,
@@ -450,13 +541,13 @@ fun ProfileScreen(
             textContentColor = TextSecondary,
             title = {
                 Text(
-                    text = "Keluar dari Akun?",
+                    text = "Keluar dari Akun Google?",
                     style = MaterialTheme.typography.titleLarge
                 )
             },
             text = {
                 Text(
-                    "Kamu akan kembali ke halaman Masuk / Daftar. Daftar tonton dan riwayat akun tetap tersimpan.",
+                    "Kamu akan kembali ke layar Masuk dengan Google. Profil kustom, daftar Disimpan, riwayat tonton, dan komentar kamu tetap aman tersimpan.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -475,16 +566,6 @@ fun ProfileScreen(
                     Text("Batal", color = TextSecondary)
                 }
             }
-        )
-    }
-
-    if (showEditProfileDialog) {
-        EditProfileDialog(
-            currentName = profile.displayName,
-            currentBio = profile.bio,
-            currentEmblem = profile.avatarEmblem,
-            onSave = onUpdateProfile,
-            onDismiss = { showEditProfileDialog = false }
         )
     }
 
@@ -531,13 +612,13 @@ fun ProfileScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = GoldPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("AnimWatch v1.2.0", style = MaterialTheme.typography.titleLarge)
+                    Text("AnimWatch v1.3.0", style = MaterialTheme.typography.titleLarge)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Aplikasi streaming anime modern dengan ratusan koleksi serial siap tonton, mode Gelap & Terang, sinkronisasi akun, dan unduhan offline perangkat.",
+                        "Aplikasi streaming anime Sub Indo & Dub Indo resmi dengan sinkronisasi Akun Google, Custom Profile, multi-season switcher, dan diskusi komunitas.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
@@ -590,6 +671,363 @@ fun ProfileScreen(
     }
 }
 
+@Composable
+fun UserAvatarBadge(
+    avatarUrl: String,
+    emblem: String,
+    size: Dp,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val cleanUrl = avatarUrl.trim()
+    val cleanEmblem = emblem.trim().take(2).uppercase().ifEmpty { "AW" }
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(GoldGradientBrush)
+            .border(1.2.dp, GoldPrimary, CircleShape)
+            .let { mod -> if (onClick != null) mod.clickable(onClick = onClick) else mod },
+        contentAlignment = Alignment.Center
+    ) {
+        if (cleanUrl.startsWith("http://", ignoreCase = true) ||
+            cleanUrl.startsWith("https://", ignoreCase = true)
+        ) {
+            AsyncImage(
+                model = cleanUrl,
+                contentDescription = cleanEmblem,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+            )
+        } else {
+            Text(
+                text = cleanEmblem,
+                color = TextOnGold,
+                fontSize = (size.value * 0.34f).sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun CustomProfileEditorSheet(
+    currentName: String,
+    currentHandle: String,
+    currentBio: String,
+    currentEmblem: String,
+    currentAvatarUrl: String,
+    currentTier: String,
+    currentFavoriteGenre: String,
+    availableGenres: List<String>,
+    onSave: (
+        displayName: String,
+        handle: String,
+        bio: String,
+        emblem: String,
+        avatarUrl: String,
+        memberTier: String,
+        favoriteGenre: String
+    ) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(currentName) }
+    var handle by remember { mutableStateOf(currentHandle.removePrefix("@")) }
+    var bio by remember { mutableStateOf(currentBio) }
+    var emblem by remember { mutableStateOf(currentEmblem) }
+    var avatarUrl by remember { mutableStateOf(currentAvatarUrl) }
+    var selectedTier by remember { mutableStateOf(currentTier.ifBlank { "Google Member" }) }
+    var selectedGenre by remember { mutableStateOf(currentFavoriteGenre.ifBlank { "Action" }) }
+    var nameError by remember { mutableStateOf<String?>(null) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = ObsidianElevated
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 18.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "Kustomisasi Profil",
+                style = MaterialTheme.typography.headlineSmall,
+                color = TextPrimary
+            )
+            Text(
+                text = "Personalisasi tampilan profilmu yang akan dilihat pengguna lain di kolom komentar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+
+            // Live Preview Banner
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = ObsidianCard
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(ObsidianGoldCardBrush)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    UserAvatarBadge(
+                        avatarUrl = avatarUrl,
+                        emblem = emblem.ifBlank { name.take(2).uppercase() },
+                        size = 56.dp
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            GoldTagChip(text = selectedTier, highlighted = true)
+                            GoldTagChip(text = selectedGenre)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = name.ifBlank { "Nama Tampilan" },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "@${handle.ifBlank { "username" }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GoldPrimary
+                        )
+                    }
+                }
+            }
+
+            // Preset Anime Character Avatars
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Pilih Avatar Karakter Anime",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    if (avatarUrl.isNotBlank()) {
+                        Text(
+                            text = "Pakai Inisial Saja",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GoldPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable { avatarUrl = "" }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(ANIME_AVATAR_PRESETS) { preset ->
+                        val isSelected = avatarUrl == preset.url
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isSelected) GoldTintStrong else ObsidianCard)
+                                .border(
+                                    if (isSelected) 1.5.dp else 0.75.dp,
+                                    if (isSelected) GoldPrimary else GoldSubtleBorder,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { avatarUrl = preset.url }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            UserAvatarBadge(
+                                avatarUrl = preset.url,
+                                emblem = preset.label.take(2),
+                                size = 46.dp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = preset.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isSelected) GoldPrimary else TextSecondary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            TactileInputField(
+                label = "Nama Tampilan",
+                value = name,
+                onValueChange = {
+                    name = it
+                    nameError = if (it.isBlank()) "Nama tampilan wajib diisi" else null
+                },
+                placeholder = "Masukkan nama tampilan...",
+                errorText = nameError
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TactileInputField(
+                    label = "Username (@handle)",
+                    value = handle,
+                    onValueChange = { raw ->
+                        handle = raw.removePrefix("@").lowercase().replace(Regex("[^a-z0-9._]"), "").take(22)
+                    },
+                    placeholder = "username",
+                    modifier = Modifier.weight(1.4f)
+                )
+                TactileInputField(
+                    label = "Inisial (2 Huruf)",
+                    value = emblem,
+                    onValueChange = { if (it.length <= 2) emblem = it.uppercase() },
+                    placeholder = "AW",
+                    modifier = Modifier.weight(0.9f)
+                )
+            }
+
+            TactileInputField(
+                label = "URL Foto Profil Kustom (Opsional)",
+                value = avatarUrl,
+                onValueChange = { avatarUrl = it },
+                placeholder = "https://..."
+            )
+
+            TactileInputField(
+                label = "Bio Profil",
+                value = bio,
+                onValueChange = { bio = it },
+                placeholder = "Ceritakan anime favorit atau kutipan kesukaanmu...",
+                singleLine = false,
+                maxLines = 3
+            )
+
+            // Badge / Gelar Komunitas Picker
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Gelar / Badge Profil",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MEMBER_BADGE_OPTIONS.forEach { badge ->
+                        val selected = selectedTier.equals(badge, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (selected) GoldGradientBrush else androidx.compose.ui.graphics.Brush.linearGradient(listOf(ObsidianCard, ObsidianCard)))
+                                .border(
+                                    0.75.dp,
+                                    if (selected) Color.Transparent else GoldSubtleBorder,
+                                    CircleShape
+                                )
+                                .clickable { selectedTier = badge }
+                                .padding(horizontal = 13.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                text = badge,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) TextOnGold else TextSecondary,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Genre Favorit Utama Picker
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Genre Favorit Utama",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableGenres.filterNot { it.equals("Dub Indo", ignoreCase = true) }.take(12).forEach { g ->
+                        val selected = selectedGenre.equals(g, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (selected) GoldTintStrong else ObsidianCard)
+                                .border(
+                                    0.75.dp,
+                                    if (selected) GoldPrimary else GoldSubtleBorder,
+                                    CircleShape
+                                )
+                                .clickable { selectedGenre = g }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = g,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) GoldPrimary else TextSecondary,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                GoldOutlinedButton(
+                    text = "Batal",
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(0.8f),
+                    height = 46.dp
+                )
+                GoldGradientButton(
+                    text = "Simpan Profil",
+                    onClick = {
+                        if (name.isBlank()) {
+                            nameError = "Nama tampilan wajib diisi"
+                        } else {
+                            val cleanHandle = "@${handle.ifBlank { name.lowercase().replace(Regex("[^a-z0-9]"), "").take(16).ifEmpty { "watcher" } }}"
+                            val cleanEmblem = emblem.trim().ifEmpty {
+                                name.trim().take(2).uppercase()
+                            }
+                            onSave(
+                                name.trim(),
+                                cleanHandle,
+                                bio.trim(),
+                                cleanEmblem,
+                                avatarUrl.trim(),
+                                selectedTier,
+                                selectedGenre
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1.2f),
+                    height = 46.dp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StorageAndPermissionsSheet(
@@ -614,13 +1052,13 @@ private fun StorageAndPermissionsSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "Penyimpanan & Izin",
+                text = "Cache & Izin Aplikasi",
                 style = MaterialTheme.typography.titleLarge,
                 color = TextPrimary,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
 
-            // Real Device Storage Card
+            // Real Device Storage & Cache Cleaner Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -638,14 +1076,12 @@ private fun StorageAndPermissionsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Penyimpanan Perangkat",
+                            text = "Cache Gambar & Streaming",
                             style = MaterialTheme.typography.titleSmall,
                             color = TextPrimary
                         )
                         Text(
-                            text = if (deviceStorage.totalDeviceBytes > 0L) {
-                                "Tersedia ${deviceStorage.availableLabel}"
-                            } else "Memindai...",
+                            text = deviceStorage.cacheLabel,
                             style = MaterialTheme.typography.labelMedium,
                             color = GoldPrimary,
                             fontWeight = FontWeight.SemiBold
@@ -660,17 +1096,12 @@ private fun StorageAndPermissionsSheet(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Offline: ${deviceStorage.offlineUsedLabel}",
+                            text = "Tersedia: ${deviceStorage.availableLabel}",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
                         Text(
-                            text = "Cache: ${deviceStorage.cacheLabel}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
-                        )
-                        Text(
-                            text = "Total: ${deviceStorage.totalLabel}",
+                            text = "Total Perangkat: ${deviceStorage.totalLabel}",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextTertiary
                         )
@@ -685,8 +1116,9 @@ private fun StorageAndPermissionsSheet(
                 }
             }
 
-            // Permissions Card
-            if (permissions.isNotEmpty()) {
+            // Permissions Card (excluding offline storage permission)
+            val relevantPermissions = permissions.filterNot { it.id == "storage" }
+            if (relevantPermissions.isNotEmpty()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
@@ -695,7 +1127,7 @@ private fun StorageAndPermissionsSheet(
                     Column(
                         modifier = Modifier.border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
                     ) {
-                        permissions.forEachIndexed { idx, perm ->
+                        relevantPermissions.forEachIndexed { idx, perm ->
                             if (idx > 0) SettingDivider()
                             Row(
                                 modifier = Modifier
@@ -716,7 +1148,6 @@ private fun StorageAndPermissionsSheet(
                                     Icon(
                                         imageVector = when (perm.id) {
                                             "notifications" -> Icons.Rounded.NotificationsActive
-                                            "storage" -> Icons.Rounded.Storage
                                             "network" -> Icons.Rounded.Wifi
                                             else -> Icons.Rounded.Security
                                         },
@@ -996,75 +1427,6 @@ private fun OptionPickerDialog(
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text("Tutup", color = TextSecondary)
-            }
-        }
-    )
-}
-
-@Composable
-private fun EditProfileDialog(
-    currentName: String,
-    currentBio: String,
-    currentEmblem: String,
-    onSave: (String, String, String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var name by remember { mutableStateOf(currentName) }
-    var bio by remember { mutableStateOf(currentBio) }
-    var emblem by remember { mutableStateOf(currentEmblem) }
-    var nameError by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = ObsidianElevated,
-        shape = RoundedCornerShape(24.dp),
-        titleContentColor = TextPrimary,
-        title = { Text("Edit Profil", style = MaterialTheme.typography.titleLarge) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                TactileInputField(
-                    label = "Nama Tampilan",
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        nameError = if (it.isBlank()) "Nama tampilan wajib diisi" else null
-                    },
-                    placeholder = "Masukkan nama...",
-                    errorText = nameError
-                )
-                TactileInputField(
-                    label = "Inisial Avatar (Maks 2 huruf)",
-                    value = emblem,
-                    onValueChange = { if (it.length <= 2) emblem = it.uppercase() },
-                    placeholder = "AV"
-                )
-                TactileInputField(
-                    label = "Bio Singkat",
-                    value = bio,
-                    onValueChange = { bio = it },
-                    placeholder = "Tuliskan deskripsi singkat...",
-                    singleLine = false,
-                    maxLines = 3
-                )
-            }
-        },
-        confirmButton = {
-            GoldGradientButton(
-                text = "Simpan",
-                onClick = {
-                    if (name.isBlank()) {
-                        nameError = "Nama tampilan wajib diisi"
-                    } else {
-                        onSave(name, bio, emblem)
-                        onDismiss()
-                    }
-                },
-                height = 40.dp
-            )
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal", color = TextSecondary)
             }
         }
     )
