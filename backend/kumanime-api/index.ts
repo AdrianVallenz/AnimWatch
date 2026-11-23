@@ -950,7 +950,7 @@ function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; epi
   return { seriesTitle, episodeNumber };
 }
 
-// Verified 100% embeddable Muse Indonesia SUB (Audio Jepang) playlists mapped to AniList IDs
+// Verified 100% free & embeddable Muse Indonesia SUB (Audio Jepang) playlists mapped to exact AniList IDs
 const M = "PLPanbgyTozt";
 const MUSE_PL: Record<number, string> = {
   146065: `${M}ZA6kgADtbTIR4-G-EXDeih`, 166873: `${M}ZA6kgADtbTIR4-G-EXDeih`,
@@ -961,18 +961,16 @@ const MUSE_PL: Record<number, string> = {
   11061: `${M}YQo4C8qRLt4cN_MEjp-lRp`, 108632: `${M}YThySIw-tvX8O3J-NHhMAT`,
   119661: `${M}YThySIw-tvX8O3J-NHhMAT`, 163134: `${M}ZpP3zanOqFo20ky85-q1Yp`,
   189046: `${M}b0iW-DI48ODtCrlyl42Qoa`, 151970: `${M}YlSxKLf7qFl6VpLYn2T_i1`,
-  176508: `${M}YlSxKLf7qFl6VpLYn2T_i1`, 21507: "PLr28jJH6_sqHL0sd3axKcnj7-YlJaFfef",
-  98659: `${M}ZBmp90FrnrDGXDDu5J6-LR`, 145545: `${M}YszfRvXrP_w8-DPbVpr8wy`,
-  146066: `${M}YYjVy4KU5BXp3b-MmCMGwE`, 180745: `${M}YgSdFfzM-MO6vXGcQn-FbR`,
-  101165: `${M}a-OkjrTHB_-ClPo6IuEWlE`, 12189: `${M}Yq6eXRxJCx8wxaQ0Yc2NHz`,
-  159831: `${M}ZN2SaJWB2i_pKwtsdGv2p7`, 155783: `${M}ZmsgNPEL9XHwb0ilTs5ljv`,
+  176508: `${M}YlSxKLf7qFl6VpLYn2T_i1`, 98659: `${M}ZBmp90FrnrDGXDDu5J6-LR`,
+  145545: `${M}YszfRvXrP_w8-DPbVpr8wy`, 146066: `${M}YYjVy4KU5BXp3b-MmCMGwE`,
+  180745: `${M}YgSdFfzM-MO6vXGcQn-FbR`, 12189: `${M}Yq6eXRxJCx8wxaQ0Yc2NHz`,
+  159831: `${M}ZN2SaJWB2i_pKwtsdGv2p7`, 156067: `${M}ZmsgNPEL9XHwb0ilTs5ljv`,
   6702: `${M}btJMcDT57RXRIiQDjyIFx8`, 99749: `${M}aDhNmS0krUvUkYmylqD7Mi`,
   139095: `${M}Ylvpi2MvbIYlZ1_8xUDf4o`, 105156: `${M}YOhY1JG0xIvTkGdHNyCRlU`,
   163292: `${M}Yx8pk4_Sy3R94Eg18zACf0`, 187663: `${M}Y5d8qXvBR5s3s5L4QMy3jU`,
   132474: `${M}Y9q0XKsNpDu8hjS3Njnomb`, 98503: `${M}Yx6oMEi7jzfsxbkusruG2N`,
-  128712: "PLCvHFllySUco", 152677: "PLAFJcVhr6Dkc", 152682: "PLF-Ab5Bnb45U",
-  176314: "PLZqRcDDhscWc", 177634: "PLGWnhssZ3bgE", 162694: "PLWExLiCEALJw",
-  116338: `${M}ZjHeEQy2m7IE42YZTufZ9y`, 184492: `${M}bsmc1HPxlCK3oQIafoNBgv`,
+  152682: "PLF-Ab5Bnb45U", 176314: "PLZqRcDDhscWc", 177634: "PLGWnhssZ3bgE",
+  162694: "PLWExLiCEALJw", 184492: `${M}bsmc1HPxlCK3oQIafoNBgv`,
   108478: `${M}YeEbbQUautfzW7zz-5cgmS`, 156039: `${M}YH0PU5B62ONgeTZXoE-EOj`,
   196144: `${M}Zac25sNFH7tE7Ud07JCUnL`, 199547: `${M}ZEvP1IiB5U3TcIB1zP4OxG`,
   21855: `${M}Y-KiGHbZLR1BSl90fFAVNp`, 102926: `${M}ZIT_IzLXTzpUBf0DFsoy1A`,
@@ -992,12 +990,11 @@ const MUSE_PL: Record<number, string> = {
   163078: `${M}YfKRDSnwzzxsLiE35fSbBo`, 170130: `${M}armJZfU9GyRSCBCnIiJONX`,
   114124: `${M}aehPnu02ArgIJcP4DFJ2bO`, 116006: `${M}aC8yJC3SVMP3NSxN0cb4Wh`,
   116005: `${M}aCN6AS9cPj_ydTWj2btL9N`, 117343: `${M}b2-Qf_38TnxtRbjv6iM_Qz`,
-  114340: `${M}bhZQmZ-5bZTkZtKWhKas-2`,
 };
 
-// Verified 100% embeddable Ani-One Indonesia SUB (Audio Jepang) playlists mapped to AniList IDs
+// Verified 100% free & embeddable Ani-One Indonesia SUB (Audio Jepang) playlists mapped to exact AniList IDs
 const ANIONE_PL: Record<number, string> = {
-  113415: "PLNAQymMf9eaYxBDom48OG_F4aLhnBZcui", 116674: "PLVz5xYUXIegU",
+  113415: "PLNAQymMf9eaYxBDom48OG_F4aLhnBZcui", 116674: "PLNAQymMf9eaZqHO36VokI45TwtvUJFbfk",
   137822: "PLQz4WGeaorjA", 20832: "PLOXBvOkrpC_s", 105333: "PLQL6iBDZsabo",
   172019: "PLODWQCZoYSHM", 21459: "PLRIKUnMprNvI", 21856: "PLA6LI1cj8LDk",
   100166: "PLDoNd3kTAiyk", 104276: "PLXd7zGqfH3ZI", 117193: "PLRnE9XnIC1T4",
@@ -1008,10 +1005,9 @@ const ANIONE_PL: Record<number, string> = {
   136804: "PLexFyslfo_78", 150075: "PLDQ7JF2opq5k", 105228: "PLcDBBq1D3wOY",
   173172: "PLFDsIfMtIv44", 21613: "PLcKfVhnYS2Nk", 125206: "PLbBhmk2Bw-jA",
   139518: "PLIfTSfpnDLec", 103632: "PLA6VgIPypTSE", 139587: "PLeyB-SZ7G05M",
-  159042: "PLDv-inCJtX5A", 2581: "PLDHeNIjQwazE", 160900: "PLScAfDnCDpRU",
+  159042: "PLDv-inCJtX5A", 160900: "PLScAfDnCDpRU",
   167419: "PLNAQymMf9eab5ejKPqDXIdFEaJEuxSrAW", 14813: "PLRYt0oMV87fU",
   185: "PLTcut_BhoIa4", 20987: "PLGKjS1fjrROc", 147864: "PLNAQymMf9eaYJZdl3_y3WAY9wufqB8eTn",
-  164702: "PLLkfZbT5GmdU",
 };
 
 const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, { playlistId: string; channelName: string }> = {};
@@ -1025,7 +1021,7 @@ for (const [id, pl] of Object.entries(ANIONE_PL)) {
 const DUPLICATE_SEASON_ALIASES = new Set([166873, 142838, 158927, 108511, 119661, 176508, 18767, 21873]);
 const FEATURED_MUSE_ANILIST_IDS: number[] = [
   154587, 140960, 171018, 16498, 113415, 116674, 137822, 101280, 11061, 146065,
-  108632, 163134, 189046, 151970, 21507, 20832, 105333, 172019, 21459, 20464,
+  108632, 163134, 189046, 151970, 20832, 105333, 172019, 21459, 20464, 156067,
   ...Object.keys(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map(Number).filter((id) => !DUPLICATE_SEASON_ALIASES.has(id)),
 ];
 
@@ -1042,26 +1038,27 @@ interface CrawledPlaylistSummary {
 
 function isDubIndoTitle(title: string): boolean {
   const t = title.toLowerCase();
-  if (/dub\s*jp/i.test(t) && !/dub\s*id|bahasa indonesia|sulih suara|dubbing indo/i.test(t)) return false;
-  return /\b(dub\s*id|dub\s*indo|dubbing\s*indo|sulih\s*suara|bahasa\s*indonesia|audio\s*indonesia)\b/i.test(t) || /\[bahasa\s*indonesia\]/i.test(t);
+  if (/dub\s*jp/i.test(t) && !/dub\s*id|id\s*dub|bahasa indonesia|sulih suara|dubbing indo/i.test(t)) return false;
+  return /\b(dub\s*id|id\s*dub|dub\s*indo|dubbing\s*indo|sulih\s*suara|bahasa\s*indonesia|audio\s*indonesia)\b/i.test(t) || /\[bahasa\s*indonesia\]/i.test(t);
 }
 
 function cleanPlaylistDisplayTitle(raw: string): string {
   return raw
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, " ")
     .replace(/\[[^\]]*\]/g, "")
     .replace(/【[^】]*】/g, "")
-    .replace(/\((?:lengkap|dub|sub|takarir|bahasa indonesia|uncensored|censored)[^)]*\)/gi, "")
+    .replace(/\((?:lengkap|dub|sub|id\s*sub|id\s*dub|takarir|bahasa indonesia|uncensored|censored)[^)]*\)/gi, "")
     .replace(/\|\s*(sub indo|dub id|dub jp|muse indonesia|ani-one).*$/i, "")
     .replace(/-\s*(sub indo|dub id|bahasa indonesia|takarir indonesia).*$/i, "")
     .replace(/^dub\s*id\s*[-–:]\s*/i, "")
     .replace(/^#ultraearlybird\s*[《«]?/i, "")
-    .replace(/[》»]/g, "")
+    .replace(/[《》«»]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function isSkippablePlaylistTitle(title: string): boolean {
-  return /(^pv\b|\bpv\b|trailer|teaser|highlight|cuplikan|#short|shorts|\bost\b|opening|ending|music video|karaoke|promo|preview|interview|compilation|kompilasi|semua episode|anime festival)/i.test(title);
+  return /(^pv\b|\bpv\b|trailer|teaser|highlight|cuplikan|#short|shorts|\bost\b|opening|ending|music video|karaoke|promo|preview|interview|compilation|kompilasi|semua episode|anime festival|kolaborasi brand|\bcm\b|freetalk|\bvod\b|talkshow|musegaming|nonton bareng|kumpulan anime|film.*seru|\bultra\b|ultraearlybird)/i.test(title);
 }
 
 async function crawlPublicChannelPlaylists(handle: string, channelName: string, maxPages: number): Promise<CrawledPlaylistSummary[]> {
@@ -1151,15 +1148,16 @@ async function crawlPublicChannelPlaylists(handle: string, channelName: string, 
 }
 
 async function getAllLiveChannelPlaylists(): Promise<CrawledPlaylistSummary[]> {
-  const key = "yt-all-channel-playlists-v2";
+  const key = "yt-all-channel-playlists-v3";
   const cached = getCached<CrawledPlaylistSummary[]>(key);
   if (cached) return cached;
 
-  const [dbRows, museList, anioneList] = await Promise.all([
-    db && dbReady
-      ? db`SELECT playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id, audio_lang, anilist_id FROM official_playlists ORDER BY anilist_id IS NULL, channel_name DESC, episode_hint DESC`
-          .then((rows) =>
-            (rows as Array<{ playlist_id: string; title: string; clean_title: string; channel_name: string; episode_hint: number; sample_video_id: string; audio_lang: string; anilist_id: number | null }>).map((r) => ({
+  const dbRows: CrawledPlaylistSummary[] = db && dbReady
+    ? await db`SELECT playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id, audio_lang, anilist_id FROM official_playlists ORDER BY anilist_id IS NULL, channel_name DESC, episode_hint DESC`
+        .then((rows) =>
+          (rows as Array<{ playlist_id: string; title: string; clean_title: string; channel_name: string; episode_hint: number; sample_video_id: string; audio_lang: string; anilist_id: number | null }>)
+            .filter((r) => !isSkippablePlaylistTitle(r.title))
+            .map((r) => ({
               playlistId: r.playlist_id,
               title: r.title,
               cleanTitle: r.clean_title,
@@ -1169,23 +1167,27 @@ async function getAllLiveChannelPlaylists(): Promise<CrawledPlaylistSummary[]> {
               audioLang: (r.audio_lang === "DUB_ID" || isDubIndoTitle(r.title) ? "DUB_ID" : "SUB") as "SUB" | "DUB_ID",
               anilistId: r.anilist_id ? Number(r.anilist_id) : null,
             }))
-          )
-          .catch(() => [] as CrawledPlaylistSummary[])
-      : Promise.resolve([] as CrawledPlaylistSummary[]),
+        )
+        .catch(() => [] as CrawledPlaylistSummary[])
+    : [];
+
+  // Prefer verified clean PostgreSQL catalog; fall back to live crawl only when DB is empty
+  if (dbRows.length > 0) return setCached(key, dbRows, 2 * 60 * 60 * 1000);
+
+  const [museList, anioneList] = await Promise.all([
     crawlPublicChannelPlaylists("@MuseIndonesia", "Muse Indonesia", 16),
     crawlPublicChannelPlaylists("@AniOneID", "Ani-One Indonesia", 10),
   ]);
   const byId = new Map<string, CrawledPlaylistSummary>();
-  for (const item of [...dbRows, ...museList, ...anioneList]) {
+  for (const item of [...museList, ...anioneList]) {
     if (!byId.has(item.playlistId)) byId.set(item.playlistId, item);
   }
-  const combined = [...byId.values()];
-  return setCached(key, combined, 2 * 60 * 60 * 1000);
+  return setCached(key, [...byId.values()], 2 * 60 * 60 * 1000);
 }
 
 async function handleSeedOfficialPlaylists(req: Request): Promise<Response> {
   if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
-  const body = await parseJsonBody<{ items?: Array<{ id: string; title: string; cleanTitle: string; channel: string; epCount: number; ep1Id: string; audioLang?: string; anilistId?: number | null }> }>(req);
+  const body = await parseJsonBody<{ clearFirst?: boolean; items?: Array<{ id: string; title: string; cleanTitle: string; channel: string; epCount: number; ep1Id: string; audioLang?: string; anilistId?: number | null }> }>(req);
   const items = (body?.items ?? []).filter(
     (x) =>
       typeof x?.id === "string" &&
@@ -1195,6 +1197,7 @@ async function handleSeedOfficialPlaylists(req: Request): Promise<Response> {
       x.title.trim().length > 0
   );
   if (items.length === 0) return jsonResponse({ status: false, message: "No valid items" }, 400);
+  if (body?.clearFirst === true) await db`DELETE FROM official_playlists`;
   let inserted = 0;
   for (const it of items) {
     const clean = (it.cleanTitle || cleanPlaylistDisplayTitle(it.title) || it.title).trim().slice(0, 180);
@@ -1205,18 +1208,16 @@ async function handleSeedOfficialPlaylists(req: Request): Promise<Response> {
       INSERT INTO official_playlists (playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id, audio_lang, anilist_id)
       VALUES (${it.id}, ${it.title.trim().slice(0, 220)}, ${clean}, ${it.channel}, ${Math.max(1, Number(it.epCount) || 12)}, ${ep1}, ${lang}, ${aid})
       ON CONFLICT (playlist_id) DO UPDATE SET
+        title = EXCLUDED.title,
         clean_title = EXCLUDED.clean_title,
         episode_hint = EXCLUDED.episode_hint,
         audio_lang = EXCLUDED.audio_lang,
-        anilist_id = COALESCE(EXCLUDED.anilist_id, official_playlists.anilist_id),
+        anilist_id = EXCLUDED.anilist_id,
         sample_video_id = CASE WHEN EXCLUDED.sample_video_id <> '' THEN EXCLUDED.sample_video_id ELSE official_playlists.sample_video_id END
     `;
     inserted++;
   }
-  cache.delete("yt-all-channel-playlists-v2");
-  for (const k of cache.keys()) {
-    if (k.startsWith("official-free-unified-") || k.startsWith("dub-indo-")) cache.delete(k);
-  }
+  cache.clear();
   const cnt = await db`SELECT COUNT(*)::int AS c, COUNT(*) FILTER (WHERE audio_lang = 'DUB_ID')::int AS dub_c FROM official_playlists`;
   return jsonResponse({ status: "success", upserted: inserted, totalInDb: Number((cnt[0] as { c: number })?.c ?? inserted), totalDubInDb: Number((cnt[0] as { dub_c: number })?.dub_c ?? 0) });
 }
@@ -1374,40 +1375,29 @@ function buildPlaylistCard(pl: CrawledPlaylistSummary, idNum: number, isDub: boo
   };
 }
 
+async function fetchAniListMediaByIds(ids: number[]): Promise<Map<number, AniListMedia>> {
+  const uniqueIds = [...new Set(ids.filter((id) => Number.isFinite(id) && id > 0))];
+  const out = new Map<number, AniListMedia>();
+  if (uniqueIds.length === 0) return out;
+  const chunks: number[][] = [];
+  for (let i = 0; i < uniqueIds.length; i += 50) chunks.push(uniqueIds.slice(i, i + 50));
+  const q = `query ($ids: [Int]) { Page(page: 1, perPage: 50) { media(id_in: $ids, type: ANIME, isAdult: false) { ${MEDIA_CARD_FIELDS} } } }`;
+  const results = await Promise.all(
+    chunks.map((c) => queryAniList<{ Page: { media: AniListMedia[] } }>(q, { ids: c }).catch(() => ({ Page: { media: [] } })))
+  );
+  for (const r of results) for (const m of r.Page.media) out.set(m.id, m);
+  return out;
+}
+
 async function handleOfficialFree(page = 1): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `official-free-unified-v5:p${safePage}`;
+  const key = `official-free-unified-v6:p${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
-  // Page 1 & 2: Batched AniList metadata for all 118+ curated verified Muse Indonesia & Ani-One Indonesia series
   if (safePage === 1) {
     const uniqueIds = [...new Set(FEATURED_MUSE_ANILIST_IDS)];
-    const chunks: number[][] = [];
-    for (let i = 0; i < uniqueIds.length; i += 50) {
-      chunks.push(uniqueIds.slice(i, i + 50));
-    }
-
-    const query = `
-      query ($ids: [Int]) {
-        Page(page: 1, perPage: 50) {
-          media(id_in: $ids, type: ANIME, isAdult: false) {
-            ${MEDIA_CARD_FIELDS}
-          }
-        }
-      }
-    `;
-    const batchResults = await Promise.all(
-      chunks.map((ids) =>
-        queryAniList<{ Page: { media: AniListMedia[] } }>(query, { ids }).catch(() => ({ Page: { media: [] } }))
-      )
-    );
-
-    const byId = new Map<number, AniListMedia>();
-    for (const batch of batchResults) {
-      for (const m of batch.Page.media) byId.set(m.id, m);
-    }
-
+    const byId = await fetchAniListMediaByIds(uniqueIds);
     const data = uniqueIds
       .map((id) => byId.get(id))
       .filter((m): m is AniListMedia => Boolean(m))
@@ -1417,36 +1407,53 @@ async function handleOfficialFree(page = 1): Promise<Response> {
         return {
           ...common,
           is_official_free: true,
+          is_dub_indo: false,
+          audio_lang: "SUB",
           official_channel: pl?.channelName ?? "Muse Indonesia",
           stream_type: "official_episode",
-          external_links: pl
-            ? [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }]
-            : [],
+          external_links: pl ? [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }] : [],
         };
       });
-
-    return jsonResponse(
-      setCached(key, { status: "success", source: "anilist+muse+anione", page: 1, totalCurated: data.length, data }, 20 * 60 * 1000)
-    );
+    return jsonResponse(setCached(key, { status: "success", source: "anilist+muse+anione", page: 1, totalCurated: data.length, data }, 20 * 60 * 1000));
   }
 
-  // Page 2+: Remaining LIVE crawled Muse Indonesia & Ani-One Indonesia SUB-ONLY playlists
-  const curatedPlaylistIds = new Set(Object.values(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map((x) => x.playlistId));
+  // Page 2+: Remaining verified Muse & Ani-One SUB playlists enriched with official AniList covers, titles & synopses
+  const curatedPlIds = new Set(Object.values(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map((x) => x.playlistId));
+  const curatedAlIds = new Set(Object.keys(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map(Number));
   const allLive = await getAllLiveChannelPlaylists();
-  const remaining = allLive.filter((pl) => pl.audioLang === "SUB" && !curatedPlaylistIds.has(pl.playlistId));
+  const remaining = allLive.filter(
+    (pl) => pl.audioLang === "SUB" && !curatedPlIds.has(pl.playlistId) && !(pl.anilistId && curatedAlIds.has(pl.anilistId))
+  );
   const pageSize = 48;
   const start = (safePage - 2) * pageSize;
   const slice = remaining.slice(start, start + pageSize);
-  const data = slice.map((pl, idx) => buildPlaylistCard(pl, 900000 + start + idx, false));
+  const byAniListId = await fetchAniListMediaByIds(slice.map((p) => p.anilistId ?? 0));
+
+  const data = slice.map((pl, idx) => {
+    const media = pl.anilistId ? byAniListId.get(pl.anilistId) : undefined;
+    if (media) {
+      const common = mapMediaCommon(media);
+      return {
+        ...common,
+        is_official_free: true,
+        is_dub_indo: false,
+        audio_lang: "SUB",
+        official_channel: pl.channelName,
+        stream_type: "official_episode",
+        external_links: [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }],
+      };
+    }
+    return buildPlaylistCard(pl, 900000 + start + idx, false);
+  });
 
   return jsonResponse(
-    setCached(key, { status: "success", source: "youtube-channels-sub", page: safePage, hasMore: start + pageSize < remaining.length, data }, 20 * 60 * 1000)
+    setCached(key, { status: "success", source: "anilist+youtube-channels-sub", page: safePage, hasMore: start + pageSize < remaining.length, data }, 20 * 60 * 1000)
   );
 }
 
 async function handleDubIndo(page = 1): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `dub-indo-v1:p${safePage}`;
+  const key = `dub-indo-v2:p${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
@@ -1455,18 +1462,7 @@ async function handleDubIndo(page = 1): Promise<Response> {
   const pageSize = 70;
   const start = (safePage - 1) * pageSize;
   const slice = dubPlaylists.slice(start, start + pageSize);
-
-  const anilistIds = [...new Set(slice.map((p) => p.anilistId).filter((id): id is number => Boolean(id && id > 0)))];
-  const byAniListId = new Map<number, AniListMedia>();
-  if (anilistIds.length > 0) {
-    const chunks: number[][] = [];
-    for (let i = 0; i < anilistIds.length; i += 50) chunks.push(anilistIds.slice(i, i + 50));
-    const q = `query ($ids: [Int]) { Page(page: 1, perPage: 50) { media(id_in: $ids, type: ANIME, isAdult: false) { ${MEDIA_CARD_FIELDS} } } }`;
-    const results = await Promise.all(
-      chunks.map((ids) => queryAniList<{ Page: { media: AniListMedia[] } }>(q, { ids }).catch(() => ({ Page: { media: [] } })))
-    );
-    for (const r of results) for (const m of r.Page.media) byAniListId.set(m.id, m);
-  }
+  const byAniListId = await fetchAniListMediaByIds(slice.map((p) => p.anilistId ?? 0));
 
   const data = slice.map((pl, idx) => {
     const media = pl.anilistId ? byAniListId.get(pl.anilistId) : undefined;
@@ -1626,8 +1622,8 @@ function mapMediaCommon(m: AniListMedia) {
   const schedule = formatWibSchedule(m.nextAiringEpisode?.airingAt);
   const genres = (m.genres ?? []).filter(Boolean);
   const officialMapping = MUSE_ID_PLAYLIST_BY_ANILIST_ID[m.id];
-  const cachedLive = officialMapping ? null : getCached<CrawledPlaylistSummary[]>("yt-all-channel-playlists-v2")?.filter((p) => p.audioLang === "SUB") ?? null;
-  const matchedLive = officialMapping ? null : cachedLive ? matchLivePlaylistForMedia(m, cachedLive) : null;
+  const cachedLive = officialMapping ? null : getCached<CrawledPlaylistSummary[]>("yt-all-channel-playlists-v3")?.filter((p) => p.audioLang === "SUB") ?? null;
+  const matchedLive = officialMapping ? null : cachedLive ? (cachedLive.find((p) => p.anilistId === m.id) ?? matchLivePlaylistForMedia(m, cachedLive)) : null;
   const isPlayable = Boolean(officialMapping || matchedLive);
   const channelLabel = officialMapping?.channelName ?? matchedLive?.channelName ?? null;
 
@@ -1704,32 +1700,36 @@ async function handleSearch(rawQuery: string): Promise<Response> {
   const qNorm = q.toLowerCase().trim();
   const cachedLive = await getAllLiveChannelPlaylists();
   const curatedIds = new Set(Object.values(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map((x) => x.playlistId));
+  const seenSubIds = new Set(anilistItems.map((a) => a.id));
   const seenSubTitles = new Set(anilistItems.map((a) => normalizeTitleForMatch(a.title)));
   const anilistById = new Map(anilistItems.map((a) => [a.id, a]));
-  const ytMatches = cachedLive
+  const rawYtHits = cachedLive
     .filter((pl) => {
       const hits = pl.cleanTitle.toLowerCase().includes(qNorm) || pl.title.toLowerCase().includes(qNorm);
       if (!hits) return false;
       if (pl.audioLang === "DUB_ID") return true;
+      if (pl.anilistId && seenSubIds.has(pl.anilistId)) return false;
       return !curatedIds.has(pl.playlistId) && !seenSubTitles.has(normalizeTitleForMatch(pl.cleanTitle));
     })
-    .slice(0, 10)
-    .map((pl, idx) => {
-      const isDub = pl.audioLang === "DUB_ID";
-      const linked = isDub && pl.anilistId ? anilistById.get(pl.anilistId) : undefined;
-      if (linked) {
-        return {
-          ...linked,
-          slug: `dub-${pl.playlistId}`,
-          genres: linked.genres.includes("Dub Indo") ? linked.genres : [...linked.genres, "Dub Indo"],
-          is_official_free: true,
-          is_dub_indo: true,
-          audio_lang: "DUB_ID",
-          official_channel: pl.channelName,
-        };
-      }
-      return buildPlaylistCard(pl, (isDub ? 970000 : 950000) + idx, isDub);
-    });
+    .slice(0, 10);
+  const missingMetaIds = rawYtHits.map((p) => p.anilistId ?? 0).filter((id) => id > 0 && !anilistById.has(id));
+  const extraMeta = missingMetaIds.length > 0 ? await fetchAniListMediaByIds(missingMetaIds) : new Map<number, AniListMedia>();
+  const ytMatches = rawYtHits.map((pl, idx) => {
+    const isDub = pl.audioLang === "DUB_ID";
+    const linked = pl.anilistId ? (anilistById.get(pl.anilistId) ?? (extraMeta.has(pl.anilistId) ? mapMediaCommon(extraMeta.get(pl.anilistId)!) : undefined)) : undefined;
+    if (linked) {
+      return {
+        ...linked,
+        slug: isDub ? `dub-${pl.playlistId}` : linked.slug,
+        genres: isDub && !linked.genres.includes("Dub Indo") ? [...linked.genres, "Dub Indo"] : linked.genres,
+        is_official_free: true,
+        is_dub_indo: isDub,
+        audio_lang: isDub ? "DUB_ID" : "SUB",
+        official_channel: pl.channelName,
+      };
+    }
+    return buildPlaylistCard(pl, (isDub ? 970000 : 950000) + idx, isDub);
+  });
 
   const data = [...anilistItems, ...ytMatches];
   return jsonResponse(setCached(key, { status: "success", source: "anilist-live", query: q, data }, 3 * 60 * 1000));
@@ -1857,7 +1857,8 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
 
   if (curatedOfficial) await tryPlaylist(curatedOfficial.playlistId, curatedOfficial.channelName);
   if (officialPlaylistEpisodes.length === 0) {
-    const matchedPl = matchLivePlaylistForMedia(media, (await getAllLiveChannelPlaylists()).filter((p) => p.audioLang === "SUB"));
+    const subLive = (await getAllLiveChannelPlaylists()).filter((p) => p.audioLang === "SUB");
+    const matchedPl = subLive.find((p) => p.anilistId === media.id) ?? matchLivePlaylistForMedia(media, subLive);
     if (matchedPl) await tryPlaylist(matchedPl.playlistId, matchedPl.channelName);
   }
   if (officialPlaylistEpisodes.length === 0) {
