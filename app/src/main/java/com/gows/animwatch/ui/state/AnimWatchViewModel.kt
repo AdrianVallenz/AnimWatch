@@ -13,6 +13,7 @@ import com.gows.animwatch.data.model.CommentItem
 import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.DownloadTask
 import com.gows.animwatch.data.model.Episode
+import com.gows.animwatch.data.model.FranchiseSeasonHelper
 import com.gows.animwatch.data.model.NotificationItem
 import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.data.model.ReleaseDay
@@ -68,7 +69,7 @@ enum class ExploreMode(val label: String) {
 }
 
 enum class LibraryTab(val label: String) {
-    WATCHLIST("Daftar Tonton"),
+    WATCHLIST("Disimpan"),
     HISTORY("Riwayat"),
     DOWNLOADS("Unduhan")
 }
@@ -947,8 +948,8 @@ class AnimWatchViewModel(
                     emitMessage("Katalog dimuat (${remoteItems.size} judul)")
                 }
                 hydrateMissingSavedAnime(config.baseUrl)
-                // Silently prefetch page 2 (remaining Muse/Ani-One playlists + AniList page 2) right after initial render
-                loadMoreCatalog(silent = true)
+                // Silently prefetch remaining catalog pages so all multi-season anime (S1..S4+) are available immediately
+                prefetchRemainingOfficialSeasons(config.baseUrl)
             }.onFailure { err ->
                 val reason = err.localizedMessage?.take(72) ?: "Server tidak dapat dijangkau"
                 _uiState.update { state ->
@@ -1066,6 +1067,42 @@ class AnimWatchViewModel(
         }
     }
 
+    private fun prefetchRemainingOfficialSeasons(baseUrl: String) {
+        viewModelScope.launch {
+            for (page in 2..7) {
+                val cur = _uiState.value
+                if (!cur.apiConfig.useLiveApi || cur.catalogPageLoaded >= page) continue
+                val res = remoteDataSource.fetchCatalogPage(baseUrl, page)
+                val pageItems = res.getOrNull() ?: break
+                if (pageItems.isEmpty()) break
+                _uiState.update { state ->
+                    val merged = LinkedHashMap<String, Anime>()
+                    state.allAnime.forEach { merged[it.id] = it }
+                    pageItems.forEach { item ->
+                        val existing = merged[item.id]
+                        if (existing == null) {
+                            merged[item.id] = item
+                        } else if (item.isOfficialFree && !existing.isOfficialFree) {
+                            merged[item.id] = existing.copy(
+                                isOfficialFree = true,
+                                officialChannel = item.officialChannel ?: existing.officialChannel
+                            )
+                        }
+                    }
+                    val finalList = merged.values.toList()
+                    state.copy(
+                        allAnime = finalList,
+                        catalogPageLoaded = maxOf(state.catalogPageLoaded, page),
+                        apiConfig = state.apiConfig.copy(
+                            lastSyncMessage = "Terhubung (${finalList.size} judul)",
+                            remoteCount = finalList.size
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     private fun hydrateMissingSavedAnime(baseUrl: String) {
         val state = _uiState.value
         val existingIds = state.allAnime.map { it.id }.toSet()
@@ -1074,7 +1111,7 @@ class AnimWatchViewModel(
             state.watchHistory.forEach { add(it.animeId) }
             state.watchlist.keys.forEach { add(it) }
             state.downloads.forEach { add(it.animeId) }
-        }.distinct().filter { it.isNotBlank() && it !in existingIds && it !in mockIds }.take(8)
+        }.distinct().filter { it.isNotBlank() && it !in existingIds && it !in mockIds }.take(20)
         if (missingIds.isEmpty()) return
 
         viewModelScope.launch {
@@ -1493,7 +1530,13 @@ class AnimWatchViewModel(
         if (nextEp != null) {
             playAnime(anime.id, nextEp.id, startFromZero = true)
         } else {
-            emitMessage("Sudah di episode terakhir yang tersedia")
+            val nextSeason = FranchiseSeasonHelper.findNextSeason(anime, _uiState.value.allAnime)
+            if (nextSeason != null) {
+                emitMessage("Melanjutkan ke ${nextSeason.title}")
+                playAnime(nextSeason.id, null, startFromZero = true)
+            } else {
+                emitMessage("Sudah di episode terakhir yang tersedia")
+            }
         }
     }
 
@@ -1915,23 +1958,28 @@ class AnimWatchViewModel(
         val anime = _uiState.value.allAnime.find { it.id == animeId }
         val title = anime?.title ?: "Anime"
         var syncedWatched: Int? = null
+        val unifiedCategory = when (category) {
+            null -> null
+            WatchlistCategory.COMPLETED -> WatchlistCategory.COMPLETED
+            else -> WatchlistCategory.WATCHING
+        }
         _uiState.update { state ->
             val nextMap = state.watchlist.toMutableMap()
             val nextWatched = state.watchedEpisodes.toMutableMap()
-            if (category == null) {
+            if (unifiedCategory == null) {
                 nextMap.remove(animeId)
                 nextWatched.remove(animeId)
-                emitMessage("$title dihapus dari Daftar Tonton")
+                emitMessage("$title dihapus dari Disimpan")
             } else {
-                nextMap[animeId] = category
-                if (category == WatchlistCategory.COMPLETED && anime != null) {
+                nextMap[animeId] = unifiedCategory
+                if (unifiedCategory == WatchlistCategory.COMPLETED && anime != null) {
                     val maxEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
                     if ((nextWatched[animeId] ?: 0) < maxEps) {
                         nextWatched[animeId] = maxEps
                         syncedWatched = maxEps
                     }
                 }
-                emitMessage("$title disimpan ke ${category.label}")
+                emitMessage("$title masuk ke kategori Disimpan")
             }
             state.copy(watchlist = nextMap, watchedEpisodes = nextWatched)
         }
@@ -1943,7 +1991,7 @@ class AnimWatchViewModel(
                     baseUrl = state.apiConfig.baseUrl,
                     token = token,
                     animeId = animeId,
-                    category = category?.name,
+                    category = unifiedCategory?.name,
                     watchedEpisodes = syncedWatched
                 )
             }
@@ -1957,22 +2005,25 @@ class AnimWatchViewModel(
         val currentWatched = _uiState.value.watchedEpisodes[animeId] ?: 0
         val reachedEnd = episodeNumber >= maxEps || (anime.episodes.isNotEmpty() && episodeNumber >= lastAvailableEp)
         val nextWatched = if (reachedEnd) maxEps else maxOf(currentWatched, episodeNumber).coerceIn(1, maxEps)
-        val nextCategory = if (reachedEnd) {
-            WatchlistCategory.COMPLETED
-        } else {
-            _uiState.value.watchlist[animeId] ?: WatchlistCategory.WATCHING
+        val existingCat = _uiState.value.watchlist[animeId]
+        val nextCategory = when {
+            reachedEnd -> WatchlistCategory.COMPLETED
+            else -> existingCat
         }
 
         _uiState.update { state ->
+            val nextWatchlist = if (nextCategory != null) {
+                state.watchlist + (animeId to nextCategory)
+            } else state.watchlist
             state.copy(
                 watchedEpisodes = state.watchedEpisodes + (animeId to nextWatched),
-                watchlist = state.watchlist + (animeId to nextCategory)
+                watchlist = nextWatchlist
             )
         }
 
         val token = authToken
         val state = _uiState.value
-        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession && nextCategory != null) {
             viewModelScope.launch {
                 remoteDataSource.syncWatchlist(
                     baseUrl = state.apiConfig.baseUrl,

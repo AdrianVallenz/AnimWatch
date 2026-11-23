@@ -102,7 +102,13 @@ fun LibraryScreen(
     onPlayAnime: (String, String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var editingWatchlistAnime by remember { mutableStateOf<Anime?>(null) }
+    val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
+    val visibleSavedCount = remember(uiState.watchlist, animeById) {
+        uiState.watchlist.keys.count { it in animeById }
+    }
+    val visibleHistoryCount = remember(uiState.watchHistory, animeById) {
+        uiState.watchHistory.count { it.animeId in animeById }
+    }
 
     Column(
         modifier = modifier
@@ -130,8 +136,8 @@ fun LibraryScreen(
                 LibraryTab.entries.forEach { tab ->
                     val selected = uiState.libraryTab == tab
                     val count = when (tab) {
-                        LibraryTab.WATCHLIST -> uiState.watchlist.size
-                        LibraryTab.HISTORY -> uiState.watchHistory.size
+                        LibraryTab.WATCHLIST -> visibleSavedCount
+                        LibraryTab.HISTORY -> visibleHistoryCount
                         LibraryTab.DOWNLOADS -> uiState.downloads.size
                     }
                     Box(
@@ -163,8 +169,7 @@ fun LibraryScreen(
             LibraryTab.WATCHLIST -> WatchlistContent(
                 uiState = uiState,
                 bottomInsetPadding = bottomInsetPadding,
-                onSelectFilter = onSelectWatchlistFilter,
-                onEditCategory = { editingWatchlistAnime = it },
+                onRemoveSaved = { animeId -> onUpdateWatchlistCategory(animeId, null) },
                 onAnimeClick = onAnimeClick,
                 onPlayClick = { onPlayAnime(it.id, null) }
             )
@@ -191,77 +196,53 @@ fun LibraryScreen(
             )
         }
     }
-
-    editingWatchlistAnime?.let { anime ->
-        WatchlistCategorySheet(
-            animeTitle = anime.title,
-            currentCategory = uiState.watchlist[anime.id],
-            onSelectCategory = { cat -> onUpdateWatchlistCategory(anime.id, cat) },
-            onDismiss = { editingWatchlistAnime = null }
-        )
-    }
 }
 
 @Composable
 private fun WatchlistContent(
     uiState: AnimWatchUiState,
     bottomInsetPadding: Dp,
-    onSelectFilter: (WatchlistCategory?) -> Unit,
-    onEditCategory: (Anime) -> Unit,
+    onRemoveSaved: (String) -> Unit,
     onAnimeClick: (String) -> Unit,
     onPlayClick: (Anime) -> Unit
 ) {
-    val savedEntries = remember(uiState.allAnime, uiState.watchlist, uiState.selectedWatchlistFilter) {
-        uiState.allAnime.mapNotNull { anime ->
-            val category = uiState.watchlist[anime.id] ?: return@mapNotNull null
-            if (uiState.selectedWatchlistFilter != null && category != uiState.selectedWatchlistFilter) {
-                return@mapNotNull null
-            }
+    val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
+    val savedEntries = remember(uiState.watchlist, animeById) {
+        uiState.watchlist.entries.mapNotNull { (animeId, category) ->
+            val anime = animeById[animeId] ?: return@mapNotNull null
             anime to category
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            item {
-                FilterChipPill(
-                    text = "Semua (${uiState.watchlist.size})",
-                    selected = uiState.selectedWatchlistFilter == null,
-                    onClick = { onSelectFilter(null) }
-                )
-            }
-            items(WatchlistCategory.entries) { cat ->
-                val count = uiState.watchlist.values.count { it == cat }
-                FilterChipPill(
-                    text = "${cat.label} ($count)",
-                    selected = uiState.selectedWatchlistFilter == cat,
-                    onClick = { onSelectFilter(cat) }
-                )
-            }
-        }
-
         if (savedEntries.isEmpty()) {
             EmptyLibraryState(
                 icon = Icons.Rounded.BookmarkBorder,
-                title = "Daftar tonton masih kosong",
-                subtitle = "Simpan anime favorit dari Beranda atau Detail untuk melacak progres tontonan."
+                title = "Belum ada anime disimpan",
+                subtitle = "Ketuk tombol Simpan pada anime favoritmu untuk memasukkannya ke daftar Disimpan."
             )
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 8.dp,
+                    top = 6.dp,
                     bottom = bottomInsetPadding
                 ),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item {
+                    Text(
+                        text = "${savedEntries.size} anime dalam kategori Disimpan",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary
+                    )
+                }
                 items(savedEntries, key = { it.first.id }) { (anime, category) ->
                     val watchedCount = uiState.watchedEpisodes[anime.id] ?: 0
                     val maxTrackable = maxOf(anime.totalEpisodes, anime.releasedEpisodes, 1)
+                    val isCompleted = category == WatchlistCategory.COMPLETED ||
+                        (watchedCount > 0 && watchedCount >= maxTrackable)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -299,11 +280,10 @@ private fun WatchlistContent(
                                     modifier = Modifier
                                         .clip(CircleShape)
                                         .background(GoldTint)
-                                        .clickable { onEditCategory(anime) }
                                         .padding(horizontal = 9.dp, vertical = 3.5.dp)
                                 ) {
                                     Text(
-                                        text = "${category.label} • Ubah",
+                                        text = if (isCompleted) "Disimpan • Tamat" else "Disimpan",
                                         color = GoldPrimary,
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.SemiBold
@@ -334,7 +314,6 @@ private fun WatchlistContent(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(3.dp))
-                            val isCompleted = category == WatchlistCategory.COMPLETED
                             val shownWatched = if (watchedCount > 0) watchedCount else maxTrackable
                             Text(
                                 text = if (isCompleted) {
@@ -357,7 +336,19 @@ private fun WatchlistContent(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = { onRemoveSaved(anime.id) },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.DeleteOutline,
+                                contentDescription = "Hapus dari Disimpan",
+                                tint = TextTertiary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
 
                         IconButton(
                             onClick = { onPlayClick(anime) },

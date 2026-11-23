@@ -39,18 +39,23 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,6 +78,7 @@ import com.gows.animwatch.data.model.CommentItem
 import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.DownloadTask
 import com.gows.animwatch.data.model.Episode
+import com.gows.animwatch.data.model.FranchiseSeasonHelper
 import com.gows.animwatch.data.model.WatchlistCategory
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimePosterArtwork
@@ -112,7 +118,7 @@ private enum class DetailTab(val label: String) {
     COMMENTS("Komentar")
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AnimeDetailScreen(
     anime: Anime,
@@ -138,7 +144,7 @@ fun AnimeDetailScreen(
     var synopsisExpanded by remember { mutableStateOf(false) }
     var sortDescending by remember { mutableStateOf(false) }
     var episodeGridMode by remember { mutableStateOf(false) }
-    var showWatchlistSheet by remember { mutableStateOf(false) }
+    var showSeasonPickerSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
 
     var commentDraft by remember { mutableStateOf("") }
@@ -146,6 +152,7 @@ fun AnimeDetailScreen(
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
 
     val watchlistCategory = uiState.watchlist[anime.id]
+    val isSavedInWatchlist = watchlistCategory != null
     val watchedEpisodesCount = uiState.watchedEpisodes[anime.id] ?: 0
     val maxTrackableEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
     val isCompletedAnime = watchlistCategory == WatchlistCategory.COMPLETED ||
@@ -158,8 +165,19 @@ fun AnimeDetailScreen(
         if (sortDescending) anime.episodes.sortedByDescending { it.number }
         else anime.episodes.sortedBy { it.number }
     }
-    val relatedAnime = remember(anime.relatedIds, uiState.allAnime) {
-        uiState.allAnime.filter { it.id in anime.relatedIds }
+    val franchiseSeasons = remember(anime, uiState.allAnime) {
+        FranchiseSeasonHelper.findFranchiseSeasons(anime, uiState.allAnime)
+    }
+    val currentSeasonIndex = remember(franchiseSeasons, anime.id) {
+        franchiseSeasons.indexOfFirst { it.id == anime.id }.coerceAtLeast(0)
+    }
+    val nextSeason = remember(franchiseSeasons, currentSeasonIndex) {
+        if (currentSeasonIndex + 1 < franchiseSeasons.size) franchiseSeasons[currentSeasonIndex + 1] else null
+    }
+    val relatedAnime = remember(anime.relatedIds, franchiseSeasons, uiState.allAnime) {
+        val byRelated = uiState.allAnime.filter { it.id in anime.relatedIds && it.id != anime.id }
+        val byFranchise = franchiseSeasons.filter { it.id != anime.id }
+        (byFranchise + byRelated).distinctBy { it.id }
     }
     val animeComments = remember(uiState.comments, anime.id) {
         uiState.comments.filter { it.animeId == anime.id }
@@ -390,10 +408,10 @@ fun AnimeDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     DetailQuickAction(
-                        icon = if (watchlistCategory != null) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
-                        label = watchlistCategory?.label ?: "Simpan",
-                        active = watchlistCategory != null,
-                        onClick = { showWatchlistSheet = true },
+                        icon = if (isSavedInWatchlist) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
+                        label = if (isSavedInWatchlist) "Disimpan" else "Simpan",
+                        active = isSavedInWatchlist,
+                        onClick = { onBookmarkClick(anime.id) },
                         modifier = Modifier.weight(1f)
                     )
                     DetailQuickAction(
@@ -491,11 +509,10 @@ fun AnimeDetailScreen(
                                 modifier = Modifier
                                     .clip(CircleShape)
                                     .background(GoldTint)
-                                    .clickable { showWatchlistSheet = true }
                                     .padding(horizontal = 11.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = watchlistCategory?.label ?: "Tamat",
+                                    text = if (isSavedInWatchlist) "Disimpan • Tamat" else "Tamat",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = GoldPrimary,
                                     fontWeight = FontWeight.SemiBold
@@ -682,6 +699,135 @@ fun AnimeDetailScreen(
 
         when (selectedTab) {
             DetailTab.EPISODES -> {
+                if (franchiseSeasons.size > 1) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(ObsidianCard)
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                                .padding(13.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Urutan Season (${franchiseSeasons.size} Season)",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Sedang dibuka: ${FranchiseSeasonHelper.formatSeasonShortLabel(anime, currentSeasonIndex)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = GoldPrimary
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(GoldTintStrong)
+                                        .border(0.75.dp, GoldPrimary, CircleShape)
+                                        .clickable { showSeasonPickerSheet = true }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Pilih Season",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = GoldBright,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                                        contentDescription = "Pilih Season",
+                                        tint = GoldBright,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(franchiseSeasons.size) { idx ->
+                                    val seasonItem = franchiseSeasons[idx]
+                                    val isCurrentSeason = seasonItem.id == anime.id
+                                    val label = FranchiseSeasonHelper.formatSeasonShortLabel(seasonItem, idx)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isCurrentSeason) GoldGradientBrush
+                                                else Brush.linearGradient(listOf(ObsidianCardAlt, ObsidianCardAlt))
+                                            )
+                                            .border(
+                                                0.75.dp,
+                                                if (isCurrentSeason) Color.Transparent else GoldSubtleBorder,
+                                                CircleShape
+                                            )
+                                            .clickable(enabled = !isCurrentSeason) {
+                                                onRelatedAnimeClick(seasonItem.id)
+                                            }
+                                            .padding(horizontal = 13.dp, vertical = 7.dp)
+                                    ) {
+                                        Text(
+                                            text = "$label • ${seasonItem.releasedEpisodes} Ep",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isCurrentSeason) TextOnGold else TextPrimary,
+                                            fontWeight = if (isCurrentSeason) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (nextSeason != null) {
+                                val nextIdx = (currentSeasonIndex + 1).coerceAtMost(franchiseSeasons.lastIndex)
+                                val nextLabel = FranchiseSeasonHelper.formatSeasonShortLabel(nextSeason, nextIdx)
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(GoldGradientBrush)
+                                        .clickable { onRelatedAnimeClick(nextSeason.id) }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Lanjut ke $nextLabel",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = TextOnGold,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = nextSeason.title,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextOnGold.copy(alpha = 0.88f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.Rounded.SkipNext,
+                                        contentDescription = "Lanjut ke Season Berikutnya",
+                                        tint = TextOnGold,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
                 item {
                     Row(
                         modifier = Modifier
@@ -987,13 +1133,93 @@ fun AnimeDetailScreen(
         }
     }
 
-    if (showWatchlistSheet) {
-        WatchlistCategorySheet(
-            animeTitle = anime.title,
-            currentCategory = watchlistCategory,
-            onSelectCategory = { cat -> onSelectWatchlist(anime.id, cat) },
-            onDismiss = { showWatchlistSheet = false }
-        )
+    if (showSeasonPickerSheet && franchiseSeasons.size > 1) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showSeasonPickerSheet = false },
+            sheetState = sheetState,
+            containerColor = ObsidianCard,
+            contentColor = TextPrimary,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Pilih Season Anime",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "Pindah langsung antar season tanpa harus mencari manual",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                franchiseSeasons.forEachIndexed { idx, item ->
+                    val selected = item.id == anime.id
+                    val sLabel = FranchiseSeasonHelper.formatSeasonShortLabel(item, idx)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (selected) GoldTintStrong else ObsidianCardAlt)
+                            .border(
+                                if (selected) 1.dp else 0.75.dp,
+                                if (selected) GoldPrimary else GoldSubtleBorder,
+                                RoundedCornerShape(16.dp)
+                            )
+                            .clickable {
+                                showSeasonPickerSheet = false
+                                if (!selected) onRelatedAnimeClick(item.id)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                GoldTagChip(text = sLabel, highlighted = selected)
+                                Text(
+                                    text = "${item.year} • ${item.releasedEpisodes} Ep",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextTertiary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = item.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = if (selected) GoldBright else TextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = "Sedang Dibuka",
+                                tint = GoldPrimary
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = "Buka Season",
+                                tint = TextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (showRatingDialog) {

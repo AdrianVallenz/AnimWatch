@@ -16,10 +16,10 @@ enum class AnimeStatus(val label: String) {
 }
 
 enum class WatchlistCategory(val label: String) {
-    WATCHING("Sedang Ditonton"),
-    PLAN_TO_WATCH("Rencana Tonton"),
-    COMPLETED("Selesai"),
-    ON_HOLD("Ditunda")
+    WATCHING("Disimpan"),
+    PLAN_TO_WATCH("Disimpan"),
+    COMPLETED("Disimpan"),
+    ON_HOLD("Disimpan")
 }
 
 enum class ReleaseDay(val label: String, val shortLabel: String, val dayOrder: Int) {
@@ -238,6 +238,187 @@ data class Anime(
 ) {
     val latestEpisodeNumber: Int
         get() = episodes.maxOfOrNull { it.number } ?: releasedEpisodes
+}
+
+object FranchiseSeasonHelper {
+    private val KNOWN_ROOT_PREFIXES = listOf(
+        "re:zero",
+        "mushoku tensei",
+        "classroom of the elite",
+        "my hero academia",
+        "boku no hero academia",
+        "that time i got reincarnated as a slime",
+        "tensei shitara slime datta ken",
+        "welcome to demon school! iruma-kun",
+        "mairimashita! iruma-kun",
+        "the seven deadly sins",
+        "nanatsu no taizai",
+        "cells at work",
+        "hataraku saibou",
+        "made in abyss",
+        "konosuba",
+        "kono subarashii sekai",
+        "jujutsu kaisen",
+        "dr. stone",
+        "dr.stone",
+        "tsukimichi",
+        "kuroko's basketball",
+        "kuroko no basket",
+        "food wars",
+        "shokugeki no souma",
+        "fairy tail",
+        "haikyu",
+        "yu yu hakusho",
+        "yuu yuu hakusho",
+        "sakuna",
+        "tensui no sakuna-hime",
+        "puniru",
+        "shoshimin",
+        "shoushimin",
+        "bungo stray dogs",
+        "bananya",
+        "armor shop for ladies",
+        "otona no bouguya-san",
+        "jojo's bizarre adventure",
+        "jojo no kimyou na bouken",
+        "trigun",
+        "megalobox",
+        "megalo box",
+        "tis time for torture, princess",
+        "himesama \"goumon\" no jikan",
+        "anyway, i'm falling in love with you",
+        "douse, koishite shimaunda",
+        "with vengeance, sincerely, your broken saintess",
+        "as a reincarnated aristocrat",
+        "tensei kizoku, kantei skill",
+        "reincarnated as a sword",
+        "tensei shitara ken deshita",
+        "sasaki and peeps",
+        "sasaki to pii-chan",
+        "the most heretical last boss queen",
+        "higeki no genkyou to naru",
+        "i've been killing slimes for 300 years",
+        "slime taoshite 300-nen",
+        "ascendance of a bookworm",
+        "honzuki no gekokujou",
+        "chihayafuru",
+        "dorohedoro",
+        "kaiju no. 8",
+        "kaijuu 8-gou",
+        "bang dream",
+        "spy x family",
+        "shangri-la frontier",
+        "yuru camp",
+        "laid-back camp"
+    )
+
+    fun extractFranchiseKey(anime: Anime): String {
+        val rawLower = "${anime.title} | ${anime.japaneseTitle}".lowercase()
+            .replace("’", "'")
+            .replace("‘", "'")
+        for (prefix in KNOWN_ROOT_PREFIXES) {
+            if (rawLower.contains(prefix)) {
+                return when (prefix) {
+                    "boku no hero academia" -> "my hero academia"
+                    "tensei shitara slime datta ken" -> "that time i got reincarnated as a slime"
+                    "mairimashita! iruma-kun" -> "welcome to demon school! iruma-kun"
+                    "nanatsu no taizai" -> "the seven deadly sins"
+                    "hataraku saibou" -> "cells at work"
+                    "kono subarashii sekai" -> "konosuba"
+                    "dr.stone" -> "dr. stone"
+                    "kuroko no basket" -> "kuroko's basketball"
+                    "shokugeki no souma" -> "food wars"
+                    "yuu yuu hakusho" -> "yu yu hakusho"
+                    "tensui no sakuna-hime" -> "sakuna"
+                    "shoushimin" -> "shoshimin"
+                    "otona no bouguya-san" -> "armor shop for ladies"
+                    "jojo no kimyou na bouken" -> "jojo's bizarre adventure"
+                    "megalo box" -> "megalobox"
+                    "himesama \"goumon\" no jikan" -> "tis time for torture, princess"
+                    "douse, koishite shimaunda" -> "anyway, i'm falling in love with you"
+                    "tensei kizoku, kantei skill" -> "as a reincarnated aristocrat"
+                    "tensei shitara ken deshita" -> "reincarnated as a sword"
+                    "sasaki to pii-chan" -> "sasaki and peeps"
+                    "higeki no genkyou to naru" -> "the most heretical last boss queen"
+                    "slime taoshite 300-nen" -> "i've been killing slimes for 300 years"
+                    "honzuki no gekokujou" -> "ascendance of a bookworm"
+                    "kaijuu 8-gou" -> "kaiju no. 8"
+                    "laid-back camp" -> "yuru camp"
+                    else -> prefix
+                }
+            }
+        }
+        return anime.title.lowercase()
+            .replace("’", "'")
+            .replace(Regex("\\b(season\\s*\\d+|\\d+(st|nd|rd|th)\\s*season|s\\d+|part\\s*\\d+|cour\\s*\\d+|final\\s*season|final\\s*arc|act\\s*ii.*|ii|iii|iv)\\b", RegexOption.IGNORE_CASE), "")
+            .substringBefore(":")
+            .substringBefore(" -")
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+    }
+
+    fun extractSeasonNumber(anime: Anime): Int? {
+        val t = "${anime.title} ${anime.slug}".lowercase()
+        Regex("(?:season\\s*|\\bs)([1-9])\\b").find(t)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        Regex("\\b([1-9])(?:st|nd|rd|th)\\s+season\\b").find(t)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        if (Regex("\\bfinal\\s+season\\b").containsMatchIn(t) && t.contains("hero academia")) return 8
+        if (Regex("\\b(second\\s+plate|stone\\s+wars|2nd\\s+season|\\bii\\b|\\s2$)").containsMatchIn(t)) return 2
+        if (Regex("\\b(new\\s+world|3rd\\s+season|\\biii\\b|\\s3$)").containsMatchIn(t)) return 3
+        if (Regex("\\b(science\\s+future|4th\\s+season|\\biv\\b|\\s4$)").containsMatchIn(t)) return 4
+        return null
+    }
+
+    private fun extractTrailingNumericId(slugOrId: String): String? =
+        Regex("-(\\d{3,7})$").find(slugOrId)?.groupValues?.getOrNull(1)
+
+    fun findFranchiseSeasons(current: Anime, allAnime: List<Anime>): List<Anime> {
+        val targetKey = extractFranchiseKey(current)
+        val relatedNumericIds = current.relatedIds.mapNotNull { extractTrailingNumericId(it) }.toSet()
+        val currentNumericId = extractTrailingNumericId(current.id)
+
+        val matches = allAnime.filter { candidate ->
+            if (candidate.isDubIndo != current.isDubIndo) return@filter false
+            if (candidate.id == current.id) return@filter true
+            if (candidate.id in current.relatedIds || current.id in candidate.relatedIds) return@filter true
+            val candNum = extractTrailingNumericId(candidate.id)
+            if (candNum != null && candNum in relatedNumericIds) return@filter true
+            if (currentNumericId != null && candidate.relatedIds.any { extractTrailingNumericId(it) == currentNumericId }) return@filter true
+            targetKey.length >= 4 && extractFranchiseKey(candidate) == targetKey
+        }.distinctBy { it.id }
+
+        if (matches.size <= 1) return matches
+
+        return matches.sortedWith(
+            compareBy<Anime> { a ->
+                val sNum = extractSeasonNumber(a)
+                when {
+                    a.type == AnimeType.TV_SERIES && sNum != null -> sNum
+                    a.type == AnimeType.TV_SERIES -> 1
+                    else -> 50 + (sNum ?: 0)
+                }
+            }
+                .thenBy { it.year }
+                .thenBy { it.id }
+        )
+    }
+
+    fun formatSeasonShortLabel(anime: Anime, index: Int): String {
+        val sNum = extractSeasonNumber(anime)
+        return when {
+            anime.type == AnimeType.MOVIE -> "Movie (${anime.year})"
+            anime.type == AnimeType.OVA || anime.type == AnimeType.ONA -> {
+                if (sNum != null) "Season $sNum" else "OVA / Spesial (${anime.year})"
+            }
+            sNum != null -> "Season $sNum"
+            else -> "Season ${index + 1}"
+        }
+    }
+
+    fun findNextSeason(current: Anime, allAnime: List<Anime>): Anime? {
+        val list = findFranchiseSeasons(current, allAnime)
+        val idx = list.indexOfFirst { it.id == current.id }
+        return if (idx >= 0 && idx + 1 < list.size) list[idx + 1] else null
+    }
 }
 
 enum class ApiConnectionStatus(val code: String, val label: String) {

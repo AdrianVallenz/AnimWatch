@@ -5,7 +5,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.media.AudioManager
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -120,9 +123,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.Episode
+import com.gows.animwatch.data.model.FranchiseSeasonHelper
 import com.gows.animwatch.data.model.SubtitleSizeOption
 import com.gows.animwatch.data.model.VideoAspectMode
 import com.gows.animwatch.data.model.WatchlistCategory
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.AnimatedStreamingSceneCanvas
 import com.gows.animwatch.ui.components.CassetteLinearShimmer
@@ -211,14 +217,60 @@ fun PlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val view = LocalView.current
+    val activity = remember(view) { view.context.findActivity() }
+    val audioManager = remember(view) {
+        view.context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    }
     var showControls by remember { mutableStateOf(true) }
     var activeModal by remember { mutableStateOf(PlayerModal.NONE) }
-    var showWatchlistSheet by remember { mutableStateOf(false) }
+    var showAccessibilitySliders by remember { mutableStateOf(false) }
 
-    var brightnessLevel by remember { mutableFloatStateOf(0.88f) }
-    var volumeLevel by remember { mutableFloatStateOf(0.75f) }
+    val initialBrightness = remember(activity) {
+        val winBr = activity?.window?.attributes?.screenBrightness ?: -1f
+        if (winBr in 0.05f..1.0f) winBr else 0.85f
+    }
+    val initialVolume = remember(audioManager) {
+        val max = (audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15).coerceAtLeast(1)
+        val cur = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: (max * 3 / 4)
+        (cur.toFloat() / max.toFloat()).coerceIn(0f, 1f)
+    }
+
+    var brightnessLevel by remember { mutableFloatStateOf(initialBrightness) }
+    var volumeLevel by remember { mutableFloatStateOf(initialVolume) }
     var activeGestureHud by remember { mutableStateOf<String?>(null) }
     var seekFeedbackLabel by remember { mutableStateOf<String?>(null) }
+
+    fun applyBrightness(target: Float) {
+        val clamped = target.coerceIn(0.05f, 1.0f)
+        brightnessLevel = clamped
+        activity?.window?.let { win ->
+            val lp = win.attributes
+            lp.screenBrightness = clamped
+            win.attributes = lp
+        }
+        activeGestureHud = "BRIGHTNESS:${(clamped * 100).roundToInt()}"
+    }
+
+    fun applyVolume(target: Float) {
+        val clamped = target.coerceIn(0.0f, 1.0f)
+        volumeLevel = clamped
+        audioManager?.let { am ->
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            val targetIdx = (clamped * max).roundToInt().coerceIn(0, max)
+            runCatching { am.setStreamVolume(AudioManager.STREAM_MUSIC, targetIdx, 0) }
+        }
+        activeGestureHud = "VOLUME:${(clamped * 100).roundToInt()}"
+    }
+
+    val franchiseSeasons = remember(anime, uiState.allAnime) {
+        FranchiseSeasonHelper.findFranchiseSeasons(anime, uiState.allAnime)
+    }
+    val currentSeasonIndex = remember(franchiseSeasons, anime.id) {
+        franchiseSeasons.indexOfFirst { it.id == anime.id }.coerceAtLeast(0)
+    }
+    val nextSeason = remember(franchiseSeasons, currentSeasonIndex) {
+        if (currentSeasonIndex + 1 < franchiseSeasons.size) franchiseSeasons[currentSeasonIndex + 1] else null
+    }
 
     var isScrubbing by remember(session.episodeId) { mutableStateOf(false) }
     var scrubSeconds by remember(session.episodeId) { mutableIntStateOf(session.positionSeconds) }
@@ -391,11 +443,9 @@ fun PlayerScreen(
                                         onVerticalDrag = { _, dragAmount ->
                                             val delta = -dragAmount / (size.height * 0.85f)
                                             if (dragLeft) {
-                                                brightnessLevel = (brightnessLevel + delta).coerceIn(0.15f, 1.0f)
-                                                activeGestureHud = "BRIGHTNESS:${(brightnessLevel * 100).toInt()}"
+                                                applyBrightness(brightnessLevel + delta)
                                             } else {
-                                                volumeLevel = (volumeLevel + delta).coerceIn(0f, 1.0f)
-                                                activeGestureHud = "VOLUME:${(volumeLevel * 100).toInt()}"
+                                                applyVolume(volumeLevel + delta)
                                             }
                                         }
                                     )
@@ -414,6 +464,15 @@ fun PlayerScreen(
                     onEpisodeEnded = {
                         onEpisodeCompleted(anime.id, episode.number)
                     },
+                    onVerticalGesture = { isLeftSide, deltaFraction ->
+                        if (!session.isLocked) {
+                            if (isLeftSide) {
+                                applyBrightness(brightnessLevel + deltaFraction)
+                            } else {
+                                applyVolume(volumeLevel + deltaFraction)
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -425,13 +484,6 @@ fun PlayerScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .scale(scaleFactor)
-                )
-
-                // Simulated screen brightness dimming layer
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MediaScrimDark.copy(alpha = (1f - brightnessLevel) * 0.65f))
                 )
 
                 // Live Subtitle Overlay
@@ -507,34 +559,6 @@ fun PlayerScreen(
                     ) {
                         Text(
                             text = seekFeedbackLabel.orEmpty(),
-                            color = MediaTextLight,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-
-                // Brightness / Volume Drag HUD
-                activeGestureHud?.let { hud ->
-                    val isBrightness = hud.startsWith("BRIGHTNESS")
-                    val pct = hud.substringAfter(":").toIntOrNull() ?: 50
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.84f))
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (isBrightness) Icons.Rounded.Brightness6 else Icons.AutoMirrored.Rounded.VolumeUp,
-                            contentDescription = null,
-                            tint = GoldBright,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = if (isBrightness) "Kecerahan $pct%" else "Volume $pct%",
                             color = MediaTextLight,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp
@@ -858,6 +882,52 @@ fun PlayerScreen(
                 }
             }
 
+            // Software screen brightness dimming overlay (works on both WebView & canvas players)
+            if (brightnessLevel < 0.96f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = ((1f - brightnessLevel) * 0.55f).coerceIn(0f, 0.52f)))
+                )
+            }
+
+            // Brightness (Left Scroll) & Volume (Right Scroll) Visual HUD Overlay
+            activeGestureHud?.let { hud ->
+                val isBrightness = hud.startsWith("BRIGHTNESS")
+                val pct = hud.substringAfter(":").toIntOrNull() ?: 50
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .width(196.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MediaScrimDark.copy(alpha = 0.88f))
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 18.dp, vertical = 13.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isBrightness) Icons.Rounded.Brightness6 else Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isBrightness) "Pencahayaan $pct%" else "Suara $pct%",
+                            color = MediaTextLight,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AnalogMeterGauge(
+                        progress = (pct / 100f).coerceIn(0f, 1f),
+                        height = 6.dp
+                    )
+                }
+            }
+
             if (session.isLoadingStream) {
                 Column(
                     modifier = Modifier
@@ -952,6 +1022,26 @@ fun PlayerScreen(
                             modifier = Modifier.size(17.dp)
                         )
                     }
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(if (showAccessibilitySliders) GoldTintStrong else ObsidianVoid)
+                            .border(
+                                0.75.dp,
+                                if (showAccessibilitySliders) GoldPrimary else GoldSubtleBorder,
+                                CircleShape
+                            )
+                            .clickable { showAccessibilitySliders = !showAccessibilitySliders },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Brightness6,
+                            contentDescription = "Aksesibilitas Suara & Pencahayaan",
+                            tint = GoldPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                     if (session.streamUrl.isNotBlank()) {
                         Box(
                             modifier = Modifier
@@ -971,6 +1061,87 @@ fun PlayerScreen(
                 }
             }
             HorizontalDivider(color = DividerSubtle)
+
+            if (showAccessibilitySliders) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(ObsidianCard)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "Aksesibilitas: Geser Kiri layar untuk Pencahayaan • Geser Kanan layar untuk Suara",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GoldPrimary
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Brightness6,
+                            contentDescription = "Pencahayaan",
+                            tint = GoldPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Cahaya",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            modifier = Modifier.width(52.dp)
+                        )
+                        Slider(
+                            value = brightnessLevel,
+                            onValueChange = { applyBrightness(it) },
+                            valueRange = 0.05f..1.0f,
+                            modifier = Modifier.weight(1f).height(24.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = GoldBright,
+                                activeTrackColor = GoldPrimary
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${(brightnessLevel * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextPrimary,
+                            modifier = Modifier.width(36.dp)
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = "Suara",
+                            tint = GoldPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Suara",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            modifier = Modifier.width(52.dp)
+                        )
+                        Slider(
+                            value = volumeLevel,
+                            onValueChange = { applyVolume(it) },
+                            valueRange = 0.0f..1.0f,
+                            modifier = Modifier.weight(1f).height(24.dp),
+                            colors = SliderDefaults.colors(
+                                thumbColor = GoldBright,
+                                activeTrackColor = GoldPrimary
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${(volumeLevel * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextPrimary,
+                            modifier = Modifier.width(36.dp)
+                        )
+                    }
+                }
+                HorizontalDivider(color = DividerSubtle)
+            }
 
             LazyColumn(
                 modifier = Modifier
@@ -1032,9 +1203,14 @@ fun PlayerScreen(
                             )
                             PlayerActionChip(
                                 icon = if (watchlistCategory != null) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
-                                label = if (watchlistCategory != null) "Tersimpan" else "Koleksi",
+                                label = if (watchlistCategory != null) "Disimpan" else "Simpan",
                                 active = watchlistCategory != null,
-                                onClick = { showWatchlistSheet = true }
+                                onClick = {
+                                    onSelectWatchlist(
+                                        anime.id,
+                                        if (watchlistCategory == null) WatchlistCategory.WATCHING else null
+                                    )
+                                }
                             )
                             PlayerActionChip(
                                 icon = when (downloadTask?.status) {
@@ -1066,9 +1242,82 @@ fun PlayerScreen(
                     HorizontalDivider(color = DividerSubtle)
                 }
 
-                // Quick Episode Switcher Strip
+                // Quick Season & Episode Switcher Strip
                 item {
                     Column(modifier = Modifier.padding(16.dp)) {
+                        if (franchiseSeasons.size > 1) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Pilih Season (${franchiseSeasons.size})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = TextPrimary
+                                )
+                                if (nextSeason != null) {
+                                    val nextIdx = (currentSeasonIndex + 1).coerceAtMost(franchiseSeasons.lastIndex)
+                                    val nextLabel = FranchiseSeasonHelper.formatSeasonShortLabel(nextSeason, nextIdx)
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(GoldGradientBrush)
+                                            .clickable { onOpenAnimeDetail(nextSeason.id) }
+                                            .padding(horizontal = 11.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Lanjut ke $nextLabel",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = TextOnGold,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Icon(
+                                            imageVector = Icons.Rounded.SkipNext,
+                                            contentDescription = null,
+                                            tint = TextOnGold,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(franchiseSeasons.size) { idx ->
+                                    val sItem = franchiseSeasons[idx]
+                                    val isCurrentSeason = sItem.id == anime.id
+                                    val sLabel = FranchiseSeasonHelper.formatSeasonShortLabel(sItem, idx)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isCurrentSeason) GoldGradientBrush
+                                                else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
+                                            )
+                                            .border(
+                                                0.75.dp,
+                                                if (isCurrentSeason) Color.Transparent else GoldSubtleBorder,
+                                                CircleShape
+                                            )
+                                            .clickable(enabled = !isCurrentSeason) {
+                                                onOpenAnimeDetail(sItem.id)
+                                            }
+                                            .padding(horizontal = 13.dp, vertical = 6.5.dp)
+                                    ) {
+                                        Text(
+                                            text = "$sLabel • ${sItem.releasedEpisodes} Ep",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isCurrentSeason) TextOnGold else TextPrimary,
+                                            fontWeight = if (isCurrentSeason) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1423,15 +1672,6 @@ fun PlayerScreen(
 
         PlayerModal.NONE -> Unit
     }
-
-    if (showWatchlistSheet) {
-        WatchlistCategorySheet(
-            animeTitle = anime.title,
-            currentCategory = watchlistCategory,
-            onSelectCategory = { cat -> onSelectWatchlist(anime.id, cat) },
-            onDismiss = { showWatchlistSheet = false }
-        )
-    }
 }
 
 @Composable
@@ -1688,19 +1928,21 @@ private fun loadStreamIntoWebView(webView: WebView, streamUrl: String) {
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled")
+@SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
 private fun KumanimeWebStreamPlayer(
     streamUrl: String,
     isFullscreen: Boolean,
     onRequestFullscreen: (Boolean) -> Unit,
     onEpisodeEnded: () -> Unit,
+    onVerticalGesture: (isLeftSide: Boolean, deltaFraction: Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var currentWebView by remember { mutableStateOf<WebView?>(null) }
     var activeFullscreenExit by remember { mutableStateOf<(() -> Unit)?>(null) }
     val latestOnRequestFullscreen by rememberUpdatedState(onRequestFullscreen)
     val latestOnEpisodeEnded by rememberUpdatedState(onEpisodeEnded)
+    val latestOnVerticalGesture by rememberUpdatedState(onVerticalGesture)
     val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(isFullscreen) {
@@ -1741,7 +1983,61 @@ private fun KumanimeWebStreamPlayer(
 
     AndroidView(
         factory = { context ->
-            val container = FrameLayout(context).apply {
+            val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+            val container = object : FrameLayout(context) {
+                private var downX = 0f
+                private var downY = 0f
+                private var lastY = 0f
+                private var isVerticalDragging = false
+
+                override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+                    when (ev.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            downX = ev.x
+                            downY = ev.y
+                            lastY = ev.y
+                            isVerticalDragging = false
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            if (isVerticalDragging) return true
+                            val h = height
+                            if (h > 0 && downY in (h * 0.08f)..(h * 0.84f)) {
+                                val dx = ev.x - downX
+                                val dy = ev.y - downY
+                                if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 1.35f) {
+                                    isVerticalDragging = true
+                                    lastY = ev.y
+                                    parent?.requestDisallowInterceptTouchEvent(true)
+                                    return true
+                                }
+                            }
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            isVerticalDragging = false
+                        }
+                    }
+                    return super.onInterceptTouchEvent(ev)
+                }
+
+                override fun onTouchEvent(ev: MotionEvent): Boolean {
+                    when (ev.actionMasked) {
+                        MotionEvent.ACTION_MOVE -> {
+                            if (isVerticalDragging && height > 0) {
+                                val dy = ev.y - lastY
+                                lastY = ev.y
+                                val deltaFraction = -dy / (height * 0.75f)
+                                val isLeft = downX < width * 0.5f
+                                latestOnVerticalGesture(isLeft, deltaFraction)
+                                return true
+                            }
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            isVerticalDragging = false
+                        }
+                    }
+                    return super.onTouchEvent(ev)
+                }
+            }.apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT

@@ -3,6 +3,7 @@ package com.gows.animwatch
 import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.AnimeType
 import com.gows.animwatch.data.model.CatalogPreset
+import com.gows.animwatch.data.model.FranchiseSeasonHelper
 import com.gows.animwatch.data.model.ReleaseDay
 import com.gows.animwatch.data.model.SortOption
 import com.gows.animwatch.data.model.WatchlistCategory
@@ -69,7 +70,8 @@ class AnimWatchRepositoryAndViewModelTest {
         val targetId = "phantom-voyage"
 
         vm.setWatchlistCategory(targetId, WatchlistCategory.PLAN_TO_WATCH)
-        assertEquals(WatchlistCategory.PLAN_TO_WATCH, vm.uiState.value.watchlist[targetId])
+        assertEquals(WatchlistCategory.WATCHING, vm.uiState.value.watchlist[targetId])
+        assertEquals("Disimpan", vm.uiState.value.watchlist[targetId]?.label)
 
         vm.rateAnime(targetId, 10)
         assertEquals(10, vm.uiState.value.userRatings[targetId])
@@ -162,5 +164,16 @@ class AnimWatchRepositoryAndViewModelTest {
         vm.openExploreWithGenre("Dub Indo")
         assertEquals(AudioFilter.DUB_INDO, vm.uiState.value.exploreFilter.audioFilter)
         assertTrue(vm.uiState.value.exploreFilter.selectedGenres.isEmpty())
+
+        // FranchiseSeasonHelper groups seasons in order and finds next season
+        val s1 = sampleAnime.copy(id = "cote-s1", slug = "classroom-of-the-elite", title = "Classroom of the Elite", year = 2017)
+        val s2 = sampleAnime.copy(id = "cote-s2", slug = "classroom-of-the-elite-s2", title = "Classroom of the Elite Season 2", year = 2022)
+        val s3 = sampleAnime.copy(id = "cote-s3", slug = "classroom-of-the-elite-s3", title = "Classroom of the Elite 3rd Season", year = 2024)
+        assertEquals("classroom of the elite", FranchiseSeasonHelper.extractFranchiseKey(s2))
+        assertEquals(null, FranchiseSeasonHelper.extractSeasonNumber(s1))
+        assertEquals("Season 1", FranchiseSeasonHelper.formatSeasonShortLabel(s1, 0))
+        assertEquals(2, FranchiseSeasonHelper.extractSeasonNumber(s2))
+        assertEquals(3, FranchiseSeasonHelper.extractSeasonNumber(s3))
+        assertEquals("cote-s2", FranchiseSeasonHelper.findNextSeason(s1, listOf(s3, s1, s2))?.id)
     }
 }
