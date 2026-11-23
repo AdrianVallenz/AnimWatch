@@ -359,6 +359,10 @@ class AnimWatchViewModel(
             ?: _uiState.value.preferredGenres
 
         val rawSettings = u.settings.orEmpty()
+        val savedCustomHandle = (rawSettings["customHandle"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+        val savedAvatarUrl = (rawSettings["customAvatarUrl"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+        val savedMemberTier = (rawSettings["customMemberTier"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+        val savedFavoriteGenre = (rawSettings["customFavoriteGenre"] as? String)?.trim()?.takeIf { it.isNotBlank() }
         val currentSettings = _uiState.value.settings
         val restoredSubSize = (rawSettings["subtitleSize"] as? String)?.let { label ->
             SubtitleSizeOption.entries.find { it.name.equals(label, true) || it.label.equals(label, true) }
@@ -418,12 +422,12 @@ class AnimWatchViewModel(
                 exploreFilter = state.exploreFilter.copy(isGridView = restoredGridPref),
                 userProfile = state.userProfile.copy(
                     displayName = u.displayName?.ifBlank { null } ?: state.userProfile.displayName,
-                    handle = u.handle?.ifBlank { null } ?: state.userProfile.handle,
+                    handle = savedCustomHandle ?: u.handle?.ifBlank { null } ?: state.userProfile.handle,
                     bio = u.bio ?: state.userProfile.bio,
                     avatarEmblem = u.avatarEmblem?.ifBlank { null } ?: state.userProfile.avatarEmblem,
-                    avatarUrl = u.avatarUrl ?: state.userProfile.avatarUrl,
-                    memberTier = u.memberTier?.ifBlank { null } ?: state.userProfile.memberTier,
-                    favoriteGenre = genres.firstOrNull() ?: state.userProfile.favoriteGenre
+                    avatarUrl = u.avatarUrl?.ifBlank { null } ?: savedAvatarUrl ?: state.userProfile.avatarUrl,
+                    memberTier = savedMemberTier ?: u.memberTier?.ifBlank { null } ?: state.userProfile.memberTier,
+                    favoriteGenre = savedFavoriteGenre ?: genres.firstOrNull() ?: state.userProfile.favoriteGenre
                 )
             )
         }
@@ -456,7 +460,11 @@ class AnimWatchViewModel(
                 "autoPlayNext" to s.autoPlayNext,
                 "autoSkipIntro" to s.autoSkipIntro,
                 "episodeNotifications" to s.episodeNotifications,
-                "isGridCatalogPreferred" to state.exploreFilter.isGridView
+                "isGridCatalogPreferred" to state.exploreFilter.isGridView,
+                "customHandle" to state.userProfile.handle,
+                "customAvatarUrl" to state.userProfile.avatarUrl,
+                "customMemberTier" to state.userProfile.memberTier,
+                "customFavoriteGenre" to state.userProfile.favoriteGenre
             )
         )
         viewModelScope.launch {
@@ -521,7 +529,7 @@ class AnimWatchViewModel(
                 _uiState.update { state ->
                     state.copy(
                         googleWebClientId = cfg.googleWebClientId.orEmpty().trim(),
-                        googleWebOAuthEnabled = cfg.googleWebOAuthEnabled ?: true
+                        googleWebOAuthEnabled = cfg.googleWebOAuthEnabled ?: false
                     )
                 }
             }
@@ -557,6 +565,12 @@ class AnimWatchViewModel(
                 res.onSuccess { snapshot ->
                     _uiState.update { it.copy(isGoogleAuthLoading = false) }
                     applyCloudAuthSnapshot(snapshot, showWelcomeToast = true)
+                    if (pictureUrl.isNotBlank() && _uiState.value.userProfile.avatarUrl.isBlank()) {
+                        _uiState.update { state ->
+                            state.copy(userProfile = state.userProfile.copy(avatarUrl = pictureUrl))
+                        }
+                        pushPreferencesToCloud()
+                    }
                 }.onFailure { err ->
                     _uiState.update {
                         it.copy(
@@ -620,6 +634,13 @@ class AnimWatchViewModel(
 
     fun completeGoogleOAuthCallback(token: String?, error: String?) {
         if (!error.isNullOrBlank()) {
+            if (error.contains("belum dikonfigurasi", ignoreCase = true) ||
+                error.contains("not configured", ignoreCase = true)
+            ) {
+                _uiState.update { it.copy(isGoogleAuthLoading = false, authError = null) }
+                emitMessage("Silakan masukkan akun Google kamu untuk melanjutkan")
+                return
+            }
             onGoogleAuthError(error)
             return
         }
@@ -2531,6 +2552,7 @@ class AnimWatchViewModel(
                     favoriteGenre = cleanFavGenre
                 )
             }
+            pushPreferencesToCloud()
         }
         emitMessage("Profil kustom berhasil disimpan")
     }

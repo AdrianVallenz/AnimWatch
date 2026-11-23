@@ -189,19 +189,22 @@ fun AnimWatchApp(
                 .background(ObsidianVoid)
         ) {
             if (!uiState.isAuthenticated) {
+                val localClientId = runCatching {
+                    localContext.getString(R.string.google_web_client_id).trim()
+                }.getOrDefault("")
+                val resolvedClientId = uiState.googleWebClientId.ifBlank { localClientId }
+                val hasCloudOAuthConfigured = resolvedClientId.isNotBlank() || uiState.googleWebOAuthEnabled
+
                 AuthScreen(
                     authError = uiState.authError,
                     isGoogleLoading = uiState.isGoogleAuthLoading,
+                    hasNativeGoogleOAuth = hasCloudOAuthConfigured,
                     onClearAuthError = viewModel::clearAuthError,
                     onGoogleSignIn = {
                         val activity = localContext.findHostActivity()
                         if (activity == null) {
                             viewModel.onGoogleAuthError("Tidak dapat membuka jendela login Google di perangkat ini.")
                         } else {
-                            val localClientId = runCatching {
-                                localContext.getString(R.string.google_web_client_id).trim()
-                            }.getOrDefault("")
-                            val resolvedClientId = uiState.googleWebClientId.ifBlank { localClientId }
                             coroutineScope.launch {
                                 viewModel.setGoogleAuthLoading(true)
                                 when (
@@ -218,6 +221,9 @@ fun AnimWatchApp(
                                     GoogleSignInOutcome.LaunchedBrowserOAuth -> {
                                         viewModel.setGoogleAuthLoading(false)
                                         viewModel.emitMessage("Selesaikan login Google di browser...")
+                                    }
+                                    GoogleSignInOutcome.OpenInAppGooglePrompt -> {
+                                        viewModel.setGoogleAuthLoading(false)
                                     }
                                     GoogleSignInOutcome.Cancelled -> {
                                         viewModel.setGoogleAuthLoading(false)

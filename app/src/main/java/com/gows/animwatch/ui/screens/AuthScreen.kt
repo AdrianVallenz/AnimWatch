@@ -85,6 +85,7 @@ import com.gows.animwatch.ui.theme.TextTertiary
 fun AuthScreen(
     authError: String?,
     isGoogleLoading: Boolean = false,
+    hasNativeGoogleOAuth: Boolean = false,
     onClearAuthError: () -> Unit,
     onGoogleSignIn: () -> Unit = {},
     onGoogleDirectSignIn: (email: String, displayName: String) -> Unit = { _, _ -> },
@@ -202,7 +203,7 @@ fun AuthScreen(
                         }
                     }
 
-                    // Primary Google Sign-In Button (Launches Google Account Manager / Browser OAuth)
+                    // Primary Google Sign-In Button
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -210,7 +211,11 @@ fun AuthScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .clickable(enabled = !isGoogleLoading) {
                                 onClearAuthError()
-                                onGoogleSignIn()
+                                if (hasNativeGoogleOAuth) {
+                                    onGoogleSignIn()
+                                } else {
+                                    showDirectGoogleDialog = true
+                                }
                             },
                         shape = RoundedCornerShape(18.dp),
                         color = if (IsDarkTheme) Color.White else ObsidianElevated,

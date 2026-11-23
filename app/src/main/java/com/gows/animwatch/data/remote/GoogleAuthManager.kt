@@ -20,6 +20,7 @@ import java.util.UUID
 sealed interface GoogleSignInOutcome {
     data class IdToken(val idToken: String) : GoogleSignInOutcome
     data object LaunchedBrowserOAuth : GoogleSignInOutcome
+    data object OpenInAppGooglePrompt : GoogleSignInOutcome
     data object Cancelled : GoogleSignInOutcome
     data class Failure(val message: String) : GoogleSignInOutcome
 }
@@ -59,7 +60,11 @@ object GoogleAuthManager {
     ): GoogleSignInOutcome {
         val cleanClientId = webClientId.trim()
         if (cleanClientId.isEmpty()) {
-            return launchBrowserOAuth(activity, apiBaseUrl)
+            return if (webOAuthEnabled) {
+                launchBrowserOAuth(activity, apiBaseUrl)
+            } else {
+                GoogleSignInOutcome.OpenInAppGooglePrompt
+            }
         }
 
         val credentialManager = CredentialManager.create(activity)
@@ -83,18 +88,24 @@ object GoogleAuthManager {
                 val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                 if (googleIdTokenCredential.idToken.isNotBlank()) {
                     GoogleSignInOutcome.IdToken(googleIdTokenCredential.idToken)
-                } else {
+                } else if (webOAuthEnabled) {
                     launchBrowserOAuth(activity, apiBaseUrl)
+                } else {
+                    GoogleSignInOutcome.OpenInAppGooglePrompt
                 }
-            } else {
+            } else if (webOAuthEnabled) {
                 launchBrowserOAuth(activity, apiBaseUrl)
+            } else {
+                GoogleSignInOutcome.OpenInAppGooglePrompt
             }
         } catch (_: GetCredentialCancellationException) {
             GoogleSignInOutcome.Cancelled
         } catch (_: GetCredentialException) {
-            launchBrowserOAuth(activity, apiBaseUrl)
+            if (webOAuthEnabled) launchBrowserOAuth(activity, apiBaseUrl)
+            else GoogleSignInOutcome.OpenInAppGooglePrompt
         } catch (_: Exception) {
-            launchBrowserOAuth(activity, apiBaseUrl)
+            if (webOAuthEnabled) launchBrowserOAuth(activity, apiBaseUrl)
+            else GoogleSignInOutcome.OpenInAppGooglePrompt
         }
     }
 
