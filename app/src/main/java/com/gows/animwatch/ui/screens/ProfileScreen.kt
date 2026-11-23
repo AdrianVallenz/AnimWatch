@@ -117,15 +117,35 @@ private data class AnimeAvatarPreset(
 )
 
 private val ANIME_AVATAR_PRESETS = listOf(
-    AnimeAvatarPreset("Frieren", "https://s4.anilist.co/file/anilistcdn/character/large/b176754-Ya46QWtQuXzQ.png"),
-    AnimeAvatarPreset("Gojo Satoru", "https://s4.anilist.co/file/anilistcdn/character/large/b127691-UmP85236325F.png"),
-    AnimeAvatarPreset("Sung Jinwoo", "https://s4.anilist.co/file/anilistcdn/character/large/b129928-BCEj21b2217k.png"),
-    AnimeAvatarPreset("Anya Forger", "https://s4.anilist.co/file/anilistcdn/character/large/b138100-3B2V93T1R48u.png"),
-    AnimeAvatarPreset("Rimuru", "https://s4.anilist.co/file/anilistcdn/character/large/b124051-C4pM2T7kL13W.png"),
-    AnimeAvatarPreset("Ayanokoji", "https://s4.anilist.co/file/anilistcdn/character/large/b88750-24136x8dO04r.png"),
-    AnimeAvatarPreset("Maomao", "https://s4.anilist.co/file/anilistcdn/character/large/b160602-H5y11C9nO35K.png"),
-    AnimeAvatarPreset("Killua", "https://s4.anilist.co/file/anilistcdn/character/large/b27-Z91v6776118z.png")
+    AnimeAvatarPreset("Frieren", "https://s4.anilist.co/file/anilistcdn/character/large/b176754-PCnpqIOkjhFk.png"),
+    AnimeAvatarPreset("Gojo Satoru", "https://s4.anilist.co/file/anilistcdn/character/large/b127691-9zqh1xpIubn7.png"),
+    AnimeAvatarPreset("Sung Jinwoo", "https://s4.anilist.co/file/anilistcdn/character/large/b129928-BCEjVaP0AQSw.png"),
+    AnimeAvatarPreset("Anya Forger", "https://s4.anilist.co/file/anilistcdn/character/large/b138100-4Li0tWRCa5bQ.png"),
+    AnimeAvatarPreset("Rimuru", "https://s4.anilist.co/file/anilistcdn/character/large/b123962-eL9yGV0NLMF7.png"),
+    AnimeAvatarPreset("Ayanokoji", "https://s4.anilist.co/file/anilistcdn/character/large/b123212-ewZgUQr9vvEM.png"),
+    AnimeAvatarPreset("Maomao", "https://s4.anilist.co/file/anilistcdn/character/large/b126824-MqsCncTO1qpv.png"),
+    AnimeAvatarPreset("Killua", "https://s4.anilist.co/file/anilistcdn/character/large/b27-Z5O02kQUydpT.jpg"),
+    AnimeAvatarPreset("Luffy", "https://s4.anilist.co/file/anilistcdn/character/large/b40-MNypXsxSRb1R.png"),
+    AnimeAvatarPreset("Levi", "https://s4.anilist.co/file/anilistcdn/character/large/b45627-CR68RyZmddGG.png"),
+    AnimeAvatarPreset("Tanjiro", "https://s4.anilist.co/file/anilistcdn/character/large/b126071-BTNEc1nRIv68.png"),
+    AnimeAvatarPreset("Fern", "https://s4.anilist.co/file/anilistcdn/character/large/b183965-uGFohBjlFoTp.png")
 )
+
+private val LEGACY_AVATAR_URL_FIXES = mapOf(
+    "https://s4.anilist.co/file/anilistcdn/character/large/b176754-Ya46QWtQuXzQ.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b176754-PCnpqIOkjhFk.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b127691-UmP85236325F.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b127691-9zqh1xpIubn7.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b129928-BCEj21b2217k.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b129928-BCEjVaP0AQSw.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b138100-3B2V93T1R48u.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b138100-4Li0tWRCa5bQ.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b124051-C4pM2T7kL13W.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b123962-eL9yGV0NLMF7.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b88750-24136x8dO04r.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b123212-ewZgUQr9vvEM.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b160602-H5y11C9nO35K.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b126824-MqsCncTO1qpv.png",
+    "https://s4.anilist.co/file/anilistcdn/character/large/b27-Z91v6776118z.png" to "https://s4.anilist.co/file/anilistcdn/character/large/b27-Z5O02kQUydpT.jpg"
+)
+
+fun normalizeProfileAvatarUrl(raw: String): String {
+    val trimmed = raw.trim()
+    return LEGACY_AVATAR_URL_FIXES[trimmed] ?: trimmed
+}
 
 private val MEMBER_BADGE_OPTIONS = listOf(
     "Google Member",
@@ -679,8 +699,13 @@ fun UserAvatarBadge(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val cleanUrl = avatarUrl.trim()
+    val cleanUrl = remember(avatarUrl) { normalizeProfileAvatarUrl(avatarUrl) }
     val cleanEmblem = emblem.trim().take(2).uppercase().ifEmpty { "AW" }
+    val hasHttpUrl = cleanUrl.startsWith("http://", ignoreCase = true) ||
+        cleanUrl.startsWith("https://", ignoreCase = true)
+    var isLoading by remember(cleanUrl) { mutableStateOf(hasHttpUrl) }
+    var loadFailed by remember(cleanUrl) { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .size(size)
@@ -690,18 +715,26 @@ fun UserAvatarBadge(
             .let { mod -> if (onClick != null) mod.clickable(onClick = onClick) else mod },
         contentAlignment = Alignment.Center
     ) {
-        if (cleanUrl.startsWith("http://", ignoreCase = true) ||
-            cleanUrl.startsWith("https://", ignoreCase = true)
-        ) {
+        if (hasHttpUrl && !loadFailed) {
             AsyncImage(
                 model = cleanUrl,
                 contentDescription = cleanEmblem,
                 contentScale = ContentScale.Crop,
+                onLoading = { isLoading = true },
+                onSuccess = {
+                    isLoading = false
+                    loadFailed = false
+                },
+                onError = {
+                    isLoading = false
+                    loadFailed = true
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(CircleShape)
             )
-        } else {
+        }
+        if (!hasHttpUrl || isLoading || loadFailed) {
             Text(
                 text = cleanEmblem,
                 color = TextOnGold,
@@ -738,7 +771,7 @@ private fun CustomProfileEditorSheet(
     var handle by remember { mutableStateOf(currentHandle.removePrefix("@")) }
     var bio by remember { mutableStateOf(currentBio) }
     var emblem by remember { mutableStateOf(currentEmblem) }
-    var avatarUrl by remember { mutableStateOf(currentAvatarUrl) }
+    var avatarUrl by remember { mutableStateOf(normalizeProfileAvatarUrl(currentAvatarUrl)) }
     var selectedTier by remember { mutableStateOf(currentTier.ifBlank { "Google Member" }) }
     var selectedGenre by remember { mutableStateOf(currentFavoriteGenre.ifBlank { "Action" }) }
     var nameError by remember { mutableStateOf<String?>(null) }

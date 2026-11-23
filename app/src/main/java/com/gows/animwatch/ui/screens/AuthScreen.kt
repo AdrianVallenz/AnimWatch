@@ -31,13 +31,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Badge
-import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.Email
-import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -58,7 +54,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -73,10 +68,8 @@ import com.gows.animwatch.ui.components.AnimWatchCrestLogo
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.TactileInputField
 import com.gows.animwatch.ui.theme.AnimWatchTheme
-import com.gows.animwatch.ui.theme.DividerSubtle
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
-import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
@@ -85,7 +78,6 @@ import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
-import com.gows.animwatch.ui.theme.TextTertiary
 
 @Composable
 fun AuthScreen(
@@ -202,17 +194,7 @@ fun AuthScreen(
                 letterSpacing = (-0.6).sp
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Streaming ratusan anime Sub Indo & Dub Indo resmi dalam satu aplikasi modern.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // Main Google Auth Card
             Surface(
@@ -235,15 +217,8 @@ fun AuthScreen(
                         color = TextPrimary,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Gunakan akun Google kamu untuk menyinkronkan profil kustom, daftar Disimpan, riwayat tonton, dan komentar.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center
-                    )
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     if (authError != null) {
                         Box(
@@ -328,30 +303,6 @@ fun AuthScreen(
                             }
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     )
-
-                    HorizontalDivider(
-                        color = DividerSubtle,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-
-                    // Feature highlights synced with Google account
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        GoogleBenefitRow(
-                            icon = Icons.Rounded.CloudDone,
-                            title = "Sinkronisasi Otomatis",
-                            subtitle = "Daftar Disimpan & riwayat tonton tersimpan di akun Google"
-                        )
-                        GoogleBenefitRow(
-                            icon = Icons.Rounded.Palette,
-                            title = "Custom Profile & Avatar",
-                            subtitle = "Ubah foto profil, inisial, username @handle, gelar & bio"
-                        )
-                        GoogleBenefitRow(
-                            icon = Icons.Rounded.ChatBubbleOutline,
-                            title = "Komunitas & Komentar Anime",
-                            subtitle = "Diskusi per episode, balas komentar, suka, dan filter spoiler"
-                        )
-                    }
                 }
             }
         }
@@ -365,48 +316,6 @@ fun AuthScreen(
             },
             onDismiss = { showDirectGoogleDialog = false }
         )
-    }
-}
-
-@Composable
-private fun GoogleBenefitRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(GoldTint),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = GoldPrimary,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextTertiary,
-                fontSize = 11.5.sp
-            )
-        }
     }
 }
 
