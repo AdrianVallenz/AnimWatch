@@ -1,5 +1,8 @@
 package com.gows.animwatch.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,8 +56,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gows.animwatch.R
 import com.gows.animwatch.data.local.AndroidDeviceStorageManager
 import com.gows.animwatch.data.local.SharedPreferencesSessionStore
+import com.gows.animwatch.data.remote.GoogleAuthDeepLinkBus
+import com.gows.animwatch.data.remote.GoogleAuthManager
+import com.gows.animwatch.data.remote.GoogleSignInOutcome
+import kotlinx.coroutines.launch
 import com.gows.animwatch.ui.components.FloatingGoldBottomNav
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.MiniPlayerBar
@@ -82,15 +91,24 @@ import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
 import com.gows.animwatch.ui.theme.TextTertiary
 
+private tailrec fun Context.findHostActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findHostActivity()
+    else -> null
+}
+
 @Composable
 fun AnimWatchApp(
     viewModel: AnimWatchViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val pendingGoogleCallback by GoogleAuthDeepLinkBus.pendingCallback.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showNotificationsSheet by remember { mutableStateOf(false) }
     var hasDismissedPermissionPrompt by remember { mutableStateOf(false) }
-    val appContext = LocalContext.current.applicationContext
+    val localContext = LocalContext.current
+    val appContext = localContext.applicationContext
+    val coroutineScope = rememberCoroutineScope()
 
     val multiPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -102,6 +120,13 @@ fun AnimWatchApp(
     LaunchedEffect(Unit) {
         viewModel.attachSessionStore(SharedPreferencesSessionStore(appContext))
         viewModel.attachStorageGateway(AndroidDeviceStorageManager(appContext))
+        viewModel.fetchGoogleAuthConfig()
+    }
+
+    LaunchedEffect(pendingGoogleCallback) {
+        val payload = pendingGoogleCallback ?: return@LaunchedEffect
+        GoogleAuthDeepLinkBus.consume()
+        viewModel.completeGoogleOAuthCallback(payload.token, payload.error)
     }
 
     LaunchedEffect(uiState.currentTab) {
@@ -160,9 +185,46 @@ fun AnimWatchApp(
             if (!uiState.isAuthenticated) {
                 AuthScreen(
                     authError = uiState.authError,
+                    isGoogleLoading = uiState.isGoogleAuthLoading,
                     onClearAuthError = viewModel::clearAuthError,
                     onLogin = viewModel::login,
                     onRegister = viewModel::register,
+                    onGoogleSignIn = {
+                        val activity = localContext.findHostActivity()
+                        if (activity == null) {
+                            viewModel.onGoogleAuthError("Tidak dapat membuka jendela login Google di perangkat ini.")
+                        } else {
+                            val localClientId = runCatching {
+                                localContext.getString(R.string.google_web_client_id).trim()
+                            }.getOrDefault("")
+                            val resolvedClientId = uiState.googleWebClientId.ifBlank { localClientId }
+                            coroutineScope.launch {
+                                viewModel.setGoogleAuthLoading(true)
+                                when (
+                                    val outcome = GoogleAuthManager.signIn(
+                                        activity = activity,
+                                        webClientId = resolvedClientId,
+                                        webOAuthEnabled = uiState.googleWebOAuthEnabled,
+                                        apiBaseUrl = uiState.apiConfig.baseUrl
+                                    )
+                                ) {
+                                    is GoogleSignInOutcome.IdToken -> {
+                                        viewModel.loginWithGoogleIdToken(outcome.idToken)
+                                    }
+                                    GoogleSignInOutcome.LaunchedBrowserOAuth -> {
+                                        viewModel.setGoogleAuthLoading(false)
+                                        viewModel.emitMessage("Selesaikan login Google di browser...")
+                                    }
+                                    GoogleSignInOutcome.Cancelled -> {
+                                        viewModel.setGoogleAuthLoading(false)
+                                    }
+                                    is GoogleSignInOutcome.Failure -> {
+                                        viewModel.onGoogleAuthError(outcome.message)
+                                    }
+                                }
+                            }
+                        }
+                    },
                     onContinueAsGuest = viewModel::continueAsGuest,
                     onDemoVipLogin = viewModel::loginDemoVip,
                     onResetPasswordRequested = viewModel::requestPasswordReset
@@ -218,6 +280,8 @@ fun AnimWatchApp(
                                 onOpenSchedule = viewModel::openExploreSchedule,
                                 onOpenRanking = viewModel::openExploreRanking,
                                 onOpenRandom = viewModel::openRandomAnime,
+                                onOpenGenre = viewModel::openExploreWithGenre,
+                                onLoadMoreCatalog = { viewModel.loadMoreCatalog() },
                                 onOpenNotifications = { showNotificationsSheet = true },
                                 onOpenProfile = { viewModel.selectTab(MainTab.PROFILE) }
                             )
@@ -237,12 +301,14 @@ fun AnimWatchApp(
                                 onRemoveSearchHistory = viewModel::removeSearchHistoryItem,
                                 onClearSearchHistory = viewModel::clearSearchHistory,
                                 onToggleGenre = viewModel::toggleGenreFilter,
+                                onToggleOnlyPlayable = viewModel::toggleOnlyPlayableFilter,
                                 onStatusChange = viewModel::setStatusFilter,
                                 onTypeChange = viewModel::setTypeFilter,
                                 onYearChange = viewModel::setYearFilter,
                                 onSortChange = viewModel::setSortOption,
                                 onToggleGridView = viewModel::toggleExploreGridMode,
                                 onResetFilters = viewModel::resetExploreFilters,
+                                onLoadMoreCatalog = { viewModel.loadMoreCatalog() },
                                 onSelectScheduleDay = viewModel::selectScheduleDay,
                                 onToggleReminder = viewModel::toggleAnimeReminder,
                                 onAnimeClick = viewModel::openAnimeDetail,
@@ -326,7 +392,10 @@ fun AnimWatchApp(
                         onBack = { viewModel.navigateBack() },
                         onAnimeClick = viewModel::openAnimeDetail,
                         onPlayAnime = { id -> viewModel.playAnime(id) },
-                        onBookmarkClick = viewModel::toggleQuickBookmark
+                        onBookmarkClick = viewModel::toggleQuickBookmark,
+                        hasMore = uiState.hasMoreCatalog,
+                        isLoadingMore = uiState.isLoadingMoreCatalog,
+                        onLoadMore = { viewModel.loadMoreCatalog() }
                     )
                 }
             }
@@ -408,6 +477,8 @@ fun AnimWatchApp(
                     onToggleLock = viewModel::togglePlayerLock,
                     onToggleFullscreen = { viewModel.setPlayerFullscreen(!activeSession.isFullscreen) },
                     onToggleWebStreamView = viewModel::togglePlayerWebStreamView,
+                    onEpisodeCompleted = viewModel::markEpisodeCompleted,
+                    onMarkAnimeCompleted = viewModel::markAnimeCompleted,
                     onToggleLike = viewModel::toggleEpisodeLike,
                     onSelectWatchlist = viewModel::setWatchlistCategory,
                     onDownloadEpisode = viewModel::handleEpisodeDownloadAction,

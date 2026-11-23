@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ViewList
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.SortOption
 import com.gows.animwatch.ui.components.AnimePosterCard
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.CompactAnimeRowCard
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
@@ -73,6 +75,9 @@ fun CatalogListScreen(
     onAnimeClick: (String) -> Unit,
     onPlayAnime: (String) -> Unit,
     onBookmarkClick: (String) -> Unit,
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var sortOption by remember { mutableStateOf(SortOption.POPULAR) }
@@ -223,6 +228,11 @@ fun CatalogListScreen(
                         )
                     }
                 }
+                if (hasMore) {
+                    item(span = { GridItemSpan(2) }) {
+                        CatalogLoadMoreFooter(isLoadingMore = isLoadingMore, onLoadMore = onLoadMore)
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -243,6 +253,53 @@ fun CatalogListScreen(
                         onBookmarkClick = { onBookmarkClick(anime.id) }
                     )
                 }
+                if (hasMore) {
+                    item {
+                        CatalogLoadMoreFooter(isLoadingMore = isLoadingMore, onLoadMore = onLoadMore)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogLoadMoreFooter(
+    isLoadingMore: Boolean,
+    onLoadMore: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (isLoadingMore) {
+            Text(
+                text = "Memuat lebih banyak anime...",
+                style = MaterialTheme.typography.labelMedium,
+                color = GoldPrimary,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
+                    .clickable(onClick = onLoadMore)
+                    .padding(vertical = 13.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Muat Koleksi Berikutnya",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = GoldPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }

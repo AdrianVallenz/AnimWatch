@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Notifications
@@ -47,7 +48,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +73,9 @@ import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.ui.components.AnimWatchCrestLogo
 import com.gows.animwatch.ui.components.AnimePosterArtwork
 import com.gows.animwatch.ui.components.AnimePosterCard
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.CassetteTelemetryStrip
+import com.gows.animwatch.ui.components.CompactAnimeRowCard
 import com.gows.animwatch.ui.components.ContinueWatchingCard
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
@@ -88,7 +93,6 @@ import com.gows.animwatch.ui.theme.MediaTextSecondary
 import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusAmber
-import com.gows.animwatch.ui.theme.StatusEmerald
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
 import com.gows.animwatch.ui.theme.TextPrimary
@@ -109,11 +113,20 @@ fun HomeScreen(
     onOpenSchedule: () -> Unit,
     onOpenRanking: () -> Unit,
     onOpenRandom: () -> Unit,
+    onOpenGenre: (String) -> Unit = {},
+    onLoadMoreCatalog: () -> Unit = {},
     onOpenNotifications: () -> Unit,
     onOpenProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var selectedHomeGenre by remember { mutableStateOf<String?>(null) }
+
     val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
+    val playableList = remember(uiState.allAnime) {
+        uiState.allAnime
+            .filter { it.isOfficialFree }
+            .sortedWith(compareByDescending<Anime> { it.rating }.thenBy { it.popularityRank })
+    }
     val featuredList = remember(uiState.allAnime) {
         uiState.allAnime
             .sortedWith(
@@ -121,10 +134,13 @@ fun HomeScreen(
                     .thenByDescending { it.isFeatured }
                     .thenByDescending { it.rating }
             )
-            .take(6)
+            .take(7)
     }
     val latestReleases = remember(uiState.allAnime) {
-        uiState.allAnime.filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
+        uiState.allAnime
+            .filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
+            .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenBy { it.popularityRank })
+            .take(24)
     }
     val top10List = remember(uiState.allAnime) {
         uiState.allAnime.sortedByDescending { it.rating }.take(10)
@@ -133,15 +149,45 @@ fun HomeScreen(
         uiState.allAnime
             .filter { it.isTrending || it.isOfficialFree }
             .sortedWith(compareByDescending<Anime> { it.isTrending }.thenBy { it.popularityRank })
-            .take(18)
+            .take(24)
+    }
+    val actionList = remember(uiState.allAnime) {
+        uiState.allAnime
+            .filter { a -> a.genres.any { it.equals("Action", ignoreCase = true) } }
+            .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
+            .take(20)
+    }
+    val fantasyList = remember(uiState.allAnime) {
+        uiState.allAnime
+            .filter { a -> a.genres.any { it.equals("Fantasy", ignoreCase = true) } }
+            .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
+            .take(20)
     }
     val completedMarathon = remember(uiState.allAnime) {
         uiState.allAnime
             .filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
+            .take(24)
     }
     val moviesList = remember(uiState.allAnime) {
-        uiState.allAnime.filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
+        uiState.allAnime
+            .filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
+            .sortedByDescending { it.rating }
+            .take(24)
+    }
+    val quickGenres = remember(uiState.genres) {
+        val preferredOrder = listOf(
+            "Action", "Fantasy", "Adventure", "Comedy", "Romance",
+            "Sci-Fi", "Drama", "Sports", "Supernatural", "Slice of Life"
+        )
+        preferredOrder.filter { p -> uiState.genres.any { it.equals(p, ignoreCase = true) } }
+            .ifEmpty { uiState.genres.take(8) }
+    }
+    val genreFilteredAnime = remember(uiState.allAnime, selectedHomeGenre) {
+        val g = selectedHomeGenre ?: return@remember emptyList()
+        uiState.allAnime
+            .filter { a -> a.genres.any { it.equals(g, ignoreCase = true) } }
+            .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
     }
 
     LazyColumn(
@@ -153,6 +199,7 @@ fun HomeScreen(
         // 1. Anime Streaming Portal Header Bar
         item(key = "home_top_bar") {
             HomeTopBar(
+                totalAnimeCount = uiState.allAnime.size,
                 unreadNotifications = uiState.unreadNotificationCount,
                 avatarEmblem = uiState.userProfile.avatarEmblem,
                 onSearchClick = onOpenSearch,
@@ -161,9 +208,8 @@ fun HomeScreen(
             )
         }
 
-        // 2. Streaming Portal Quick Search Pill + Optional Sync Notice + Cinematic Hero Banner
+        // 2. Quick Search Pill + Optional Sync Notice + Cinematic Hero Banner
         item(key = "home_hero") {
-            // Compact search bar like an anime streaming website
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -172,7 +218,7 @@ fun HomeScreen(
                     .background(ObsidianCard)
                     .border(0.75.dp, GoldSubtleBorder, CircleShape)
                     .clickable(onClick = onOpenSearch)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -183,34 +229,20 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Cari Mushoku Tensei, Frieren, SPY×FAMILY...",
+                    text = "Cari Mushoku Tensei, Frieren, Jujutsu Kaisen...",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextTertiary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(GoldTint)
-                        .padding(horizontal = 8.dp, vertical = 2.5.dp)
-                ) {
-                    Text(
-                        text = "AniList",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GoldPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 10.sp
-                    )
-                }
             }
 
             val apiStatus = uiState.apiConfig.status
             if (apiStatus == ApiConnectionStatus.SYNCING || apiStatus == ApiConnectionStatus.OFFLINE_FALLBACK) {
                 Spacer(modifier = Modifier.height(6.dp))
                 CassetteTelemetryStrip(
-                    code = if (apiStatus == ApiConnectionStatus.SYNCING) "Memuat katalog AniList..." else "Mode Katalog Offline",
+                    code = if (apiStatus == ApiConnectionStatus.SYNCING) "Memuat katalog..." else "Mode Katalog Offline",
                     statusText = "${uiState.allAnime.size} judul",
                     ledColor = if (apiStatus == ApiConnectionStatus.SYNCING) GoldBright else StatusAmber,
                     pulsing = apiStatus == ApiConnectionStatus.SYNCING,
@@ -230,7 +262,7 @@ fun HomeScreen(
             )
         }
 
-        // 3. Streaming Category Navigation Strip
+        // 3. Streaming Category Navigation Strip + Quick Genre Filter Pills
         item(key = "home_shortcuts") {
             Spacer(modifier = Modifier.height(16.dp))
             QuickShortcutStrip(
@@ -240,154 +272,333 @@ fun HomeScreen(
                 onMoviesClick = { onOpenCatalog(CatalogPreset.MOVIES, "Anime Movie & OVA") },
                 onRandomClick = onOpenRandom
             )
+            if (quickGenres.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        HomeGenreChip(
+                            label = "Semua",
+                            selected = selectedHomeGenre == null,
+                            onClick = { selectedHomeGenre = null }
+                        )
+                    }
+                    items(quickGenres) { genre ->
+                        HomeGenreChip(
+                            label = genre,
+                            selected = selectedHomeGenre == genre,
+                            onClick = {
+                                selectedHomeGenre = if (selectedHomeGenre == genre) null else genre
+                            }
+                        )
+                    }
+                }
+            }
         }
 
-        // 4. Continue Watching
-        if (uiState.watchHistory.isNotEmpty()) {
-            item(key = "home_continue") {
+        // If a Home genre pill is active, display an instant filtered genre view right on Home
+        if (selectedHomeGenre != null) {
+            val activeGenre = selectedHomeGenre!!
+            item(key = "home_genre_header") {
+                Spacer(modifier = Modifier.height(22.dp))
+                SectionHeader(
+                    title = "Genre $activeGenre",
+                    subtitle = "${genreFilteredAnime.size} judul ditemukan",
+                    actionLabel = "Filter Lengkap",
+                    onActionClick = { onOpenGenre(activeGenre) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            items(genreFilteredAnime.take(30), key = { "hg_${it.id}" }) { anime ->
+                CompactAnimeRowCard(
+                    anime = anime,
+                    isBookmarked = anime.id in uiState.watchlist,
+                    onClick = { onAnimeClick(anime.id) },
+                    onPlayClick = { onPlayAnime(anime.id, null) },
+                    onBookmarkClick = { onBookmarkClick(anime.id) },
+                    trailingBadge = if (anime.isOfficialFree) "Siap Putar" else null,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                )
+            }
+        } else {
+            // 4. Continue Watching
+            if (uiState.watchHistory.isNotEmpty()) {
+                item(key = "home_continue") {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    SectionHeader(
+                        title = "Lanjutkan Menonton",
+                        subtitle = "Lanjutkan tepat dari menit terakhir",
+                        actionLabel = "Riwayat",
+                        onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Baru Ditonton") }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(uiState.watchHistory, key = { it.animeId }) { progress ->
+                            val anime = animeById[progress.animeId]
+                            if (anime != null) {
+                                ContinueWatchingCard(
+                                    anime = anime,
+                                    progress = progress,
+                                    onPlayClick = { onPlayAnime(anime.id, progress.episodeId) },
+                                    onDetailClick = { onAnimeClick(anime.id) },
+                                    onRemoveClick = { onRemoveHistory(anime.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Koleksi Siap Tonton Lengkap (All Muse Indonesia & Ani-One Indonesia playlists!)
+            if (playableList.isNotEmpty()) {
+                item(key = "home_playable") {
+                    Spacer(modifier = Modifier.height(26.dp))
+                    SectionHeader(
+                        title = "Siap Tonton Lengkap",
+                        subtitle = "${playableList.size} serial langsung putar di aplikasi",
+                        onActionClick = { onOpenCatalog(CatalogPreset.OFFICIAL_FREE, "Siap Tonton Lengkap") }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(playableList.take(24), key = { "play_${it.id}" }) { anime ->
+                            AnimePosterCard(
+                                anime = anime,
+                                isBookmarked = anime.id in uiState.watchlist,
+                                onClick = { onAnimeClick(anime.id) },
+                                onBookmarkClick = { onBookmarkClick(anime.id) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 6. Rilis Episode Terbaru
+            item(key = "home_latest") {
                 Spacer(modifier = Modifier.height(26.dp))
                 SectionHeader(
-                    title = "Lanjutkan Menonton",
-                    subtitle = "Lanjutkan tepat dari menit terakhir",
-                    actionLabel = "Riwayat",
-                    onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Baru Ditonton") }
+                    title = "Rilis Episode Terbaru",
+                    subtitle = "Update episode terbaru minggu ini",
+                    onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Rilis Episode Terbaru") }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(uiState.watchHistory, key = { it.animeId }) { progress ->
-                        val anime = animeById[progress.animeId]
-                        if (anime != null) {
-                            ContinueWatchingCard(
+                    items(latestReleases, key = { "latest_${it.id}" }) { anime ->
+                        AnimePosterCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) }
+                        )
+                    }
+                }
+            }
+
+            // 7. Top 10 Peringkat
+            item(key = "home_top10") {
+                Spacer(modifier = Modifier.height(26.dp))
+                SectionHeader(
+                    title = "Top 10 Peringkat",
+                    subtitle = "Koleksi terbaik dengan skor tertinggi",
+                    onActionClick = onOpenRanking
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    itemsIndexed(top10List, key = { _, anime -> "top_${anime.id}" }) { index, anime ->
+                        TopRankedCard(
+                            rank = index + 1,
+                            anime = anime,
+                            onClick = { onAnimeClick(anime.id) }
+                        )
+                    }
+                }
+            }
+
+            // 8. Sedang Hangat / Trending
+            item(key = "home_trending") {
+                Spacer(modifier = Modifier.height(26.dp))
+                SectionHeader(
+                    title = "Sedang Hangat",
+                    subtitle = "Paling sering diputar di AnimWatch",
+                    onActionClick = { onOpenCatalog(CatalogPreset.TRENDING, "Sedang Hangat") }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(trendingList, key = { "trend_${it.id}" }) { anime ->
+                        AnimePosterCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) }
+                        )
+                    }
+                }
+            }
+
+            // 9. Aksi & Pertarungan
+            if (actionList.isNotEmpty()) {
+                item(key = "home_action") {
+                    Spacer(modifier = Modifier.height(26.dp))
+                    SectionHeader(
+                        title = "Aksi & Pertarungan",
+                        subtitle = "Pertempuran epik dan adrenalin tinggi",
+                        onActionClick = { onOpenGenre("Action") }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(actionList, key = { "act_${it.id}" }) { anime ->
+                            AnimePosterCard(
                                 anime = anime,
-                                progress = progress,
-                                onPlayClick = { onPlayAnime(anime.id, progress.episodeId) },
-                                onDetailClick = { onAnimeClick(anime.id) },
-                                onRemoveClick = { onRemoveHistory(anime.id) }
+                                isBookmarked = anime.id in uiState.watchlist,
+                                onClick = { onAnimeClick(anime.id) },
+                                onBookmarkClick = { onBookmarkClick(anime.id) }
                             )
                         }
                     }
                 }
             }
-        }
 
-        // 5. Rilis Terbaru Hari Ini
-        item {
-            Spacer(modifier = Modifier.height(28.dp))
-            SectionHeader(
-                title = "Rilis Episode Terbaru",
-                subtitle = "Update Sub Indo terbaru minggu ini",
-                onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Rilis Episode Terbaru") }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(latestReleases, key = { "latest_${it.id}" }) { anime ->
-                    AnimePosterCard(
-                        anime = anime,
-                        isBookmarked = anime.id in uiState.watchlist,
-                        onClick = { onAnimeClick(anime.id) },
-                        onBookmarkClick = { onBookmarkClick(anime.id) }
+            // 10. Fantasi & Dunia Lain
+            if (fantasyList.isNotEmpty()) {
+                item(key = "home_fantasy") {
+                    Spacer(modifier = Modifier.height(26.dp))
+                    SectionHeader(
+                        title = "Fantasi & Dunia Lain",
+                        subtitle = "Petualangan sihir, isekai, dan dunia baru",
+                        onActionClick = { onOpenGenre("Fantasy") }
                     )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(fantasyList, key = { "fan_${it.id}" }) { anime ->
+                            AnimePosterCard(
+                                anime = anime,
+                                isBookmarked = anime.id in uiState.watchlist,
+                                onClick = { onAnimeClick(anime.id) },
+                                onBookmarkClick = { onBookmarkClick(anime.id) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 11. Maraton Anime Tamat
+            item(key = "home_completed") {
+                Spacer(modifier = Modifier.height(26.dp))
+                SectionHeader(
+                    title = "Siap Maraton",
+                    subtitle = "Semua episode lengkap dari awal hingga akhir",
+                    onActionClick = { onOpenCatalog(CatalogPreset.COMPLETED, "Anime Tamat — Siap Maraton") }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(completedMarathon, key = { "comp_${it.id}" }) { anime ->
+                        AnimePosterCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) }
+                        )
+                    }
+                }
+            }
+
+            // 12. Anime Movie & OVA
+            item(key = "home_movies") {
+                Spacer(modifier = Modifier.height(26.dp))
+                SectionHeader(
+                    title = "Film & Spesial Pilihan",
+                    subtitle = "Tontonan layar lebar kualitas sinematik",
+                    onActionClick = { onOpenCatalog(CatalogPreset.MOVIES, "Film & OVA Pilihan") }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(moviesList, key = { "mov_${it.id}" }) { anime ->
+                        AnimePosterCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) }
+                        )
+                    }
                 }
             }
         }
 
-        // 6. Top 10 Populer Minggu Ini
-        item {
-            Spacer(modifier = Modifier.height(28.dp))
-            SectionHeader(
-                title = "Top 10 Peringkat",
-                subtitle = "Koleksi terbaik dengan skor tertinggi",
-                onActionClick = onOpenRanking
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+        // 13. Catalog Expansion Footer
+        item(key = "home_load_more") {
+            Spacer(modifier = Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                itemsIndexed(top10List, key = { _, anime -> "top_${anime.id}" }) { index, anime ->
-                    TopRankedCard(
-                        rank = index + 1,
-                        anime = anime,
-                        onClick = { onAnimeClick(anime.id) }
-                    )
-                }
-            }
-        }
-
-        // 7. Sedang Hangat / Trending
-        item {
-            Spacer(modifier = Modifier.height(28.dp))
-            SectionHeader(
-                title = "Sedang Hangat",
-                subtitle = "Paling sering diputar di AnimWatch",
-                onActionClick = { onOpenCatalog(CatalogPreset.TRENDING, "Sedang Hangat") }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(trendingList, key = { "trend_${it.id}" }) { anime ->
-                    AnimePosterCard(
-                        anime = anime,
-                        isBookmarked = anime.id in uiState.watchlist,
-                        onClick = { onAnimeClick(anime.id) },
-                        onBookmarkClick = { onBookmarkClick(anime.id) }
-                    )
-                }
-            }
-        }
-
-        // 8. Maraton Anime Tamat
-        item {
-            Spacer(modifier = Modifier.height(28.dp))
-            SectionHeader(
-                title = "Siap Maraton",
-                subtitle = "Semua episode lengkap dari awal hingga akhir",
-                onActionClick = { onOpenCatalog(CatalogPreset.COMPLETED, "Anime Tamat — Siap Maraton") }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(completedMarathon, key = { "comp_${it.id}" }) { anime ->
-                    AnimePosterCard(
-                        anime = anime,
-                        isBookmarked = anime.id in uiState.watchlist,
-                        onClick = { onAnimeClick(anime.id) },
-                        onBookmarkClick = { onBookmarkClick(anime.id) }
-                    )
-                }
-            }
-        }
-
-        // 9. Anime Movie & OVA
-        item {
-            Spacer(modifier = Modifier.height(28.dp))
-            SectionHeader(
-                title = "Film & Spesial Pilihan",
-                subtitle = "Tontonan layar lebar kualitas sinematik",
-                onActionClick = { onOpenCatalog(CatalogPreset.MOVIES, "Film & OVA Pilihan") }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(moviesList, key = { "mov_${it.id}" }) { anime ->
-                    AnimePosterCard(
-                        anime = anime,
-                        isBookmarked = anime.id in uiState.watchlist,
-                        onClick = { onAnimeClick(anime.id) },
-                        onBookmarkClick = { onBookmarkClick(anime.id) }
-                    )
+                Text(
+                    text = "${uiState.allAnime.size} anime tersedia • ${playableList.size} siap putar langsung",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Muat lebih banyak koleksi playlist dan katalog anime populer lainnya.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary
+                )
+                if (uiState.hasMoreCatalog) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (uiState.isLoadingMoreCatalog) {
+                        CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            GoldOutlinedButton(
+                                text = "Muat Lebih Banyak",
+                                onClick = onLoadMoreCatalog,
+                                modifier = Modifier.weight(1f),
+                                height = 42.dp
+                            )
+                            GoldGradientButton(
+                                text = "Jelajah Semua",
+                                onClick = onOpenSearch,
+                                modifier = Modifier.weight(1f),
+                                height = 42.dp
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -395,7 +606,38 @@ fun HomeScreen(
 }
 
 @Composable
+private fun HomeGenreChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(
+                if (selected) GoldGradientBrush
+                else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
+            )
+            .border(
+                width = if (selected) 0.dp else 0.75.dp,
+                color = if (selected) Color.Transparent else GoldSubtleBorder,
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 7.5.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) TextOnGold else TextSecondary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+        )
+    }
+}
+
+@Composable
 private fun HomeTopBar(
+    totalAnimeCount: Int,
     unreadNotifications: Int,
     avatarEmblem: String,
     onSearchClick: () -> Unit,
@@ -427,7 +669,7 @@ private fun HomeTopBar(
                     fontSize = 20.sp
                 )
                 Text(
-                    text = "Streaming Sub Indo",
+                    text = "$totalAnimeCount+ Anime Streaming",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextTertiary
                 )
@@ -550,7 +792,7 @@ private fun HeroCarouselSection(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(380.dp)
+                    .height(386.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(ObsidianCard)
                     .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
@@ -565,131 +807,146 @@ private fun HeroCarouselSection(
                     decodeSizePx = 720
                 )
 
-                // Smooth cinematic vignette (cached brush)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(heroScrimBrush)
                 )
 
-                    // Top floating streaming portal badges
+                // Top floating streaming portal badges
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                            .clip(CircleShape)
+                            .background(GoldGradientBrush)
+                            .padding(horizontal = 11.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(GoldGradientBrush)
-                                .padding(horizontal = 11.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.AutoAwesome,
-                                contentDescription = null,
-                                tint = TextOnGold,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (anime.isOfficialFree) {
-                                    "SUB INDO • ${anime.officialChannel ?: "Muse ID"}"
-                                } else {
-                                    anime.posterTag
-                                },
-                                color = TextOnGold,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(MediaScrimDark.copy(alpha = 0.72f))
-                                .padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Star,
-                                contentDescription = null,
-                                tint = GoldBright,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "${anime.rating} • Ep ${anime.releasedEpisodes}/${anime.totalEpisodes}",
-                                color = MediaTextLight,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Icon(
+                            imageVector = if (anime.isOfficialFree) Icons.Rounded.PlayArrow else Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            tint = TextOnGold,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = anime.officialChannel ?: anime.posterTag,
+                            color = TextOnGold,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
 
-                    // Bottom hero info & smooth actions
-                    Column(
+                    Row(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .fillMaxWidth()
-                            .padding(16.dp)
+                            .clip(CircleShape)
+                            .background(MediaScrimDark.copy(alpha = 0.72f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            anime.genres.take(3).forEach { genre ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(MediaScrimDark.copy(alpha = 0.62f))
-                                        .border(0.75.dp, Color.White.copy(alpha = 0.22f), CircleShape)
-                                        .padding(horizontal = 10.dp, vertical = 3.5.dp)
-                                ) {
-                                    Text(
-                                        text = genre,
-                                        color = MediaTextLight,
-                                        fontSize = 10.5.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${anime.rating} • Ep ${anime.releasedEpisodes}/${anime.totalEpisodes}",
+                            color = MediaTextLight,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                // Bottom hero info & 3-action streaming bar
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        anime.genres.take(3).forEach { genre ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(MediaScrimDark.copy(alpha = 0.62f))
+                                    .border(0.75.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+                                    .padding(horizontal = 10.dp, vertical = 3.5.dp)
+                            ) {
+                                Text(
+                                    text = genre,
+                                    color = MediaTextLight,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = anime.title,
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MediaTextLight,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = anime.title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MediaTextLight,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = anime.synopsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MediaTextSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        GoldGradientButton(
+                            text = "Tonton Sekarang",
+                            icon = Icons.Rounded.PlayArrow,
+                            onClick = { onPlayClick(anime) },
+                            modifier = Modifier.weight(1.4f),
+                            height = 44.dp
                         )
-                        Spacer(modifier = Modifier.height(5.dp))
-                        Text(
-                            text = anime.synopsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MediaTextSecondary,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                        GoldOutlinedButton(
+                            text = "Detail",
+                            icon = Icons.Rounded.Info,
+                            onClick = { onAnimeClick(anime.id) },
+                            modifier = Modifier.weight(0.85f),
+                            height = 44.dp
                         )
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isSaved) GoldTint else MediaScrimDark.copy(alpha = 0.65f))
+                                .border(
+                                    1.dp,
+                                    if (isSaved) GoldPrimary else Color.White.copy(alpha = 0.24f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { onBookmarkClick(anime.id) },
+                            contentAlignment = Alignment.Center
                         ) {
-                            GoldGradientButton(
-                                text = "Tonton Sekarang",
-                                icon = Icons.Rounded.PlayArrow,
-                                onClick = { onPlayClick(anime) },
-                                modifier = Modifier.weight(1.35f),
-                                height = 44.dp
+                            Icon(
+                                imageVector = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
+                                contentDescription = "Simpan ke Koleksi",
+                                tint = if (isSaved) GoldBright else MediaTextLight,
+                                modifier = Modifier.size(20.dp)
                             )
-                            GoldOutlinedButton(
-                                text = if (isSaved) "Tersimpan" else "Koleksi",
-                                icon = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
-                                isActive = isSaved,
-                                onClick = { onBookmarkClick(anime.id) },
-                                modifier = Modifier.weight(1f),
-                                height = 44.dp
-                            )
+                        }
                     }
                 }
             }
@@ -697,7 +954,6 @@ private fun HeroCarouselSection(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Smooth fluid capsule pager indicators
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,

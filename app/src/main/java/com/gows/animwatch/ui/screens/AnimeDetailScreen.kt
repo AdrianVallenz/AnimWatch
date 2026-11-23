@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
@@ -63,7 +62,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -146,16 +144,14 @@ fun AnimeDetailScreen(
     var isSpoilerDraft by remember { mutableStateOf(false) }
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
 
-    val uriHandler = LocalUriHandler.current
     val watchlistCategory = uiState.watchlist[anime.id]
     val watchedEpisodesCount = uiState.watchedEpisodes[anime.id] ?: 0
     val maxTrackableEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
+    val isCompletedAnime = watchlistCategory == WatchlistCategory.COMPLETED ||
+        (watchedEpisodesCount > 0 && watchedEpisodesCount >= maxTrackableEps)
     val userRating = uiState.userRatings[anime.id] ?: 0
     val watchProgress = uiState.watchHistory.find { it.animeId == anime.id }
     val hasReminder = anime.id in uiState.reminders
-    val hasOfficialFreeEpisode = remember(anime.episodes, anime.isOfficialFree) {
-        anime.isOfficialFree || anime.episodes.any { it.streamType == "official_episode" }
-    }
 
     val displayedEpisodes = remember(anime.episodes, sortDescending) {
         if (sortDescending) anime.episodes.sortedByDescending { it.number }
@@ -297,6 +293,9 @@ fun AnimeDetailScreen(
                             )
                             GoldTagChip(text = anime.type.label)
                             GoldTagChip(text = anime.ageRating)
+                            if (anime.isOfficialFree && !anime.officialChannel.isNullOrBlank()) {
+                                GoldTagChip(text = anime.officialChannel)
+                            }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -367,10 +366,8 @@ fun AnimeDetailScreen(
                 val playLabel = when {
                     watchProgress != null ->
                         "Lanjutkan Ep ${watchProgress.episodeNumber} (${formatTimeSeconds(watchProgress.positionSeconds)})"
-                    hasOfficialFreeEpisode ->
-                        "Tonton Episode 1 • Gratis Resmi"
                     else ->
-                        "Putar Trailer / Episode 1"
+                        "Tonton Episode 1"
                 }
 
                 GoldGradientButton(
@@ -414,122 +411,131 @@ fun AnimeDetailScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Organic AniList Progress Tracker Card (synced to PostgreSQL)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(ObsidianCard)
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
-                        .padding(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                // Pelacak Tontonan hanya aktif setelah menamatkan anime
+                if (isCompletedAnime) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    val effectiveWatched = if (watchedEpisodesCount > 0) watchedEpisodesCount else maxTrackableEps
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(ObsidianCard)
+                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                            .padding(14.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Pelacak Tontonan",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
-                            )
-                            Text(
-                                text = buildString {
-                                    append(watchlistCategory?.label ?: "Belum masuk daftar")
-                                    if (!anime.officialChannel.isNullOrBlank()) {
-                                        append(" • ${anime.officialChannel}")
-                                    }
-                                },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextTertiary
-                            )
-                        }
-                        Text(
-                            text = "$watchedEpisodesCount / $maxTrackableEps Ep",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = GoldPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    AnalogMeterGauge(
-                        progress = (watchedEpisodesCount.toFloat() / maxTrackableEps.toFloat()).coerceIn(0f, 1f),
-                        height = 6.dp
-                    )
-
-                    Spacer(modifier = Modifier.height(11.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(GoldTint)
-                                .clickable { showWatchlistSheet = true }
-                                .padding(horizontal = 11.dp, vertical = 6.dp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = null,
+                                    tint = StatusEmerald,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                                Column {
+                                    Text(
+                                        text = "Pelacak Tontonan",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "Anime telah ditamatkan • Sinkron otomatis",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = StatusEmerald
+                                    )
+                                }
+                            }
                             Text(
-                                text = watchlistCategory?.label ?: "Atur Status",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = "$effectiveWatched / $maxTrackableEps Ep",
+                                style = MaterialTheme.typography.titleSmall,
                                 color = GoldPrimary,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.Bold
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        AnalogMeterGauge(
+                            progress = (effectiveWatched.toFloat() / maxTrackableEps.toFloat()).coerceIn(0f, 1f),
+                            height = 6.dp
+                        )
+
+                        Spacer(modifier = Modifier.height(11.dp))
 
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
                                     .clip(CircleShape)
-                                    .background(ObsidianCardAlt)
-                                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                                    .clickable(enabled = watchedEpisodesCount > 0) {
-                                        onUpdateWatchedEpisodes(anime.id, watchedEpisodesCount - 1)
-                                    },
-                                contentAlignment = Alignment.Center
+                                    .background(GoldTint)
+                                    .clickable { showWatchlistSheet = true }
+                                    .padding(horizontal = 11.dp, vertical = 6.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Remove,
-                                    contentDescription = "Kurangi Episode",
-                                    tint = if (watchedEpisodesCount > 0) TextPrimary else TextTertiary,
-                                    modifier = Modifier.size(17.dp)
+                                Text(
+                                    text = watchlistCategory?.label ?: "Tamat",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = GoldPrimary,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
 
                             Row(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(GoldGradientBrush)
-                                    .clickable(enabled = watchedEpisodesCount < maxTrackableEps) {
-                                        onUpdateWatchedEpisodes(anime.id, watchedEpisodesCount + 1)
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Add,
-                                    contentDescription = "Tambah Episode",
-                                    tint = TextOnGold,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = if (watchedEpisodesCount >= maxTrackableEps) "Selesai" else "1 Ep",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = TextOnGold,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(ObsidianCardAlt)
+                                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                                        .clickable(enabled = effectiveWatched > 0) {
+                                            onUpdateWatchedEpisodes(anime.id, effectiveWatched - 1)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Remove,
+                                        contentDescription = "Kurangi Episode",
+                                        tint = if (effectiveWatched > 0) TextPrimary else TextTertiary,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(GoldGradientBrush)
+                                        .clickable(enabled = effectiveWatched < maxTrackableEps) {
+                                            onUpdateWatchedEpisodes(anime.id, effectiveWatched + 1)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Add,
+                                        contentDescription = "Tambah Episode",
+                                        tint = TextOnGold,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = if (effectiveWatched >= maxTrackableEps) "Tamat" else "1 Ep",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = TextOnGold,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
@@ -590,46 +596,6 @@ fun AnimeDetailScreen(
                                 color = GoldPrimary,
                                 fontWeight = FontWeight.Medium
                             )
-                        }
-                    }
-                }
-
-                if (anime.externalLinks.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "Platform Resmi",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        anime.externalLinks.forEach { link ->
-                            Row(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(ObsidianCard)
-                                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                                    .clickable { runCatching { uriHandler.openUri(link.url) } }
-                                    .padding(horizontal = 12.dp, vertical = 7.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = link.site,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
-                                    contentDescription = "Buka ${link.site}",
-                                    tint = GoldPrimary,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
                         }
                     }
                 }
@@ -1099,7 +1065,7 @@ private fun EpisodeRowItem(
             AnimePosterArtwork(
                 artTheme = anime.artTheme,
                 title = anime.title,
-                posterUrl = anime.posterUrl,
+                posterUrl = episode.thumbnailUrl.ifBlank { anime.posterUrl },
                 modifier = Modifier.fillMaxSize(),
                 showKanjiWatermark = false,
                 decodeSizePx = 280
@@ -1135,9 +1101,7 @@ private fun EpisodeRowItem(
                     color = GoldPrimary,
                     fontWeight = FontWeight.SemiBold
                 )
-                if (episode.streamType == "official_episode") {
-                    GoldTagChip(text = "Gratis Resmi", highlighted = true)
-                } else if (episode.isFiller) {
+                if (episode.isFiller) {
                     GoldTagChip(text = "Filler")
                 }
                 Text(

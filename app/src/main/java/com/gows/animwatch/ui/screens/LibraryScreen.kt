@@ -334,18 +334,24 @@ private fun WatchlistContent(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(3.dp))
+                            val isCompleted = category == WatchlistCategory.COMPLETED
+                            val shownWatched = if (watchedCount > 0) watchedCount else maxTrackable
                             Text(
-                                text = "Progres $watchedCount/$maxTrackable Ep • ${anime.studio}",
+                                text = if (isCompleted) {
+                                    "Tamat • $shownWatched/$maxTrackable Ep • ${anime.studio}"
+                                } else {
+                                    "${anime.studio} • ${anime.releasedEpisodes}/${anime.totalEpisodes} Ep"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 11.sp,
-                                color = if (watchedCount > 0) GoldPrimary else TextTertiary,
+                                color = if (isCompleted) StatusEmerald else TextTertiary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            if (watchedCount > 0) {
+                            if (isCompleted) {
                                 Spacer(modifier = Modifier.height(5.dp))
                                 AnalogMeterGauge(
-                                    progress = (watchedCount.toFloat() / maxTrackable.toFloat()).coerceIn(0.05f, 1f),
+                                    progress = (shownWatched.toFloat() / maxTrackable.toFloat()).coerceIn(0.05f, 1f),
                                     height = 4.dp
                                 )
                             }

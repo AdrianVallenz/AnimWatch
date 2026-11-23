@@ -99,8 +99,8 @@ object KumanimeMapper {
         val hasCanonicalSlug = !dto.latestEpsSlug.isNullOrBlank()
         val latestEpSlug = dto.latestEpsSlug?.trim()?.takeIf { it.isNotEmpty() } ?: slug
         val genres = dto.genres?.map { it.trim() }?.filter { it.isNotEmpty() }
-            ?.ifEmpty { listOf("Sub Indo", "Ongoing") }
-            ?: listOf("Sub Indo", "Ongoing")
+            ?.ifEmpty { listOf("Anime", "Ongoing") }
+            ?: listOf("Anime", "Ongoing")
 
         val ep = Episode(
             id = "remote_ep_$latestEpSlug",
@@ -109,9 +109,10 @@ object KumanimeMapper {
             title = "Episode $epNumber",
             durationSeconds = (dto.durationMinutes ?: 24) * 60,
             releaseDate = "Rilis Terbaru",
-            synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Streaming anime melalui Kumanime API." },
+            synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Streaming anime di AnimWatch." },
             slug = latestEpSlug,
-            streamUrl = normalizeUrl(dto.trailerUrl),
+            streamUrl = "",
+            streamType = "info_only",
             servers = defaultServers,
             qualities = defaultQualities,
             subtitles = defaultSubtitles
@@ -144,6 +145,8 @@ object KumanimeMapper {
             isFeatured = index < 3,
             isTrending = index < 6,
             isNewRelease = true,
+            isOfficialFree = dto.isOfficialFree == true,
+            officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() },
             artTheme = pickArtTheme(slug),
             posterTag = "Ep $epNumber Baru",
             posterUrl = poster,
@@ -171,8 +174,8 @@ object KumanimeMapper {
         val genres = dto.genres
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
-            ?.ifEmpty { listOf("Anime", "Sub Indo") }
-            ?: listOf("Anime", "Sub Indo")
+            ?.ifEmpty { listOf("Anime") }
+            ?: listOf("Anime")
 
         val status = parseAnimeStatus(dto.status, defaultStatus)
         val totalEpisodes = dto.totalEpisodes?.takeIf { it > 0 } ?: 12
@@ -191,17 +194,19 @@ object KumanimeMapper {
             if (epSlug.isEmpty()) return@mapIndexedNotNull null
             val epLabel = epDto.epsTitle?.trim().orEmpty()
             val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
+            val epStream = normalizeUrl(epDto.streamUrl)
             Episode(
                 id = "remote_ep_$epSlug",
                 animeId = slug,
                 number = number,
                 title = epLabel.ifEmpty { "Episode $number" },
                 durationSeconds = (dto.durationMinutes ?: 24) * 60,
-                releaseDate = officialChannel ?: "Sub Indo",
-                synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Episode resmi gratis legal." },
+                releaseDate = officialChannel ?: "Episode $number",
+                synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Tersedia untuk ditonton di AnimWatch." },
                 slug = epSlug,
-                streamUrl = normalizeUrl(epDto.streamUrl ?: dto.trailerUrl),
-                streamType = epDto.streamType ?: dto.streamType ?: "official_episode",
+                streamUrl = epStream,
+                streamType = epDto.streamType ?: if (epStream.isNotBlank()) "official_episode" else "info_only",
+                thumbnailUrl = normalizeUrl(epDto.thumbnail),
                 servers = defaultServers,
                 qualities = defaultQualities,
                 subtitles = defaultSubtitles
@@ -239,7 +244,7 @@ object KumanimeMapper {
             officialChannel = officialChannel,
             artTheme = pickArtTheme(slug),
             posterTag = when {
-                isOfficialFree -> "${officialChannel ?: "Resmi"} • Gratis"
+                isOfficialFree -> officialChannel ?: "Pilihan"
                 status == AnimeStatus.COMPLETED -> "Tamat • $computedRating"
                 else -> "Populer #${index + 1}"
             },
@@ -265,8 +270,8 @@ object KumanimeMapper {
         val year = dto.year?.takeIf { it in 1970..2035 }
             ?: extractNumber(dto.release, fallback = 2025).let { if (it in 1970..2035) it else 2025 }
         val genres = dto.genres?.map { it.trim() }?.filter { it.isNotEmpty() }
-            ?.ifEmpty { listOf(type.label, "Sub Indo") }
-            ?: listOf(type.label, "Sub Indo")
+            ?.ifEmpty { listOf(type.label) }
+            ?: listOf(type.label)
         val status = parseAnimeStatus(
             dto.status,
             if (type == AnimeType.MOVIE) AnimeStatus.COMPLETED else AnimeStatus.ONGOING
@@ -303,8 +308,10 @@ object KumanimeMapper {
             isFeatured = false,
             isTrending = false,
             isNewRelease = false,
+            isOfficialFree = dto.isOfficialFree == true,
+            officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() },
             artTheme = pickArtTheme(slug),
-            posterTag = if (type == AnimeType.MOVIE) "Movie" else "Sub Indo",
+            posterTag = if (type == AnimeType.MOVIE) "Movie" else "Populer",
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true,
@@ -320,11 +327,11 @@ object KumanimeMapper {
         val genres = detail.genres
             ?.map { it.trim() }
             ?.filter { it.isNotEmpty() }
-            ?.ifEmpty { existing?.genres ?: listOf("Anime", "Sub Indo") }
-            ?: existing?.genres ?: listOf("Anime", "Sub Indo")
+            ?.ifEmpty { existing?.genres ?: listOf("Anime") }
+            ?: existing?.genres ?: listOf("Anime")
 
-        val trailerStream = normalizeUrl(detail.trailerUrl)
         val durationMin = detail.durationMinutes?.takeIf { it > 0 } ?: existing?.durationMinutes ?: 24
+        val channelLabel = detail.officialChannel?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.officialChannel
 
         val rawEpisodes = detail.episodes.orEmpty()
         val mappedEpisodes = rawEpisodes.mapIndexedNotNull { idx, epDto ->
@@ -332,20 +339,21 @@ object KumanimeMapper {
             if (epSlug.isEmpty()) return@mapIndexedNotNull null
             val epLabel = epDto.epsTitle?.trim().orEmpty()
             val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
-            val resolvedStream = normalizeUrl(epDto.streamUrl).ifEmpty { trailerStream }
-            val resolvedType = epDto.streamType?.takeIf { it.isNotBlank() }
-                ?: if (resolvedStream.isNotBlank()) "official_trailer" else "info_only"
+            val resolvedStream = normalizeUrl(epDto.streamUrl)
+            val resolvedType = epDto.streamType?.takeIf { it.isNotBlank() && it != "official_trailer" }
+                ?: if (resolvedStream.isNotBlank()) "official_episode" else "info_only"
             Episode(
                 id = "remote_ep_$epSlug",
                 animeId = slug,
                 number = number,
                 title = epLabel.replace(Regex("^Episode(?=\\d)"), "Episode ").ifEmpty { "Episode $number" },
                 durationSeconds = durationMin * 60,
-                releaseDate = if (resolvedType == "official_episode") "Resmi Gratis" else "AniList",
-                synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { "Tersedia melalui katalog AniList." },
+                releaseDate = channelLabel ?: "Episode $number",
+                synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { "Episode tersedia di AnimWatch." },
                 slug = epSlug,
                 streamUrl = resolvedStream,
                 streamType = resolvedType,
+                thumbnailUrl = normalizeUrl(epDto.thumbnail),
                 servers = defaultServers,
                 qualities = defaultQualities,
                 subtitles = defaultSubtitles
@@ -398,7 +406,7 @@ object KumanimeMapper {
             viewsLabel = "Live",
             popularityRank = 99,
             artTheme = pickArtTheme(slug),
-            posterTag = "Sub Indo",
+            posterTag = "Populer",
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true

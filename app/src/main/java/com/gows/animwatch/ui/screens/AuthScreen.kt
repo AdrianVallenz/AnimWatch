@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,8 +59,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -103,9 +109,11 @@ private enum class AuthMode(val label: String) {
 @Composable
 fun AuthScreen(
     authError: String?,
+    isGoogleLoading: Boolean = false,
     onClearAuthError: () -> Unit,
     onLogin: (identifier: String, password: String, rememberMe: Boolean) -> Unit,
     onRegister: (displayName: String, email: String, password: String) -> Unit,
+    onGoogleSignIn: () -> Unit = {},
     onContinueAsGuest: () -> Unit,
     onDemoVipLogin: () -> Unit,
     onResetPasswordRequested: (email: String) -> Unit,
@@ -670,6 +678,57 @@ fun AuthScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            // Official Google Sign-In Button
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(enabled = !isGoogleLoading) {
+                        focusManager.clearFocus()
+                        onClearAuthError()
+                        onGoogleSignIn()
+                    },
+                shape = RoundedCornerShape(16.dp),
+                color = if (IsDarkTheme) ObsidianElevated else Color.White,
+                shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .border(0.9.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (isGoogleLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = GoldPrimary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Menghubungkan Google...",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    } else {
+                        GoogleLogoMark(modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = if (mode == AuthMode.LOGIN) "Masuk dengan Google" else "Daftar dengan Google",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextPrimary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -796,15 +855,76 @@ private fun ForgotPasswordDialog(
     )
 }
 
+@Composable
+private fun GoogleLogoMark(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val strokeWidth = size.minDimension * 0.19f
+        val inset = strokeWidth / 2f
+        val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+        val topLeft = Offset(inset, inset)
+
+        // Red (top)
+        drawArc(
+            color = Color(0xFFEA4335),
+            startAngle = 215f,
+            sweepAngle = 105f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+        )
+        // Yellow (left)
+        drawArc(
+            color = Color(0xFFFBBC05),
+            startAngle = 135f,
+            sweepAngle = 80f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+        )
+        // Green (bottom)
+        drawArc(
+            color = Color(0xFF34A853),
+            startAngle = 35f,
+            sweepAngle = 100f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+        )
+        // Blue (right)
+        drawArc(
+            color = Color(0xFF4285F4),
+            startAngle = -5f,
+            sweepAngle = 45f,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
+        )
+        // Blue horizontal bar
+        drawLine(
+            color = Color(0xFF4285F4),
+            start = Offset(size.width * 0.50f, size.height * 0.50f),
+            end = Offset(size.width - inset, size.height * 0.50f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Butt
+        )
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun AuthScreenPreview() {
     AnimWatchTheme {
         AuthScreen(
             authError = null,
+            isGoogleLoading = false,
             onClearAuthError = {},
             onLogin = { _, _, _ -> },
             onRegister = { _, _, _ -> },
+            onGoogleSignIn = {},
             onContinueAsGuest = {},
             onDemoVipLogin = {},
             onResetPasswordRequested = {}

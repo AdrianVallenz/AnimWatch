@@ -31,7 +31,9 @@ data class LatestItemDto(
     @SerializedName("released_episodes") val releasedEpisodes: Int? = null,
     @SerializedName("airing_day") val airingDay: String? = null,
     @SerializedName("airing_time") val airingTime: String? = null,
-    @SerializedName("trailer_url") val trailerUrl: String? = null
+    @SerializedName("trailer_url") val trailerUrl: String? = null,
+    @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("official_channel") val officialChannel: String? = null
 )
 
 data class PopularResponseDto(
@@ -110,7 +112,9 @@ data class CatalogCardDto(
     @SerializedName("released_episodes") val releasedEpisodes: Int? = null,
     @SerializedName("airing_day") val airingDay: String? = null,
     @SerializedName("airing_time") val airingTime: String? = null,
-    @SerializedName("trailer_url") val trailerUrl: String? = null
+    @SerializedName("trailer_url") val trailerUrl: String? = null,
+    @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("official_channel") val officialChannel: String? = null
 )
 
 data class AnimeDetailResponseDto(
@@ -158,7 +162,8 @@ data class AnimeDetailEpisodeDto(
     @SerializedName("eps_slug") val epsSlug: String? = null,
     @SerializedName("number") val number: Int? = null,
     @SerializedName("stream_url") val streamUrl: String? = null,
-    @SerializedName("stream_type") val streamType: String? = null
+    @SerializedName("stream_type") val streamType: String? = null,
+    @SerializedName("thumbnail") val thumbnail: String? = null
 )
 
 data class EpisodeDetailResponseDto(
@@ -196,6 +201,17 @@ data class RegisterRequestDto(
 data class LoginRequestDto(
     @SerializedName("email") val email: String,
     @SerializedName("password") val password: String
+)
+
+data class GoogleAuthRequestDto(
+    @SerializedName("idToken") val idToken: String
+)
+
+data class AuthConfigDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("googleEnabled") val googleEnabled: Boolean? = null,
+    @SerializedName("googleWebClientId") val googleWebClientId: String? = null,
+    @SerializedName("googleWebOAuthEnabled") val googleWebOAuthEnabled: Boolean? = null
 )
 
 data class UserProfileDto(

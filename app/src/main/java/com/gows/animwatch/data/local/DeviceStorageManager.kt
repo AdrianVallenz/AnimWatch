@@ -230,7 +230,7 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
             AppPermissionStatus(
                 id = "network",
                 title = "Akses Internet & Status Jaringan",
-                description = "Streaming episode resmi Muse Indonesia, Ani-One, dan katalog AniList",
+                description = "Streaming episode dan sinkronisasi katalog anime secara online",
                 androidPermission = Manifest.permission.INTERNET,
                 isGranted = internetGranted,
                 canRequestRuntime = false
@@ -320,7 +320,7 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
                 "episodeTitle" to episode.title,
                 "episodeSynopsis" to episode.synopsis,
                 "qualityPreference" to qualityLabel,
-                "officialChannel" to (anime.officialChannel ?: "AniList"),
+                "officialChannel" to (anime.officialChannel ?: "AnimWatch"),
                 "streamType" to episode.streamType,
                 "streamUrl" to episode.streamUrl,
                 "subtitles" to subtitleCues.map {
@@ -407,6 +407,7 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
         return deleted
     }
 
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
     override fun clearAppCache(): Long {
         val before = directorySizeBytes(appContext.cacheDir) + directorySizeBytes(appContext.externalCacheDir)
         runCatching {

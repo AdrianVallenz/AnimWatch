@@ -370,7 +370,7 @@ fun AnimePosterCard(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Top row: Anime streaming site SUB/Muse pill + rating & bookmark
+            // Top row: crisp rating star pill + bookmark button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -378,42 +378,26 @@ fun AnimePosterCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (anime.isOfficialFree) GoldGradientBrush else Brush.linearGradient(listOf(MediaScrimDark.copy(alpha = 0.78f), MediaScrimDark.copy(alpha = 0.78f))))
-                            .padding(horizontal = 6.dp, vertical = 2.5.dp)
-                    ) {
-                        Text(
-                            text = if (anime.isOfficialFree) "SUB INDO" else "ANILIST",
-                            color = if (anime.isOfficialFree) TextOnGold else MediaTextLight,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 0.4.sp
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(MediaScrimDark.copy(alpha = 0.76f))
+                        .padding(horizontal = 6.5.dp, vertical = 3.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(10.5.dp)
                         )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.76f))
-                            .padding(horizontal = 6.dp, vertical = 2.5.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Star,
-                                contentDescription = null,
-                                tint = GoldBright,
-                                modifier = Modifier.size(10.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.5.dp))
-                            Text(
-                                text = anime.rating.toString(),
-                                color = MediaTextLight,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(2.5.dp))
+                        Text(
+                            text = anime.rating.toString(),
+                            color = MediaTextLight,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
 
@@ -433,6 +417,19 @@ fun AnimePosterCard(
                     )
                 }
             }
+
+            // Smooth bottom vignette for crisp episode & play badge legibility
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, MediaScrimDark.copy(alpha = 0.88f))
+                        )
+                    )
+            )
 
             // Bottom streaming episode bar over smooth vignette
             Row(
@@ -459,12 +456,29 @@ fun AnimePosterCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Text(
-                    text = if (anime.isOfficialFree) "Muse ID" else "${anime.year}",
-                    color = if (anime.isOfficialFree) GoldBright else MediaTextSecondary,
-                    fontSize = 9.5.sp,
-                    fontWeight = if (anime.isOfficialFree) FontWeight.Bold else FontWeight.Medium
-                )
+                if (anime.isOfficialFree) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(GoldGradientBrush),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = "Siap Putar",
+                            tint = TextOnGold,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "${anime.year}",
+                        color = MediaTextSecondary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
 
@@ -661,6 +675,24 @@ fun TopRankedCard(
                             color = MediaTextLight,
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                if (anime.isOfficialFree) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp)
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(GoldGradientBrush),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PlayArrow,
+                            contentDescription = "Siap Putar",
+                            tint = TextOnGold,
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }

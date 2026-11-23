@@ -21,6 +21,9 @@ interface KumanimeApiService {
     @GET("official-free")
     suspend fun getOfficialFree(): PopularResponseDto
 
+    @GET("official-free/page/{page}")
+    suspend fun getOfficialFreePage(@Path("page") page: Int): PopularResponseDto
+
     @GET("latest")
     suspend fun getLatest(): LatestResponseDto
 
@@ -30,6 +33,9 @@ interface KumanimeApiService {
     @GET("popular")
     suspend fun getPopular(): PopularResponseDto
 
+    @GET("popular/page/{page}")
+    suspend fun getPopularPage(@Path("page") page: Int): PopularResponseDto
+
     @GET("movie")
     suspend fun getMovies(): MovieResponseDto
 
@@ -38,6 +44,9 @@ interface KumanimeApiService {
 
     @GET("completed")
     suspend fun getCompleted(): PopularResponseDto
+
+    @GET("completed/page/{page}")
+    suspend fun getCompletedPage(@Path("page") page: Int): PopularResponseDto
 
     @GET("search/{query}")
     suspend fun searchAnime(@Path("query") query: String): SearchResponseDto
@@ -49,11 +58,17 @@ interface KumanimeApiService {
     suspend fun getEpisodeDetail(@Path("slug") slug: String): EpisodeDetailResponseDto
 
     // PostgreSQL Auth & User Persistence Endpoints
+    @GET("auth/config")
+    suspend fun getAuthConfig(): Response<AuthConfigDto>
+
     @POST("auth/register")
     suspend fun register(@Body body: RegisterRequestDto): Response<AuthResponseDto>
 
     @POST("auth/login")
     suspend fun login(@Body body: LoginRequestDto): Response<AuthResponseDto>
+
+    @POST("auth/google")
+    suspend fun loginWithGoogle(@Body body: GoogleAuthRequestDto): Response<AuthResponseDto>
 
     @POST("auth/logout")
     suspend fun logout(@Header("Authorization") authHeader: String): Response<SimpleStatusResponseDto>

@@ -122,12 +122,14 @@ fun ExploreScreen(
     onRemoveSearchHistory: (String) -> Unit,
     onClearSearchHistory: () -> Unit,
     onToggleGenre: (String) -> Unit,
+    onToggleOnlyPlayable: () -> Unit,
     onStatusChange: (AnimeStatus?) -> Unit,
     onTypeChange: (AnimeType?) -> Unit,
     onYearChange: (Int?) -> Unit,
     onSortChange: (SortOption) -> Unit,
     onToggleGridView: () -> Unit,
     onResetFilters: () -> Unit,
+    onLoadMoreCatalog: () -> Unit,
     onSelectScheduleDay: (ReleaseDay) -> Unit,
     onToggleReminder: (String) -> Unit,
     onAnimeClick: (String) -> Unit,
@@ -198,9 +200,11 @@ fun ExploreScreen(
                     onRemoveSearchHistory = onRemoveSearchHistory,
                     onClearSearchHistory = onClearSearchHistory,
                     onToggleGenre = onToggleGenre,
+                    onToggleOnlyPlayable = onToggleOnlyPlayable,
                     onOpenFilterSheet = { showFilterSheet = true },
                     onToggleGridView = onToggleGridView,
                     onResetFilters = onResetFilters,
+                    onLoadMoreCatalog = onLoadMoreCatalog,
                     onAnimeClick = onAnimeClick,
                     onPlayAnime = onPlayAnime,
                     onBookmarkClick = onBookmarkClick
@@ -259,9 +263,11 @@ private fun CatalogExploreContent(
     onRemoveSearchHistory: (String) -> Unit,
     onClearSearchHistory: () -> Unit,
     onToggleGenre: (String) -> Unit,
+    onToggleOnlyPlayable: () -> Unit,
     onOpenFilterSheet: () -> Unit,
     onToggleGridView: () -> Unit,
     onResetFilters: () -> Unit,
+    onLoadMoreCatalog: () -> Unit,
     onAnimeClick: (String) -> Unit,
     onPlayAnime: (String) -> Unit,
     onBookmarkClick: (String) -> Unit
@@ -401,18 +407,50 @@ private fun CatalogExploreContent(
             }
         }
 
-        // Quick Genre Chips Row
+        // Quick Genre Chips Row + Ready-to-Play toggle
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                val allSelected = filter.selectedGenres.isEmpty()
+                val allSelected = filter.selectedGenres.isEmpty() && !filter.onlyPlayable
                 GenrePillChip(
                     label = "Semua",
                     selected = allSelected,
                     onClick = { if (!allSelected) onResetFilters() }
                 )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(
+                            if (filter.onlyPlayable) GoldGradientBrush
+                            else Brush.linearGradient(listOf(GoldTint, GoldTint))
+                        )
+                        .border(
+                            width = if (filter.onlyPlayable) 0.dp else 0.75.dp,
+                            color = if (filter.onlyPlayable) Color.Transparent else GoldPrimary.copy(alpha = 0.45f),
+                            shape = CircleShape
+                        )
+                        .clickable(onClick = onToggleOnlyPlayable)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = if (filter.onlyPlayable) TextOnGold else GoldPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "Siap Putar",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (filter.onlyPlayable) TextOnGold else GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
             items(uiState.genres) { genre ->
                 GenrePillChip(
@@ -519,7 +557,7 @@ private fun CatalogExploreContent(
         if (uiState.isSearchingRemote) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Text(
-                    text = "Mencari di Kumanime...",
+                    text = "Mencari anime...",
                     style = MaterialTheme.typography.labelSmall,
                     color = GoldPrimary,
                     fontWeight = FontWeight.Medium
@@ -610,6 +648,15 @@ private fun CatalogExploreContent(
                         )
                     }
                 }
+                if (uiState.hasMoreCatalog && filter.query.isEmpty()) {
+                    item(span = { GridItemSpan(2) }) {
+                        LoadMoreCatalogFooter(
+                            totalLoaded = uiState.allAnime.size,
+                            isLoading = uiState.isLoadingMoreCatalog,
+                            onLoadMore = onLoadMoreCatalog
+                        )
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -630,6 +677,58 @@ private fun CatalogExploreContent(
                         onBookmarkClick = { onBookmarkClick(anime.id) }
                     )
                 }
+                if (uiState.hasMoreCatalog && filter.query.isEmpty()) {
+                    item {
+                        LoadMoreCatalogFooter(
+                            totalLoaded = uiState.allAnime.size,
+                            isLoading = uiState.isLoadingMoreCatalog,
+                            onLoadMore = onLoadMoreCatalog
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadMoreCatalogFooter(
+    totalLoaded: Int,
+    isLoading: Boolean,
+    onLoadMore: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (isLoading) {
+            Text(
+                text = "Memuat lebih banyak koleksi anime...",
+                style = MaterialTheme.typography.labelMedium,
+                color = GoldPrimary,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
+                    .clickable(onClick = onLoadMore)
+                    .padding(vertical = 13.dp, horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Muat Lebih Banyak Anime ($totalLoaded termuat)",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = GoldPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }

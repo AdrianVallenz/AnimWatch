@@ -90,6 +90,7 @@ data class ExploreFilterState(
     val statusFilter: AnimeStatus? = null,
     val typeFilter: AnimeType? = null,
     val yearFilter: Int? = null,
+    val onlyPlayable: Boolean = false,
     val sortOption: SortOption = SortOption.POPULAR,
     val isGridView: Boolean = true
 ) {
@@ -97,7 +98,8 @@ data class ExploreFilterState(
         get() = selectedGenres.size +
             (if (statusFilter != null) 1 else 0) +
             (if (typeFilter != null) 1 else 0) +
-            (if (yearFilter != null) 1 else 0)
+            (if (yearFilter != null) 1 else 0) +
+            (if (onlyPlayable) 1 else 0)
 }
 
 @Immutable
@@ -121,7 +123,7 @@ data class PlayerSession(
     val autoNextCountdownSec: Int? = null,
     val isEpisodeLiked: Boolean = false,
     val streamUrl: String = "",
-    val streamType: String = "official_trailer",
+    val streamType: String = "info_only",
     val isLoadingStream: Boolean = false,
     val useWebStreamView: Boolean = true
 )
@@ -130,6 +132,9 @@ data class PlayerSession(
 data class AnimWatchUiState(
     val isAuthenticated: Boolean = false,
     val isGuestSession: Boolean = false,
+    val isGoogleAuthLoading: Boolean = false,
+    val googleWebClientId: String = "",
+    val googleWebOAuthEnabled: Boolean = false,
     val hasCompletedThemeSetup: Boolean = false,
     val isEditingTheme: Boolean = false,
     val appearanceMode: AppAppearanceMode = AppAppearanceMode.DARK,
@@ -171,7 +176,10 @@ data class AnimWatchUiState(
     val appPermissions: List<AppPermissionStatus> = emptyList(),
     val apiConfig: ApiConfigState = ApiConfigState(),
     val isLoadingDetail: Boolean = false,
-    val isSearchingRemote: Boolean = false
+    val isSearchingRemote: Boolean = false,
+    val catalogPageLoaded: Int = 1,
+    val isLoadingMoreCatalog: Boolean = false,
+    val hasMoreCatalog: Boolean = true
 ) {
     val currentRoute: AppRoute
         get() = backStack.lastOrNull() ?: AppRoute.TabsRoot
@@ -241,6 +249,7 @@ class AnimWatchViewModel(
 
     private var playerTickerJob: Job? = null
     private var apiSyncJob: Job? = null
+    private var loadMoreJob: Job? = null
     private var detailFetchJob: Job? = null
     private var streamFetchJob: Job? = null
     private var remoteSearchJob: Job? = null
@@ -496,6 +505,82 @@ class AnimWatchViewModel(
 
     fun clearAuthError() {
         _uiState.update { it.copy(authError = null) }
+    }
+
+    fun fetchGoogleAuthConfig() {
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        viewModelScope.launch {
+            remoteDataSource.fetchAuthConfig(baseUrl).onSuccess { cfg ->
+                _uiState.update { state ->
+                    state.copy(
+                        googleWebClientId = cfg.googleWebClientId.orEmpty().trim(),
+                        googleWebOAuthEnabled = cfg.googleWebOAuthEnabled == true
+                    )
+                }
+            }
+        }
+    }
+
+    fun setGoogleAuthLoading(loading: Boolean) {
+        _uiState.update { it.copy(isGoogleAuthLoading = loading) }
+    }
+
+    fun onGoogleAuthError(message: String) {
+        _uiState.update { it.copy(isGoogleAuthLoading = false, authError = message) }
+    }
+
+    fun loginWithGoogleIdToken(idToken: String) {
+        val cleanToken = idToken.trim()
+        if (cleanToken.isEmpty()) {
+            onGoogleAuthError("Token autentikasi Google kosong")
+            return
+        }
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        _uiState.update { it.copy(isGoogleAuthLoading = true, authError = null) }
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            val res = remoteDataSource.loginWithGoogleIdToken(baseUrl, cleanToken)
+            res.onSuccess { snapshot ->
+                _uiState.update { it.copy(isGoogleAuthLoading = false) }
+                applyCloudAuthSnapshot(snapshot, showWelcomeToast = true)
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isGoogleAuthLoading = false,
+                        authError = err.message ?: "Gagal masuk dengan akun Google"
+                    )
+                }
+            }
+        }
+    }
+
+    fun completeGoogleOAuthCallback(token: String?, error: String?) {
+        if (!error.isNullOrBlank()) {
+            onGoogleAuthError(error)
+            return
+        }
+        val cleanToken = token?.trim().orEmpty()
+        if (cleanToken.isEmpty()) {
+            onGoogleAuthError("Sesi login Google tidak diterima")
+            return
+        }
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        _uiState.update { it.copy(isGoogleAuthLoading = true, authError = null) }
+        authJob?.cancel()
+        authJob = viewModelScope.launch {
+            val res = remoteDataSource.fetchCurrentUser(baseUrl, cleanToken)
+            res.onSuccess { snapshot ->
+                _uiState.update { it.copy(isGoogleAuthLoading = false) }
+                applyCloudAuthSnapshot(snapshot, tokenOverride = cleanToken, showWelcomeToast = true)
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isGoogleAuthLoading = false,
+                        authError = err.message ?: "Gagal memverifikasi sesi Google"
+                    )
+                }
+            }
+        }
     }
 
     fun login(identifier: String, password: String, rememberMe: Boolean = true) {
@@ -837,16 +922,21 @@ class AnimWatchViewModel(
                         watchlist = state.watchlist.filterKeys { it !in mockIds },
                         watchedEpisodes = state.watchedEpisodes.filterKeys { it !in mockIds },
                         watchHistory = state.watchHistory.filterNot { it.animeId in mockIds },
+                        catalogPageLoaded = 1,
+                        hasMoreCatalog = true,
+                        isLoadingMoreCatalog = false,
                         apiConfig = state.apiConfig.copy(
                             status = ApiConnectionStatus.CONNECTED,
-                            lastSyncMessage = "Terhubung (${remoteItems.size} judul AniList & Resmi Gratis)",
+                            lastSyncMessage = "Terhubung (${remoteItems.size} judul)",
                             remoteCount = remoteItems.size
                         )
                     )
                 }
                 if (!silentIfOffline) {
-                    emitMessage("Katalog AniList & Gratis Resmi dimuat (${remoteItems.size} judul)")
+                    emitMessage("Katalog dimuat (${remoteItems.size} judul)")
                 }
+                // Silently prefetch page 2 (remaining Muse/Ani-One playlists + AniList page 2) right after initial render
+                loadMoreCatalog(silent = true)
             }.onFailure { err ->
                 val reason = err.localizedMessage?.take(72) ?: "Server tidak dapat dijangkau"
                 _uiState.update { state ->
@@ -859,7 +949,68 @@ class AnimWatchViewModel(
                     )
                 }
                 if (!silentIfOffline) {
-                    emitMessage("Server Kumanime tidak aktif — memakai katalog lokal")
+                    emitMessage("Server sedang offline — memakai katalog lokal")
+                }
+            }
+        }
+    }
+
+    fun loadMoreCatalog(silent: Boolean = false) {
+        val state = _uiState.value
+        if (!state.apiConfig.useLiveApi || state.isLoadingMoreCatalog || !state.hasMoreCatalog) return
+        val nextPage = state.catalogPageLoaded + 1
+        if (nextPage > 10) {
+            _uiState.update { it.copy(hasMoreCatalog = false) }
+            return
+        }
+
+        loadMoreJob?.cancel()
+        loadMoreJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingMoreCatalog = true) }
+            val result = remoteDataSource.fetchCatalogPage(state.apiConfig.baseUrl, nextPage)
+            result.onSuccess { pageItems ->
+                var addedCount = 0
+                var totalSize = 0
+                _uiState.update { cur ->
+                    val merged = LinkedHashMap<String, Anime>()
+                    cur.allAnime.forEach { merged[it.id] = it }
+                    pageItems.forEach { item ->
+                        val existing = merged[item.id]
+                        if (existing == null) {
+                            merged[item.id] = item
+                            addedCount++
+                        } else if (item.isOfficialFree && !existing.isOfficialFree) {
+                            merged[item.id] = existing.copy(
+                                isOfficialFree = true,
+                                officialChannel = item.officialChannel ?: existing.officialChannel
+                            )
+                        }
+                    }
+                    val finalList = merged.values.toList()
+                    totalSize = finalList.size
+                    val dynamicGenres = finalList.flatMap { it.genres }.distinct().ifEmpty { cur.genres }
+                    cur.copy(
+                        allAnime = finalList,
+                        genres = dynamicGenres,
+                        catalogPageLoaded = nextPage,
+                        isLoadingMoreCatalog = false,
+                        hasMoreCatalog = addedCount > 0 && nextPage < 10,
+                        apiConfig = cur.apiConfig.copy(
+                            lastSyncMessage = "Terhubung ($totalSize judul)",
+                            remoteCount = totalSize
+                        )
+                    )
+                }
+                if (!silent) {
+                    emitMessage(
+                        if (addedCount > 0) "+$addedCount anime ditambahkan (total $totalSize judul)"
+                        else "Seluruh koleksi anime sudah dimuat"
+                    )
+                }
+            }.onFailure {
+                _uiState.update { it.copy(isLoadingMoreCatalog = false) }
+                if (!silent) {
+                    emitMessage("Gagal memuat halaman katalog berikutnya")
                 }
             }
         }
@@ -1032,7 +1183,7 @@ class AnimWatchViewModel(
             )
         if (needsOfficialEpisodeResolve) {
             val baseUrl = state.apiConfig.baseUrl
-            emitMessage("Menghubungkan ke episode resmi...")
+            emitMessage("Memuat daftar episode...")
             detailFetchJob?.cancel()
             detailFetchJob = viewModelScope.launch {
                 val detailRes = remoteDataSource.fetchAnimeDetail(baseUrl, anime)
@@ -1379,6 +1530,9 @@ class AnimWatchViewModel(
                 }
 
                 if (nextPos >= session.durationSeconds) {
+                    if (anime != null) {
+                        markEpisodeCompleted(anime.id, session.episodeNumber)
+                    }
                     val hasNext = anime?.episodes?.any { it.number == session.episodeNumber + 1 } == true
                     if (state.settings.autoPlayNext && hasNext) {
                         _uiState.update { s ->
@@ -1558,6 +1712,16 @@ class AnimWatchViewModel(
         }
     }
 
+    fun toggleOnlyPlayableFilter() {
+        _uiState.update { state ->
+            state.copy(
+                exploreFilter = state.exploreFilter.copy(
+                    onlyPlayable = !state.exploreFilter.onlyPlayable
+                )
+            )
+        }
+    }
+
     fun setStatusFilter(status: AnimeStatus?) {
         _uiState.update { state ->
             state.copy(exploreFilter = state.exploreFilter.copy(statusFilter = status))
@@ -1662,6 +1826,50 @@ class AnimWatchViewModel(
                 )
             }
         }
+    }
+
+    fun markEpisodeCompleted(animeId: String, episodeNumber: Int) {
+        val anime = _uiState.value.allAnime.find { it.id == animeId } ?: return
+        val maxEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
+        val lastAvailableEp = anime.episodes.maxOfOrNull { it.number } ?: maxEps
+        val currentWatched = _uiState.value.watchedEpisodes[animeId] ?: 0
+        val reachedEnd = episodeNumber >= maxEps || (anime.episodes.isNotEmpty() && episodeNumber >= lastAvailableEp)
+        val nextWatched = if (reachedEnd) maxEps else maxOf(currentWatched, episodeNumber).coerceIn(1, maxEps)
+        val nextCategory = if (reachedEnd) {
+            WatchlistCategory.COMPLETED
+        } else {
+            _uiState.value.watchlist[animeId] ?: WatchlistCategory.WATCHING
+        }
+
+        _uiState.update { state ->
+            state.copy(
+                watchedEpisodes = state.watchedEpisodes + (animeId to nextWatched),
+                watchlist = state.watchlist + (animeId to nextCategory)
+            )
+        }
+
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.syncWatchlist(
+                    baseUrl = state.apiConfig.baseUrl,
+                    token = token,
+                    animeId = animeId,
+                    category = nextCategory.name,
+                    watchedEpisodes = nextWatched
+                )
+            }
+        }
+        if (reachedEnd) {
+            emitMessage("Tamat! Pelacak Tontonan untuk ${anime.title.substringBefore(":")} kini aktif.")
+        }
+    }
+
+    fun markAnimeCompleted(animeId: String) {
+        val anime = _uiState.value.allAnime.find { it.id == animeId } ?: return
+        val maxEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
+        updateWatchedEpisodes(animeId, maxEps)
     }
 
     fun updateWatchedEpisodes(animeId: String, count: Int) {
@@ -2090,8 +2298,9 @@ class AnimWatchViewModel(
             val matchesStatus = filter.statusFilter == null || anime.status == filter.statusFilter
             val matchesType = filter.typeFilter == null || anime.type == filter.typeFilter
             val matchesYear = filter.yearFilter == null || anime.year == filter.yearFilter
+            val matchesPlayable = !filter.onlyPlayable || anime.isOfficialFree
 
-            matchesQuery && matchesGenres && matchesStatus && matchesType && matchesYear
+            matchesQuery && matchesGenres && matchesStatus && matchesType && matchesYear && matchesPlayable
         }
 
         return when (filter.sortOption) {

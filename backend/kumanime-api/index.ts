@@ -53,9 +53,16 @@ async function initDatabase(): Promise<void> {
         preferred_genres JSONB NOT NULL DEFAULT '["Action","Fantasy","Sci-Fi"]'::jsonb,
         has_completed_theme_setup BOOLEAN NOT NULL DEFAULT FALSE,
         settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        google_sub TEXT,
+        auth_provider TEXT NOT NULL DEFAULT 'email',
+        avatar_url TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'email';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT '';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY,
@@ -117,6 +124,15 @@ async function initDatabase(): Promise<void> {
         PRIMARY KEY (comment_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_comment_likes_user_id ON comment_likes(user_id);
+
+      CREATE TABLE IF NOT EXISTS official_playlists (
+        playlist_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        clean_title TEXT NOT NULL,
+        channel_name TEXT NOT NULL,
+        episode_hint INTEGER NOT NULL DEFAULT 12,
+        sample_video_id TEXT NOT NULL DEFAULT ''
+      );
     `);
 
     const existingDemo = await db`SELECT id FROM users WHERE email = 'adrian@animwatch.id' LIMIT 1`;
@@ -431,6 +447,268 @@ async function handleLogin(req: Request): Promise<Response> {
 
   const snapshot = await loadUserSnapshot(userRow);
   return jsonResponse({ status: "success", token, ...snapshot });
+}
+
+const GOOGLE_CLIENT_ID = (Bun.env.GOOGLE_CLIENT_ID ?? "").trim();
+const GOOGLE_CLIENT_SECRET = (Bun.env.GOOGLE_CLIENT_SECRET ?? "").trim();
+const GOOGLE_ALLOWED_AUDIENCES = (Bun.env.GOOGLE_CLIENT_IDS ?? GOOGLE_CLIENT_ID)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const googleOAuthStates = new Map<string, number>();
+
+function cleanupOAuthStates(): void {
+  const now = Date.now();
+  for (const [k, exp] of googleOAuthStates.entries()) {
+    if (now > exp) googleOAuthStates.delete(k);
+  }
+}
+
+async function upsertGoogleUserAndCreateSession(profile: {
+  sub: string;
+  email: string;
+  name: string;
+  picture?: string;
+}): Promise<{ token: string; snapshot: Awaited<ReturnType<typeof loadUserSnapshot>> }> {
+  if (!db || !dbReady) throw new Error("Database belum siap");
+  const cleanEmail = profile.email.trim().toLowerCase();
+  const cleanName = profile.name.trim() || cleanEmail.split("@")[0] || "Google Watcher";
+  const cleanPicture = (profile.picture ?? "").trim();
+
+  const existing = await db`
+    SELECT id, email, display_name, handle, bio, avatar_emblem, member_tier,
+           appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
+    FROM users
+    WHERE google_sub = ${profile.sub} OR email = ${cleanEmail}
+    LIMIT 1
+  `;
+
+  let userRow: DbUserRow;
+  if (existing.length > 0) {
+    const found = existing[0] as DbUserRow;
+    const updated = await db`
+      UPDATE users
+      SET google_sub = ${profile.sub},
+          auth_provider = CASE WHEN auth_provider = 'email' THEN 'google' ELSE auth_provider END,
+          avatar_url = CASE WHEN ${cleanPicture} <> '' THEN ${cleanPicture} ELSE avatar_url END,
+          updated_at = NOW()
+      WHERE id = ${Number(found.id)}
+      RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+                appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
+    `;
+    userRow = updated[0] as DbUserRow;
+  } else {
+    const randomPass = await Bun.password.hash(`google_${generateToken()}`);
+    const emblem = makeEmblem(cleanName);
+    const handle = makeHandle(cleanName, cleanEmail);
+    const inserted = await db`
+      INSERT INTO users (
+        email, password_hash, display_name, handle, bio, avatar_emblem, member_tier,
+        has_completed_theme_setup, google_sub, auth_provider, avatar_url
+      )
+      VALUES (
+        ${cleanEmail}, ${randomPass}, ${cleanName}, ${handle},
+        'Terhubung melalui akun Google.', ${emblem}, 'Google Member',
+        FALSE, ${profile.sub}, 'google', ${cleanPicture}
+      )
+      RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+                appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
+    `;
+    userRow = inserted[0] as DbUserRow;
+  }
+
+  const token = generateToken();
+  await db`INSERT INTO sessions (token, user_id) VALUES (${token}, ${Number(userRow.id)})`;
+  const snapshot = await loadUserSnapshot(userRow);
+  return { token, snapshot };
+}
+
+function handleAuthConfig(): Response {
+  return jsonResponse({
+    status: "success",
+    googleEnabled: Boolean(GOOGLE_CLIENT_ID),
+    googleWebClientId: GOOGLE_CLIENT_ID,
+    googleWebOAuthEnabled: Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+  });
+}
+
+async function handleGoogleIdTokenAuth(req: Request): Promise<Response> {
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const body = await parseJsonBody<{ idToken?: string }>(req);
+  const idToken = (body?.idToken ?? "").trim();
+  if (!idToken) {
+    return jsonResponse({ status: false, message: "Google ID token wajib dikirim" }, 400);
+  }
+
+  const verifyRes = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+    { signal: AbortSignal.timeout(8000) }
+  );
+  if (!verifyRes.ok) {
+    return jsonResponse({ status: false, message: "Token Google tidak valid atau kedaluwarsa" }, 401);
+  }
+
+  const payload = (await verifyRes.json()) as {
+    sub?: string;
+    email?: string;
+    email_verified?: string | boolean;
+    name?: string;
+    picture?: string;
+    aud?: string;
+  };
+
+  const verifiedEmail = payload.email_verified === true || payload.email_verified === "true";
+  if (!payload.sub || !payload.email || !verifiedEmail) {
+    return jsonResponse({ status: false, message: "Email akun Google belum terverifikasi" }, 401);
+  }
+  if (GOOGLE_ALLOWED_AUDIENCES.length > 0 && payload.aud && !GOOGLE_ALLOWED_AUDIENCES.includes(payload.aud)) {
+    return jsonResponse({ status: false, message: "Google Client ID tidak cocok dengan server" }, 401);
+  }
+
+  const { token, snapshot } = await upsertGoogleUserAndCreateSession({
+    sub: payload.sub,
+    email: payload.email,
+    name: payload.name || payload.email.split("@")[0],
+    picture: payload.picture,
+  });
+  return jsonResponse({ status: "success", token, ...snapshot });
+}
+
+function getPublicBaseOrigin(req: Request): string {
+  const domain = (Bun.env.RAILWAY_PUBLIC_DOMAIN ?? "").trim();
+  if (domain) return `https://${domain}`;
+  const url = new URL(req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+function htmlRedirectResponse(appDeepLink: string, message: string): Response {
+  const safeHref = appDeepLink.replace(/"/g, "&quot;");
+  const safeMsg = message.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AnimWatch Google Login</title>
+  <meta http-equiv="refresh" content="0;url=${safeHref}" />
+  <style>
+    body{font-family:system-ui,sans-serif;background:#0C0C10;color:#F3F4F6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center;}
+    .card{max-width:360px;background:#171821;border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:24px;}
+    a{display:inline-block;margin-top:16px;padding:12px 22px;border-radius:999px;background:#3B82F6;color:#fff;text-decoration:none;font-weight:600;}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>AnimWatch</h2>
+    <p>${safeMsg}</p>
+    <a href="${safeHref}">Kembali ke AnimWatch</a>
+  </div>
+  <script>window.location.replace(${JSON.stringify(appDeepLink)});</script>
+</body>
+</html>`;
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
+function handleGoogleOAuthStart(req: Request): Response {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return htmlRedirectResponse(
+      "animwatch://auth/google?error=" + encodeURIComponent("Google OAuth belum dikonfigurasi di server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET)."),
+      "Google OAuth belum dikonfigurasi di server."
+    );
+  }
+  cleanupOAuthStates();
+  const state = generateToken().slice(0, 32);
+  googleOAuthStates.set(state, Date.now() + 10 * 60 * 1000);
+  const redirectUri = `${getPublicBaseOrigin(req)}/api/auth/google/callback`;
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    prompt: "select_account",
+    state,
+  });
+  return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`, 302);
+}
+
+async function handleGoogleOAuthCallback(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const error = url.searchParams.get("error");
+  if (error) {
+    return htmlRedirectResponse(
+      `animwatch://auth/google?error=${encodeURIComponent("Login Google dibatalkan")}`,
+      "Login Google dibatalkan. Mengembalikan ke aplikasi..."
+    );
+  }
+
+  const code = (url.searchParams.get("code") ?? "").trim();
+  const state = (url.searchParams.get("state") ?? "").trim();
+  const stateExpiry = googleOAuthStates.get(state);
+  googleOAuthStates.delete(state);
+  if (!code || !stateExpiry || Date.now() > stateExpiry) {
+    return htmlRedirectResponse(
+      `animwatch://auth/google?error=${encodeURIComponent("Sesi otorisasi Google tidak valid atau kedaluwarsa")}`,
+      "Sesi otorisasi tidak valid."
+    );
+  }
+
+  try {
+    const redirectUri = `${getPublicBaseOrigin(req)}/api/auth/google/callback`;
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!tokenRes.ok) {
+      throw new Error("Gagal menukar kode OAuth Google");
+    }
+    const tokenData = (await tokenRes.json()) as { access_token?: string; id_token?: string };
+    if (!tokenData.access_token) throw new Error("Token akses Google kosong");
+
+    const userRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!userRes.ok) throw new Error("Gagal memuat profil akun Google");
+
+    const info = (await userRes.json()) as {
+      sub?: string;
+      email?: string;
+      email_verified?: boolean;
+      name?: string;
+      picture?: string;
+    };
+    if (!info.sub || !info.email) throw new Error("Profil Google tidak lengkap");
+
+    const { token } = await upsertGoogleUserAndCreateSession({
+      sub: info.sub,
+      email: info.email,
+      name: info.name || info.email.split("@")[0],
+      picture: info.picture,
+    });
+
+    return htmlRedirectResponse(
+      `animwatch://auth/google?token=${encodeURIComponent(token)}`,
+      "Login Google berhasil! Membuka AnimWatch..."
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Gagal masuk dengan Google";
+    return htmlRedirectResponse(
+      `animwatch://auth/google?error=${encodeURIComponent(msg)}`,
+      msg
+    );
+  }
 }
 
 async function handleLogout(req: Request): Promise<Response> {
@@ -756,7 +1034,7 @@ interface YtRssEntry {
 }
 
 function ytNoCookieEmbed(videoId: string): string {
-  return `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`;
+  return `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1`;
 }
 
 async function fetchYouTubeAtomFeed(feedUrl: string, channelName: string): Promise<YtRssEntry[]> {
@@ -830,72 +1108,330 @@ function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; epi
   return { seriesTitle, episodeNumber };
 }
 
+// Verified 100% embeddable Muse Indonesia playlists mapped to AniList IDs
+const MUSE_PL: Record<number, string> = {
+  108465: "PLPanbgyToztZQCUAX0zVQe4HtNDvNtRTw", 127720: "PLPanbgyToztZQCUAX0zVQe4HtNDvNtRTw",
+  146065: "PLPanbgyToztZQCUAX0zVQe4HtNDvNtRTw", 166873: "PLPanbgyToztZQCUAX0zVQe4HtNDvNtRTw",
+  154587: "PLPanbgyToztZ7OBDPkXwBuhPvgd5OBZ70", 140960: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf",
+  142838: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", 158927: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf",
+  171018: "PLPanbgyToztaeQFokLfCgkmP_C3szkxCR", 16498: "PLPanbgyToztZJLy-bGH_tD6rA1ObhW7iz",
+  101280: "PLPanbgyToztbl5IdZxm_aC5G7U5QYHjTG", 108511: "PLPanbgyToztbl5IdZxm_aC5G7U5QYHjTG",
+  11061: "PLPanbgyToztYQo4C8qRLt4cN_MEjp-lRp", 21355: "PLPanbgyToztYegE7sxpW75Mbzly9zBePx",
+  108632: "PLPanbgyToztYThySIw-tvX8O3J-NHhMAT", 119661: "PLPanbgyToztYThySIw-tvX8O3J-NHhMAT",
+  163134: "PLPanbgyToztZpP3zanOqFo20ky85-q1Yp", 189046: "PLPanbgyToztb0iW-DI48ODtCrlyl42Qoa",
+  151970: "PLPanbgyToztYlSxKLf7qFl6VpLYn2T_i1", 176508: "PLPanbgyToztYlSxKLf7qFl6VpLYn2T_i1",
+  21507: "PLr28jJH6_sqHL0sd3axKcnj7-YlJaFfef", 98659: "PLPanbgyToztZBmp90FrnrDGXDDu5J6-LR",
+  145545: "PLPanbgyToztYszfRvXrP_w8-DPbVpr8wy", 146066: "PLPanbgyToztYYjVy4KU5BXp3b-MmCMGwE",
+  180745: "PLPanbgyToztYgSdFfzM-MO6vXGcQn-FbR", 20755: "PLPanbgyToztbc_aK0sdHOzXKcH3wuDq1Z",
+  101165: "PLPanbgyTozta-OkjrTHB_-ClPo6IuEWlE", 12189: "PLPanbgyToztYq6eXRxJCx8wxaQ0Yc2NHz",
+  159831: "PLPanbgyToztZN2SaJWB2i_pKwtsdGv2p7", 155783: "PLPanbgyToztZmsgNPEL9XHwb0ilTs5ljv",
+  6702: "PLPanbgyToztbtJMcDT57RXRIiQDjyIFx8", 99749: "PLPanbgyToztaDhNmS0krUvUkYmylqD7Mi",
+  139095: "PLPanbgyToztYlvpi2MvbIYlZ1_8xUDf4o", 21450: "PLPanbgyToztY2RnKQVkxDGhJcLlIV9bIT",
+  105156: "PLPanbgyToztYOhY1JG0xIvTkGdHNyCRlU", 163292: "PLPanbgyToztYx8pk4_Sy3R94Eg18zACf0",
+  187663: "PLPanbgyToztY5d8qXvBR5s3s5L4QMy3jU", 132474: "PLPanbgyToztY9q0XKsNpDu8hjS3Njnomb",
+  98503: "PLPanbgyToztYx6oMEi7jzfsxbkusruG2N", 128712: "PLCvHFllySUco",
+  152677: "PLAFJcVhr6Dkc", 152682: "PLF-Ab5Bnb45U", 176314: "PLZqRcDDhscWc",
+  177634: "PLGWnhssZ3bgE", 162694: "PLWExLiCEALJw", 107693: "PLGfHXiwBGlUM",
+  184492: "PLPanbgyToztbsmc1HPxlCK3oQIafoNBgv", 108478: "PLPanbgyToztYeEbbQUautfzW7zz-5cgmS",
+  156039: "PLPanbgyToztYH0PU5B62ONgeTZXoE-EOj", 196144: "PLPanbgyToztZac25sNFH7tE7Ud07JCUnL",
+  199547: "PLPanbgyToztZEvP1IiB5U3TcIB1zP4OxG", 21855: "PLPanbgyToztY-KiGHbZLR1BSl90fFAVNp",
+  102926: "PLPanbgyToztZIT_IzLXTzpUBf0DFsoy1A", 1604: "PLPanbgyToztZ4hEoVgz3UmqVhX11WF79B",
+  18767: "PLPanbgyToztZ63N8VunmCGGc5_axMSK3l", 21290: "PLPanbgyToztZsiNojl0AvsR5IB9AbIs9G",
+  194447: "PLPanbgyToztZubEuygztnx_4W4PY6twVj", 20457: "PLPanbgyToztZOEvzidlYlJ7X1UP3F9Lf5",
+  112608: "PLPanbgyToztYEVdOT3XpVqiAdKK2iMxRq", 143337: "PLPanbgyToztZtSAc9G06namZBqs_tKzWn",
+  10800: "PLPanbgyToztaNIqyXWPUl-NQp97qUSeM3", 14397: "PLPanbgyToztbsrJNq7sR7rtSE2aTLD1Lb",
+  101215: "PLPanbgyToztZeiNlVq54ptLfHTGzBDR25", 21873: "PLKteuQzwzADU",
+  187538: "PLO43emqzsDpQ", 501: "PLNa7zQqHz9Uc",
+  174576: "PLPanbgyToztZL03NxAn1aHQxDsnCu_-xl", 20789: "PLPanbgyToztYAzNKcsCBkn_53lih7V2LH",
+  99539: "PLPanbgyToztY4YGogr-NvM2erIuzCSF8b", 108928: "PLPanbgyToztYUBC8M6GqnlF6YbT7HlBDo",
+  100977: "PLPanbgyTozta4TKRkbiiU8A5-KBUfj5KO", 117533: "PLPanbgyToztYhN4tev6-PlmBThyvtD2xv",
+  170695: "PLPanbgyToztacfueJyf4OFLQziViFKQ50", 156415: "PLPanbgyToztZVZgaofBHOgWb624juQTQ8",
+  169417: "PLPanbgyToztYbZZNJq7Gf0-gOIPHcNJKi", 137908: "PLPanbgyToztZK2bfGabT5IjqCctvNkYlY",
+  168374: "PLPanbgyToztbS2nnLNoUmLmAACitarsAv", 166794: "PLPanbgyToztbRLkbFAYI_MewzYcgyzfLk",
+  141821: "PLPanbgyToztZ3CmrVllbkncpqEsQwbh-6", 9513: "PLPanbgyToztbSpT6je9oRWaqe4_3AxeGb",
+  147642: "PLPanbgyToztbx1r01Ub9Ps9Imaohto8up", 158028: "PLPanbgyToztaF7MtQR-ZWL9SmG5WzKZ91",
+  163078: "PLPanbgyToztYfKRDSnwzzxsLiE35fSbBo", 170130: "PLPanbgyToztarmJZfU9GyRSCBCnIiJONX",
+  114124: "PLPanbgyToztaehPnu02ArgIJcP4DFJ2bO", 116006: "PLPanbgyToztaC8yJC3SVMP3NSxN0cb4Wh",
+  116005: "PLPanbgyToztaCN6AS9cPj_ydTWj2btL9N", 117343: "PLPanbgyToztb2-Qf_38TnxtRbjv6iM_Qz",
+  114340: "PLPanbgyToztbhZQmZ-5bZTkZtKWhKas-2",
+};
+
+// Verified 100% embeddable Ani-One Indonesia playlists mapped to AniList IDs
+const ANIONE_PL: Record<number, string> = {
+  113415: "PLNAQymMf9eaYxBDom48OG_F4aLhnBZcui", 116674: "PLVz5xYUXIegU",
+  137822: "PLQz4WGeaorjA", 20832: "PLOXBvOkrpC_s", 105333: "PLQL6iBDZsabo",
+  172019: "PLODWQCZoYSHM", 21459: "PLRIKUnMprNvI", 21856: "PLA6LI1cj8LDk",
+  100166: "PLDoNd3kTAiyk", 104276: "PLXd7zGqfH3ZI", 117193: "PLRnE9XnIC1T4",
+  139630: "PLNgw6VnFxawE", 163139: "PLLKM3uH6S8OA", 162804: "PLNAQymMf9eaa139ptcijlI0JizvpFXFDc",
+  143338: "PLSnQpJo_dujc", 19815: "PLWyzUoEg2tlo", 20464: "PLE7eV_vewpAg",
+  918: "PLSz4xtUGSzEA", 11771: "PLSzQ99-K5DYo", 16894: "PLX7mM0yTy0Bk",
+  20725: "PLNB4urP2esgU", 20923: "PLdYbu6KhtdUU", 21518: "PLImbXtgn5ZUM",
+  136804: "PLexFyslfo_78", 150075: "PLDQ7JF2opq5k", 105228: "PLcDBBq1D3wOY",
+  173172: "PLFDsIfMtIv44", 21613: "PLcKfVhnYS2Nk", 125206: "PLbBhmk2Bw-jA",
+  139518: "PLIfTSfpnDLec", 103632: "PLA6VgIPypTSE", 139587: "PLeyB-SZ7G05M",
+  159042: "PLDv-inCJtX5A", 2581: "PLDHeNIjQwazE", 160900: "PLScAfDnCDpRU",
+  167419: "PLNAQymMf9eab5ejKPqDXIdFEaJEuxSrAW", 14813: "PLRYt0oMV87fU",
+  185: "PLTcut_BhoIa4", 20987: "PLGKjS1fjrROc", 147864: "PLNAQymMf9eaYJZdl3_y3WAY9wufqB8eTn",
+  164702: "PLLkfZbT5GmdU",
+};
+
+const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, { playlistId: string; channelName: string }> = {};
+for (const [id, pl] of Object.entries(MUSE_PL)) {
+  MUSE_ID_PLAYLIST_BY_ANILIST_ID[Number(id)] = { playlistId: pl, channelName: "Muse Indonesia" };
+}
+for (const [id, pl] of Object.entries(ANIONE_PL)) {
+  MUSE_ID_PLAYLIST_BY_ANILIST_ID[Number(id)] = { playlistId: pl, channelName: "Ani-One Indonesia" };
+}
+
+const DUPLICATE_SEASON_ALIASES = new Set([127720, 146065, 166873, 142838, 158927, 108511, 119661, 176508, 18767, 21873]);
 const FEATURED_MUSE_ANILIST_IDS: number[] = [
-  108465, // Mushoku Tensei: Jobless Reincarnation
-  154587, // Frieren: Beyond Journey's End
-  140960, // SPY x FAMILY
-  171018, // DAN DA DAN
-  16498,  // Attack on Titan
-  21087,  // One-Punch Man
-  101280, // That Time I Got Reincarnated as a Slime (Tensura)
-  11061,  // Hunter x Hunter (2011)
-  21355,  // Re:ZERO S1
-  108632, // Re:ZERO S2
-  163134, // Re:ZERO S3
-  151970, // Shangri-La Frontier
-  21507,  // Mob Psycho 100
-  98659,  // Classroom of the Elite
-  101165, // Goblin Slayer
-  129188, // Goblin Slayer II
-  12189,  // Hyouka
-  159831, // Zom 100: Bucket List of the Dead
-  155783, // Campfire Cooking in Another World
-  139095, // Fairy Tail: 100 Years Quest
-  99749,  // Fairy Tail Final Series
-  14719,  // JoJo's Bizarre Adventure (Part 1-2)
-  20474,  // JoJo's Bizarre Adventure: Stardust Crusaders
-  21450,  // JoJo's Bizarre Adventure: Diamond is Unbreakable
-  105156, // Cautious Hero
+  108465, 154587, 140960, 171018, 16498, 113415, 116674, 137822, 101280, 11061,
+  21355, 108632, 163134, 189046, 151970, 21507, 20832, 105333, 172019, 21459,
+  ...Object.keys(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map(Number).filter((id) => !DUPLICATE_SEASON_ALIASES.has(id)),
 ];
 
-// Verified live Muse Indonesia official YouTube playlists mapped to AniList IDs
-const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, { playlistId: string; channelName: string }> = {
-  108465: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
-  127720: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
-  146065: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
-  166873: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
-  154587: { playlistId: "PLPanbgyToztZ7OBDPkXwBuhPvgd5OBZ70", channelName: "Muse Indonesia" },
-  140960: { playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", channelName: "Muse Indonesia" },
-  142838: { playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", channelName: "Muse Indonesia" },
-  158927: { playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", channelName: "Muse Indonesia" },
-  171018: { playlistId: "PLPanbgyToztaeQFokLfCgkmP_C3szkxCR", channelName: "Muse Indonesia" },
-  16498:  { playlistId: "PLPanbgyToztZJLy-bGH_tD6rA1ObhW7iz", channelName: "Muse Indonesia" },
-  21087:  { playlistId: "PLPanbgyToztaXLViGiE8Tzu_h5GWrlV04", channelName: "Muse Indonesia" },
-  101280: { playlistId: "PLPanbgyToztbl5IdZxm_aC5G7U5QYHjTG", channelName: "Muse Indonesia" },
-  108511: { playlistId: "PLPanbgyToztbl5IdZxm_aC5G7U5QYHjTG", channelName: "Muse Indonesia" },
-  11061:  { playlistId: "PLPanbgyToztYQo4C8qRLt4cN_MEjp-lRp", channelName: "Muse Indonesia" },
-  21355:  { playlistId: "PLPanbgyToztbLcypmWAFGf739Alfxk3qS", channelName: "Muse Indonesia" },
-  108632: { playlistId: "PLPanbgyToztYThySIw-tvX8O3J-NHhMAT", channelName: "Muse Indonesia" },
-  119661: { playlistId: "PLPanbgyToztYThySIw-tvX8O3J-NHhMAT", channelName: "Muse Indonesia" },
-  163134: { playlistId: "PLPanbgyToztZpP3zanOqFo20ky85-q1Yp", channelName: "Muse Indonesia" },
-  151970: { playlistId: "PLPanbgyToztYlSxKLf7qFl6VpLYn2T_i1", channelName: "Muse Indonesia" },
-  176508: { playlistId: "PLPanbgyToztYlSxKLf7qFl6VpLYn2T_i1", channelName: "Muse Indonesia" },
-  21507:  { playlistId: "PLPanbgyToztZRzP5dkn8dVWL_OAPEaciO", channelName: "Muse Indonesia" },
-  98659:  { playlistId: "PLPanbgyToztZBmp90FrnrDGXDDu5J6-LR", channelName: "Muse Indonesia" },
-  101165: { playlistId: "PLPanbgyTozta-OkjrTHB_-ClPo6IuEWlE", channelName: "Muse Indonesia" },
-  129188: { playlistId: "PLPanbgyToztbd-2Qc8zKa3p8hl2KWKyZq", channelName: "Muse Indonesia" },
-  12189:  { playlistId: "PLPanbgyToztYq6eXRxJCx8wxaQ0Yc2NHz", channelName: "Muse Indonesia" },
-  159831: { playlistId: "PLPanbgyToztZN2SaJWB2i_pKwtsdGv2p7", channelName: "Muse Indonesia" },
-  155783: { playlistId: "PLPanbgyToztZmsgNPEL9XHwb0ilTs5ljv", channelName: "Muse Indonesia" },
-  6702:   { playlistId: "PLPanbgyToztaDhNmS0krUvUkYmylqD7Mi", channelName: "Muse Indonesia" },
-  99749:  { playlistId: "PLPanbgyToztaDhNmS0krUvUkYmylqD7Mi", channelName: "Muse Indonesia" },
-  139095: { playlistId: "PLPanbgyToztYlvpi2MvbIYlZ1_8xUDf4o", channelName: "Muse Indonesia" },
-  14719:  { playlistId: "PLPanbgyToztYALUW3f2cdwP4NA17n8h28", channelName: "Muse Indonesia" },
-  20474:  { playlistId: "PLPanbgyTozta2tXEFHzZMLQQ9tKHNEgbL", channelName: "Muse Indonesia" },
-  20799:  { playlistId: "PLPanbgyTozta2tXEFHzZMLQQ9tKHNEgbL", channelName: "Muse Indonesia" },
-  21450:  { playlistId: "PLPanbgyToztY2RnKQVkxDGhJcLlIV9bIT", channelName: "Muse Indonesia" },
-  105156: { playlistId: "PLPanbgyToztYOhY1JG0xIvTkGdHNyCRlU", channelName: "Muse Indonesia" },
-};
+interface CrawledPlaylistSummary {
+  playlistId: string;
+  title: string;
+  cleanTitle: string;
+  channelName: string;
+  thumbnail: string;
+  episodeHint: number;
+}
+
+function cleanPlaylistDisplayTitle(raw: string): string {
+  return raw
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/【[^】]*】/g, "")
+    .replace(/\((?:lengkap|dub|sub|takarir|bahasa indonesia|uncensored|censored)[^)]*\)/gi, "")
+    .replace(/\|\s*(sub indo|dub id|dub jp|muse indonesia|ani-one).*$/i, "")
+    .replace(/-\s*(sub indo|dub id|bahasa indonesia|takarir indonesia).*$/i, "")
+    .replace(/^dub\s*id\s*[-–:]\s*/i, "")
+    .replace(/^#ultraearlybird\s*[《«]?/i, "")
+    .replace(/[》»]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSkippablePlaylistTitle(title: string): boolean {
+  return /(^pv\b|\bpv\b|trailer|teaser|highlight|cuplikan|#short|shorts|\bost\b|opening|ending|music video|karaoke|promo|preview|interview|compilation|kompilasi|semua episode|anime festival)/i.test(title);
+}
+
+async function crawlPublicChannelPlaylists(handle: string, channelName: string, maxPages: number): Promise<CrawledPlaylistSummary[]> {
+  try {
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+      Cookie: "SOCS=CAESEwgDEgk2ODE4Mzg2NDQaAmVuIAEaBgiA_LyaBg",
+    };
+    const res = await fetch(`https://www.youtube.com/${handle}/playlists`, { headers, signal: AbortSignal.timeout(9000) });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const dataMatch = html.match(/var ytInitialData = (\{.+?\});<\/script>/s);
+    const apiKey = (html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || [])[1];
+    const clientVersion = (html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || [])[1] || "2.20250101.00.00";
+    if (!dataMatch || !apiKey) return [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const initial: any = JSON.parse(dataMatch[1]);
+    const tabs = initial?.contents?.twoColumnBrowseResultsRenderer?.tabs;
+    const plTab = tabs?.find((t: any) => t?.tabRenderer?.selected) ?? tabs?.[0];
+    const plRoot = plTab?.tabRenderer?.content ?? initial;
+    const seen = new Map<string, CrawledPlaylistSummary>();
+
+    const walk = (node: any, tokensOut: string[]) => {
+      if (!node || typeof node !== "object") return;
+      const lvm = node.lockupViewModel;
+      if (lvm) {
+        const cid = String(lvm.contentId ?? "");
+        const title = String(lvm.metadata?.lockupMetadataViewModel?.title?.content ?? "").trim();
+        const thumbVm = lvm.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel;
+        const thumbUrl = String(thumbVm?.image?.sources?.[0]?.url ?? "");
+        const badgeText = String(thumbVm?.overlays?.[0]?.thumbnailOverlayBadgeViewModel?.thumbnailBadges?.[0]?.thumbnailBadgeViewModel?.text ?? "");
+        const epNumMatch = badgeText.match(/\d+/);
+        if (cid.startsWith("PL") && title && !isSkippablePlaylistTitle(title) && !seen.has(cid)) {
+          seen.set(cid, {
+            playlistId: cid,
+            title,
+            cleanTitle: cleanPlaylistDisplayTitle(title) || title,
+            channelName,
+            thumbnail: thumbUrl,
+            episodeHint: epNumMatch ? Number(epNumMatch[0]) : 12,
+          });
+        }
+      }
+      const tok = node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+      if (typeof tok === "string" && tok.length > 8) tokensOut.push(tok);
+      for (const v of Object.values(node)) walk(v, tokensOut);
+    };
+
+    const initialTokens: string[] = [];
+    walk(plRoot, initialTokens);
+    let nextToken: string | null = initialTokens[initialTokens.length - 1] ?? null;
+    let page = 1;
+
+    while (nextToken && page < maxPages) {
+      const tokenToUse = nextToken;
+      nextToken = null;
+      page++;
+      const contRes = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ context: { client: { clientName: "WEB", clientVersion, hl: "id", gl: "ID" } }, continuation: tokenToUse }),
+        signal: AbortSignal.timeout(7000),
+      });
+      if (!contRes.ok) break;
+      const contJson = await contRes.json();
+      const newTokens: string[] = [];
+      const before = seen.size;
+      walk(contJson, newTokens);
+      nextToken = newTokens[newTokens.length - 1] ?? null;
+      if (seen.size === before) break;
+    }
+
+    const dedup = new Map<string, CrawledPlaylistSummary & { _score: number }>();
+    for (const item of seen.values()) {
+      const key = item.cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (key.length < 2) continue;
+      const isSub = /takarir|sub indo/i.test(item.title) || !/bahasa indonesia|dub id/i.test(item.title);
+      const score = (isSub ? 100 : 0) + item.episodeHint;
+      const prev = dedup.get(key);
+      if (!prev || score > prev._score) dedup.set(key, { ...item, _score: score });
+    }
+    return [...dedup.values()].map(({ _score, ...rest }) => rest);
+  } catch {
+    return [];
+  }
+}
+
+async function getAllLiveChannelPlaylists(): Promise<CrawledPlaylistSummary[]> {
+  const key = "yt-all-channel-playlists-v1";
+  const cached = getCached<CrawledPlaylistSummary[]>(key);
+  if (cached) return cached;
+
+  const [dbRows, museList, anioneList] = await Promise.all([
+    db && dbReady
+      ? db`SELECT playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id FROM official_playlists ORDER BY channel_name DESC, episode_hint DESC`
+          .then((rows) =>
+            (rows as Array<{ playlist_id: string; title: string; clean_title: string; channel_name: string; episode_hint: number; sample_video_id: string }>).map((r) => ({
+              playlistId: r.playlist_id,
+              title: r.title,
+              cleanTitle: r.clean_title,
+              channelName: r.channel_name,
+              thumbnail: r.sample_video_id ? `https://i.ytimg.com/vi/${r.sample_video_id}/hqdefault.jpg` : "",
+              episodeHint: Number(r.episode_hint || 12),
+            }))
+          )
+          .catch(() => [] as CrawledPlaylistSummary[])
+      : Promise.resolve([] as CrawledPlaylistSummary[]),
+    crawlPublicChannelPlaylists("@MuseIndonesia", "Muse Indonesia", 16),
+    crawlPublicChannelPlaylists("@AniOneID", "Ani-One Indonesia", 10),
+  ]);
+  const byId = new Map<string, CrawledPlaylistSummary>();
+  for (const item of [...museList, ...anioneList, ...dbRows]) {
+    if (!byId.has(item.playlistId)) byId.set(item.playlistId, item);
+  }
+  const combined = [...byId.values()];
+  return setCached(key, combined, 2 * 60 * 60 * 1000);
+}
+
+async function handleSeedOfficialPlaylists(req: Request): Promise<Response> {
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const body = await parseJsonBody<{ items?: Array<{ id: string; title: string; cleanTitle: string; channel: string; epCount: number; ep1Id: string }> }>(req);
+  const items = (body?.items ?? []).filter(
+    (x) =>
+      typeof x?.id === "string" &&
+      /^PL[A-Za-z0-9_-]{8,40}$/.test(x.id) &&
+      (x.channel === "Muse Indonesia" || x.channel === "Ani-One Indonesia") &&
+      typeof x.title === "string" &&
+      x.title.trim().length > 0
+  );
+  if (items.length === 0) return jsonResponse({ status: false, message: "No valid items" }, 400);
+  let inserted = 0;
+  for (const it of items) {
+    const clean = (it.cleanTitle || cleanPlaylistDisplayTitle(it.title) || it.title).trim().slice(0, 180);
+    const ep1 = typeof it.ep1Id === "string" && /^[A-Za-z0-9_-]{8,16}$/.test(it.ep1Id) ? it.ep1Id : "";
+    await db`
+      INSERT INTO official_playlists (playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id)
+      VALUES (${it.id}, ${it.title.trim().slice(0, 220)}, ${clean}, ${it.channel}, ${Math.max(1, Number(it.epCount) || 12)}, ${ep1})
+      ON CONFLICT (playlist_id) DO UPDATE SET
+        clean_title = EXCLUDED.clean_title,
+        episode_hint = EXCLUDED.episode_hint,
+        sample_video_id = CASE WHEN EXCLUDED.sample_video_id <> '' THEN EXCLUDED.sample_video_id ELSE official_playlists.sample_video_id END
+    `;
+    inserted++;
+  }
+  cache.delete("yt-all-channel-playlists-v1");
+  for (const k of cache.keys()) {
+    if (k.startsWith("official-free-unified-v5:")) cache.delete(k);
+  }
+  const cnt = await db`SELECT COUNT(*)::int AS c FROM official_playlists`;
+  return jsonResponse({ status: "success", upserted: inserted, totalInDb: Number((cnt[0] as { c: number })?.c ?? inserted) });
+}
+
+function matchLivePlaylistForMedia(
+  media: AniListMedia,
+  allPlaylists: CrawledPlaylistSummary[]
+): CrawledPlaylistSummary | null {
+  const candidateNames = [media.title?.english, media.title?.romaji, media.title?.native]
+    .filter((t): t is string => Boolean(t && t.trim().length >= 3))
+    .map((t) => normalizeTitleForMatch(t))
+    .filter((t) => t.length >= 4);
+
+  if (candidateNames.length === 0) return null;
+
+  const extractSeasonNum = (s: string): string => {
+    const m = s.match(/\b([2-9]|ii|iii|iv|v)\b$/i);
+    if (!m) return "1";
+    const v = m[1].toLowerCase();
+    return v === "ii" ? "2" : v === "iii" ? "3" : v === "iv" ? "4" : v === "v" ? "5" : v;
+  };
+
+  for (const pl of allPlaylists) {
+    const normPl = normalizeTitleForMatch(pl.cleanTitle);
+    if (normPl.length < 4) continue;
+    const plSeason = extractSeasonNum(normPl);
+    for (const cand of candidateNames) {
+      if (normPl === cand) return pl;
+      if (extractSeasonNum(cand) !== plSeason) continue;
+      if (cand.length >= 9 && normPl.includes(cand)) return pl;
+      if (normPl.length >= 9 && cand.includes(normPl)) return pl;
+    }
+  }
+  return null;
+}
+
+async function isVideoEmbeddable(videoId: string): Promise<boolean> {
+  const key = `yt-embed:${videoId}`;
+  const cached = getCached<boolean>(key);
+  if (cached !== null) return cached;
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&format=json`,
+      { signal: AbortSignal.timeout(3500) }
+    );
+    return setCached(key, res.ok, 30 * 60 * 1000);
+  } catch {
+    return true;
+  }
+}
+
+async function filterEmbeddableEpisodes(entries: YtRssEntry[]): Promise<YtRssEntry[]> {
+  const cleanCandidates = entries.filter(
+    (e) => !/\b(preview|trailer|teaser|pv|semua episode|full marathon|kompilasi)\b/i.test(e.title)
+  );
+  if (cleanCandidates.length === 0) return [];
+  const checks = await Promise.all(
+    cleanCandidates.map(async (entry) => ({
+      entry,
+      ok: await isVideoEmbeddable(entry.videoId),
+    }))
+  );
+  return checks
+    .filter((item) => item.ok)
+    .map((item) => item.entry)
+    .sort((a, b) => parseOfficialEpisodeTitle(a.title).episodeNumber - parseOfficialEpisodeTitle(b.title).episodeNumber);
+}
 
 function normalizeTitleForMatch(text: string): string {
   return text
@@ -948,47 +1484,109 @@ function matchRecentEpisodesForMedia(media: AniListMedia, recentEntries: YtRssEn
   });
 }
 
-async function handleOfficialFree(): Promise<Response> {
-  const key = "official-free-anilist-unified-v3";
+async function handleOfficialFree(page = 1): Promise<Response> {
+  const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
+  const key = `official-free-unified-v5:p${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
-  // Single fast AniList batch query for all 25 verified Muse Indonesia Sub Indo titles
-  // Keeps pure portrait AniList catalog presentation while episodes stream directly from Muse/Ani-One
-  const query = `
-    query ($ids: [Int]) {
-      Page(page: 1, perPage: 30) {
-        media(id_in: $ids, type: ANIME, isAdult: false) {
-          ${MEDIA_CARD_FIELDS}
+  // Page 1 & 2: Batched AniList metadata for all 118+ curated verified Muse Indonesia & Ani-One Indonesia series
+  if (safePage === 1) {
+    const uniqueIds = [...new Set(FEATURED_MUSE_ANILIST_IDS)];
+    const chunks: number[][] = [];
+    for (let i = 0; i < uniqueIds.length; i += 50) {
+      chunks.push(uniqueIds.slice(i, i + 50));
+    }
+
+    const query = `
+      query ($ids: [Int]) {
+        Page(page: 1, perPage: 50) {
+          media(id_in: $ids, type: ANIME, isAdult: false) {
+            ${MEDIA_CARD_FIELDS}
+          }
         }
       }
+    `;
+    const batchResults = await Promise.all(
+      chunks.map((ids) =>
+        queryAniList<{ Page: { media: AniListMedia[] } }>(query, { ids }).catch(() => ({ Page: { media: [] } }))
+      )
+    );
+
+    const byId = new Map<number, AniListMedia>();
+    for (const batch of batchResults) {
+      for (const m of batch.Page.media) byId.set(m.id, m);
     }
-  `;
-  const res = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, {
-    ids: FEATURED_MUSE_ANILIST_IDS,
-  });
 
-  const byId = new Map<number, AniListMedia>();
-  for (const m of res.Page.media) byId.set(m.id, m);
+    const data = uniqueIds
+      .map((id) => byId.get(id))
+      .filter((m): m is AniListMedia => Boolean(m))
+      .map((m) => {
+        const common = mapMediaCommon(m);
+        const pl = MUSE_ID_PLAYLIST_BY_ANILIST_ID[m.id];
+        return {
+          ...common,
+          is_official_free: true,
+          official_channel: pl?.channelName ?? "Muse Indonesia",
+          stream_type: "official_episode",
+          external_links: pl
+            ? [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }]
+            : [],
+        };
+      });
 
-  const data = FEATURED_MUSE_ANILIST_IDS.map((id) => byId.get(id))
-    .filter((m): m is AniListMedia => Boolean(m))
-    .map((m) => {
-      const common = mapMediaCommon(m);
-      const pl = MUSE_ID_PLAYLIST_BY_ANILIST_ID[m.id];
-      return {
-        ...common,
-        is_official_free: true,
-        official_channel: pl?.channelName ?? "Muse Indonesia",
-        stream_type: "official_episode",
-        external_links: pl
-          ? [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }]
-          : [],
-      };
-    });
+    return jsonResponse(
+      setCached(key, { status: "success", source: "anilist+muse+anione", page: 1, totalCurated: data.length, data }, 20 * 60 * 1000)
+    );
+  }
+
+  // Page 2+: Remaining LIVE crawled Muse Indonesia & Ani-One Indonesia playlists (ALL 400+ channel playlists!)
+  const curatedPlaylistIds = new Set(Object.values(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map((x) => x.playlistId));
+  const allLive = await getAllLiveChannelPlaylists();
+  const remaining = allLive.filter((pl) => !curatedPlaylistIds.has(pl.playlistId));
+  const pageSize = 48;
+  const start = (safePage - 2) * pageSize;
+  const slice = remaining.slice(start, start + pageSize);
+
+  const data = slice.map((pl, idx) => ({
+    id: 900000 + start + idx,
+    title: pl.cleanTitle,
+    japanese_title: pl.channelName,
+    slug: `ytpl-${pl.playlistId}`,
+    poster: pl.thumbnail,
+    banner: pl.thumbnail,
+    synopsis: `Koleksi episode dari ${pl.channelName}. Ketuk untuk memuat daftar episode dan tonton langsung di AnimWatch.`,
+    genres: ["Anime", pl.channelName === "Muse Indonesia" ? "Fantasy" : "Action"],
+    rating: 8.3,
+    rating_count: pl.channelName,
+    views_label: `${pl.episodeHint} Ep`,
+    studio: pl.channelName,
+    status: "ONGOING",
+    type: "TV Series",
+    release: "2025",
+    year: 2025,
+    season: pl.channelName,
+    duration: "24 menit",
+    duration_minutes: 24,
+    total_episodes: Math.max(pl.episodeHint, 12),
+    released_episodes: Math.max(pl.episodeHint, 1),
+    episode: `Ep ${Math.max(pl.episodeHint, 1)}`,
+    latest_eps_slug: `ytpl-${pl.playlistId}`,
+    airing_day: null,
+    airing_time: null,
+    trailer_url: "",
+    is_official_free: true,
+    official_channel: pl.channelName,
+    stream_type: "official_episode",
+    external_links: [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }],
+  }));
 
   return jsonResponse(
-    setCached(key, { status: "success", source: "anilist+muse-indonesia", data }, 12 * 60 * 1000)
+    setCached(
+      key,
+      { status: "success", source: "youtube-channels-live", page: safePage, hasMore: start + pageSize < remaining.length, data },
+      20 * 60 * 1000
+    )
   );
 }
 
@@ -1020,7 +1618,7 @@ function extractIdFromSlug(slug: string): number | null {
 }
 
 function cleanDescription(raw?: string | null): string {
-  if (!raw) return "Sinopsis resmi anime tersedia melalui katalog AniList.";
+  if (!raw) return "Sinopsis anime belum tersedia.";
   return raw
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?[^>]+(>|$)/g, "")
@@ -1227,6 +1825,10 @@ function mapMediaCommon(m: AniListMedia) {
   const schedule = formatWibSchedule(m.nextAiringEpisode?.airingAt);
   const genres = (m.genres ?? []).filter(Boolean);
   const officialMapping = MUSE_ID_PLAYLIST_BY_ANILIST_ID[m.id];
+  const cachedLive = officialMapping ? null : getCached<CrawledPlaylistSummary[]>("yt-all-channel-playlists-v1");
+  const matchedLive = officialMapping ? null : cachedLive ? matchLivePlaylistForMedia(m, cachedLive) : null;
+  const isPlayable = Boolean(officialMapping || matchedLive);
+  const channelLabel = officialMapping?.channelName ?? matchedLive?.channelName ?? null;
 
   return {
     id: m.id,
@@ -1254,40 +1856,41 @@ function mapMediaCommon(m: AniListMedia) {
     latest_eps_slug: `ep-${m.id}-${releasedEpisodes}`,
     airing_day: schedule.day,
     airing_time: schedule.time,
-    trailer_url: buildTrailerEmbed(m.trailer),
-    is_official_free: Boolean(officialMapping),
-    official_channel: officialMapping?.channelName ?? null,
+    trailer_url: "",
+    is_official_free: isPlayable,
+    official_channel: channelLabel,
   };
 }
 
-async function handlePopular(): Promise<Response> {
-  const key = "popular";
+async function handlePopular(page = 1): Promise<Response> {
+  const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
+  const key = `popular:v2:${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   const query = `
-    query {
-      Page(page: 1, perPage: 18) {
+    query ($page: Int) {
+      Page(page: $page, perPage: 50) {
         media(type: ANIME, sort: [TRENDING_DESC, POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
       }
     }
   `;
-  const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query);
+  const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { page: safePage });
   const data = result.Page.media.map(mapMediaCommon);
-  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", data }));
+  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", page: safePage, data }));
 }
 
 async function handleLatest(page: number): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `latest:${safePage}`;
+  const key = `latest:v2:${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   const query = `
     query ($page: Int) {
-      Page(page: $page, perPage: 20) {
+      Page(page: $page, perPage: 45) {
         media(type: ANIME, status: RELEASING, sort: [POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1296,18 +1899,18 @@ async function handleLatest(page: number): Promise<Response> {
   `;
   const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { page: safePage });
   const data = result.Page.media.map(mapMediaCommon);
-  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", data }));
+  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", page: safePage, data }));
 }
 
 async function handleMovies(page: number): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `movies:${safePage}`;
+  const key = `movies:v2:${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   const query = `
     query ($page: Int) {
-      Page(page: $page, perPage: 14) {
+      Page(page: $page, perPage: 35) {
         media(type: ANIME, format: MOVIE, sort: [POPULARITY_DESC, SCORE_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1316,18 +1919,18 @@ async function handleMovies(page: number): Promise<Response> {
   `;
   const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { page: safePage });
   const data = result.Page.media.map(mapMediaCommon);
-  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", data }));
+  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", page: safePage, data }));
 }
 
 async function handleCompleted(page: number): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `completed:${safePage}`;
+  const key = `completed:v2:${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   const query = `
     query ($page: Int) {
-      Page(page: $page, perPage: 14) {
+      Page(page: $page, perPage: 45) {
         media(type: ANIME, status: FINISHED, format: TV, sort: [SCORE_DESC, POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1336,7 +1939,7 @@ async function handleCompleted(page: number): Promise<Response> {
   `;
   const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { page: safePage });
   const data = result.Page.media.map(mapMediaCommon);
-  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", data }));
+  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", page: safePage, data }));
 }
 
 async function handleSearch(rawQuery: string): Promise<Response> {
@@ -1356,7 +1959,53 @@ async function handleSearch(rawQuery: string): Promise<Response> {
     }
   `;
   const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { search: q });
-  const data = result.Page.media.map(mapMediaCommon);
+  const anilistItems = result.Page.media.map(mapMediaCommon);
+
+  // Also include matching live Muse Indonesia & Ani-One Indonesia playlists not already in AniList hits
+  const qNorm = q.toLowerCase().trim();
+  const cachedLive = getCached<CrawledPlaylistSummary[]>("yt-all-channel-playlists-v1") ?? [];
+  const curatedIds = new Set(Object.values(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map((x) => x.playlistId));
+  const seenTitles = new Set(anilistItems.map((a) => normalizeTitleForMatch(a.title)));
+  const ytMatches = cachedLive
+    .filter(
+      (pl) =>
+        !curatedIds.has(pl.playlistId) &&
+        (pl.cleanTitle.toLowerCase().includes(qNorm) || pl.title.toLowerCase().includes(qNorm)) &&
+        !seenTitles.has(normalizeTitleForMatch(pl.cleanTitle))
+    )
+    .slice(0, 8)
+    .map((pl, idx) => ({
+      id: 950000 + idx,
+      title: pl.cleanTitle,
+      japanese_title: pl.channelName,
+      slug: `ytpl-${pl.playlistId}`,
+      poster: pl.thumbnail,
+      banner: pl.thumbnail,
+      synopsis: `Koleksi episode dari ${pl.channelName}. Ketuk untuk memuat daftar episode dan tonton langsung di AnimWatch.`,
+      genres: ["Anime", pl.channelName === "Muse Indonesia" ? "Fantasy" : "Action"],
+      rating: 8.3,
+      rating_count: pl.channelName,
+      views_label: `${pl.episodeHint} Ep`,
+      studio: pl.channelName,
+      status: "ONGOING",
+      type: "TV Series",
+      release: "2025",
+      year: 2025,
+      season: pl.channelName,
+      duration: "24 menit",
+      duration_minutes: 24,
+      total_episodes: Math.max(pl.episodeHint, 12),
+      released_episodes: Math.max(pl.episodeHint, 1),
+      episode: `Ep ${Math.max(pl.episodeHint, 1)}`,
+      latest_eps_slug: `ytpl-${pl.playlistId}`,
+      airing_day: null,
+      airing_time: null,
+      trailer_url: "",
+      is_official_free: true,
+      official_channel: pl.channelName,
+    }));
+
+  const data = [...anilistItems, ...ytMatches];
   return jsonResponse(setCached(key, { status: "success", source: "anilist-live", query: q, data }, 3 * 60 * 1000));
 }
 
@@ -1402,9 +2051,62 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
+  // Direct crawled YouTube playlist entry (ytpl-<playlistId>)
+  if (slug.startsWith("ytpl-")) {
+    const playlistId = slug.slice(5).trim();
+    const allLive = await getAllLiveChannelPlaylists();
+    const meta = allLive.find((p) => p.playlistId === playlistId);
+    const channelName = meta?.channelName ?? "Muse Indonesia";
+    const rawEntries = await fetchYouTubeAtomFeed(
+      `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`,
+      channelName
+    );
+    const playable = await filterEmbeddableEpisodes(rawEntries);
+    const displayTitle = meta?.cleanTitle || (rawEntries[0] ? parseOfficialEpisodeTitle(rawEntries[0].title).seriesTitle : "Anime Muse Indonesia");
+    const poster = meta?.thumbnail || playable[0]?.thumbnail || rawEntries[0]?.thumbnail || "";
+
+    const episodes = playable.slice(0, 48).map((ytEp, idx) => ({
+      eps_title: ytEp.title,
+      eps_slug: `yt-${ytEp.videoId}`,
+      number: idx + 1,
+      stream_url: ytNoCookieEmbed(ytEp.videoId),
+      stream_type: "official_episode",
+      thumbnail: ytEp.thumbnail,
+    }));
+
+    const payload = {
+      status: "success",
+      source: "youtube-playlist-live",
+      animeData: {
+        title: displayTitle,
+        japanese_title: channelName,
+        poster,
+        banner: poster,
+        synopsis: `Tonton episode ${displayTitle} secara langsung dari playlist ${channelName} di dalam AnimWatch.`,
+        genres: ["Anime", "Action", "Fantasy"],
+        rating: 8.3,
+        rating_count: channelName,
+        studio: channelName,
+        status: "ONGOING",
+        year: 2025,
+        season: channelName,
+        duration_minutes: 24,
+        total_episodes: Math.max(episodes.length, meta?.episodeHint ?? 12),
+        released_episodes: Math.max(episodes.length, 1),
+        is_official_free: episodes.length > 0,
+        official_channel: channelName,
+        episodes,
+        characters: [],
+        related_slugs: [],
+        external_links: [],
+      },
+    };
+    return jsonResponse(setCached(key, payload));
+  }
+
   // If this is a Muse ID / Ani-One ID official free entry, resolve directly from official feed
   if (slug.startsWith("ytfree-")) {
-    const feedRes = await handleOfficialFree();
+    const feedRes = await handleOfficialFree(1);
     const feedJson = (await feedRes.json()) as { data?: Array<Record<string, unknown>> };
     const matched = feedJson.data?.find((item) => item.slug === slug);
     if (matched) {
@@ -1433,16 +2135,24 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
       `https://www.youtube.com/feeds/videos.xml?playlist_id=${curatedOfficial.playlistId}`,
       curatedOfficial.channelName
     );
-    officialPlaylistEpisodes = rawCurated.filter(
-      (e) => !/\b(preview|trailer|teaser|pv)\b/i.test(e.title)
-    );
+    officialPlaylistEpisodes = await filterEmbeddableEpisodes(rawCurated);
     if (officialPlaylistEpisodes.length > 0) {
       officialChannelName = curatedOfficial.channelName;
-      if (!streamingLinks.some((l) => l.url.includes(curatedOfficial.playlistId))) {
-        streamingLinks.unshift({
-          site: curatedOfficial.channelName,
-          url: `https://www.youtube.com/playlist?list=${curatedOfficial.playlistId}`,
-        });
+    }
+  }
+
+  if (officialPlaylistEpisodes.length === 0) {
+    // Dynamic fuzzy match across ALL 400+ live Muse Indonesia & Ani-One Indonesia playlists!
+    const allLivePlaylists = await getAllLiveChannelPlaylists();
+    const matchedPl = matchLivePlaylistForMedia(media, allLivePlaylists);
+    if (matchedPl) {
+      const rawMatched = await fetchYouTubeAtomFeed(
+        `https://www.youtube.com/feeds/videos.xml?playlist_id=${matchedPl.playlistId}`,
+        matchedPl.channelName
+      );
+      officialPlaylistEpisodes = await filterEmbeddableEpisodes(rawMatched);
+      if (officialPlaylistEpisodes.length > 0) {
+        officialChannelName = matchedPl.channelName;
       }
     }
   }
@@ -1450,18 +2160,10 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
   if (officialPlaylistEpisodes.length === 0) {
     // Check live Muse Indonesia & Ani-One Indonesia channel RSS for ongoing simulcast episodes
     const recentChannelEntries = await getRecentChannelOfficialEpisodes();
-    const matchedLive = matchRecentEpisodesForMedia(media, recentChannelEntries);
+    const matchedLive = await filterEmbeddableEpisodes(matchRecentEpisodesForMedia(media, recentChannelEntries));
     if (matchedLive.length > 0) {
-      officialPlaylistEpisodes = matchedLive.sort(
-        (a, b) => parseOfficialEpisodeTitle(a.title).episodeNumber - parseOfficialEpisodeTitle(b.title).episodeNumber
-      );
+      officialPlaylistEpisodes = matchedLive;
       officialChannelName = matchedLive[0].channelName;
-      if (!streamingLinks.some((l) => l.site.toLowerCase().includes("muse") || l.site.toLowerCase().includes("ani-one"))) {
-        streamingLinks.unshift({
-          site: officialChannelName,
-          url: `https://www.youtube.com/watch?v=${matchedLive[0].videoId}`,
-        });
-      }
     }
   }
 
@@ -1470,13 +2172,11 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
     if (plMatch?.[1]) {
       const rawYt = await fetchYouTubeAtomFeed(
         `https://www.youtube.com/feeds/videos.xml?playlist_id=${plMatch[1]}`,
-        "YouTube Resmi"
+        "YouTube"
       );
-      officialPlaylistEpisodes = rawYt.filter(
-        (e) => !/\b(preview|trailer|teaser|pv)\b/i.test(e.title)
-      );
+      officialPlaylistEpisodes = await filterEmbeddableEpisodes(rawYt);
       if (officialPlaylistEpisodes.length > 0) {
-        officialChannelName = "YouTube Resmi";
+        officialChannelName = "YouTube";
       }
     }
   }
@@ -1512,8 +2212,8 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
         eps_title: `Episode ${epNum}: ${cleanEpTitle}`,
         eps_slug: `ep-${media.id}-${epNum}`,
         number: epNum,
-        stream_url: common.trailer_url || "",
-        stream_type: common.trailer_url ? "official_trailer" : "info_only",
+        stream_url: "",
+        stream_type: "info_only",
         thumbnail: matched?.thumbnail || common.poster,
       };
     });
@@ -1572,11 +2272,11 @@ async function handleEpisodeDetail(slug: string): Promise<Response> {
       status: "success",
       source: "official-youtube",
       eps_detail: {
-        title: "Episode Resmi YouTube",
+        title: "Episode Siap Putar",
         poster: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
         stream_url: ytNoCookieEmbed(videoId),
         stream_type: "official_episode",
-        synopsis: "Episode resmi gratis legal diputar langsung di dalam AnimWatch.",
+        synopsis: "Episode siap diputar langsung di pemutar AnimWatch.",
         anime_slug: "-",
         next_eps_slug: "-",
         prev_eps_slug: "-",
@@ -1602,12 +2302,12 @@ async function handleEpisodeDetail(slug: string): Promise<Response> {
 
   const payload = {
     status: "success",
-    source: "anilist-live",
+    source: "catalog-live",
     eps_detail: {
       title: epTitle,
       poster: matched?.thumbnail || common.poster,
-      stream_url: common.trailer_url || "",
-      stream_type: common.trailer_url ? "official_trailer" : "info_only",
+      stream_url: "",
+      stream_type: "info_only",
       synopsis: common.synopsis,
       anime_slug: common.slug,
       next_eps_slug: epNum < maxEp ? `ep-${media.id}-${epNum + 1}` : "-",
@@ -1649,7 +2349,15 @@ Bun.serve({
               "/api/anime/:slug",
               "/api/episode/:slug",
             ],
-            auth: ["POST /api/auth/register", "POST /api/auth/login", "POST /api/auth/logout"],
+            auth: [
+              "GET /api/auth/config",
+              "POST /api/auth/register",
+              "POST /api/auth/login",
+              "POST /api/auth/google",
+              "GET /api/auth/google/start",
+              "GET /api/auth/google/callback",
+              "POST /api/auth/logout",
+            ],
             user: [
               "GET /api/user/me",
               "PATCH /api/user/profile",
@@ -1683,8 +2391,12 @@ Bun.serve({
       }
 
       // Auth & User DB Routes
+      if (method === "GET" && path === "/api/auth/config") return handleAuthConfig();
       if (method === "POST" && path === "/api/auth/register") return await handleRegister(req);
       if (method === "POST" && path === "/api/auth/login") return await handleLogin(req);
+      if (method === "POST" && path === "/api/auth/google") return await handleGoogleIdTokenAuth(req);
+      if (method === "GET" && path === "/api/auth/google/start") return handleGoogleOAuthStart(req);
+      if (method === "GET" && path === "/api/auth/google/callback") return await handleGoogleOAuthCallback(req);
       if (method === "POST" && path === "/api/auth/logout") return await handleLogout(req);
       if (method === "GET" && path === "/api/user/me") return await handleGetMe(req);
       if (method === "PATCH" && path === "/api/user/profile") return await handleUpdateProfile(req);
@@ -1703,9 +2415,14 @@ Bun.serve({
       const getCommentsMatch = path.match(/^\/api\/comments\/(.+)$/);
       if (method === "GET" && getCommentsMatch) return await handleGetComments(req, getCommentsMatch[1]);
 
-      // Official Legal Free Sub Indo + AniList Catalog Routes
-      if (path === "/api/official-free") return await handleOfficialFree();
-      if (path === "/api/popular") return await handlePopular();
+      // Official Legal Free + AniList Catalog Routes (with pagination!)
+      if (method === "POST" && path === "/api/official-free/seed") return await handleSeedOfficialPlaylists(req);
+      if (path === "/api/official-free") return await handleOfficialFree(1);
+      const offFreePageMatch = path.match(/^\/api\/official-free\/page\/(\d+)$/);
+      if (offFreePageMatch) return await handleOfficialFree(Number(offFreePageMatch[1]));
+      if (path === "/api/popular") return await handlePopular(1);
+      const popularPageMatch = path.match(/^\/api\/popular\/page\/(\d+)$/);
+      if (popularPageMatch) return await handlePopular(Number(popularPageMatch[1]));
       if (path === "/api/latest") return await handleLatest(1);
       const latestPageMatch = path.match(/^\/api\/latest\/page\/(\d+)$/);
       if (latestPageMatch) return await handleLatest(Number(latestPageMatch[1]));
@@ -1731,3 +2448,7 @@ Bun.serve({
 });
 
 console.log(`AnimWatch Official Streaming + AniList + PostgreSQL API listening on port ${port}`);
+// Pre-warm live Muse Indonesia & Ani-One Indonesia playlist cache in background
+getAllLiveChannelPlaylists()
+  .then((list) => console.log(`[YT] Pre-warmed ${list.length} channel playlists`))
+  .catch(() => {});

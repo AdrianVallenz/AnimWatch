@@ -1,5 +1,6 @@
 package com.gows.animwatch
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,11 +9,13 @@ import coil.Coil
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.gows.animwatch.data.remote.GoogleAuthDeepLinkBus
 import com.gows.animwatch.ui.AnimWatchApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        GoogleAuthDeepLinkBus.dispatchFromIntent(intent)
 
         // Configure lightweight, high-throughput Coil ImageLoader (RGB_565 cuts bitmap RAM in half)
         val appContext = applicationContext
@@ -39,5 +42,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             AnimWatchApp()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        GoogleAuthDeepLinkBus.dispatchFromIntent(intent)
     }
 }

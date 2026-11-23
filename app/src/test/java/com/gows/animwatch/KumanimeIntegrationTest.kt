@@ -3,6 +3,7 @@ package com.gows.animwatch
 import com.gows.animwatch.data.remote.AnimeDetailDataDto
 import com.gows.animwatch.data.remote.AnimeDetailEpisodeDto
 import com.gows.animwatch.data.remote.AnimeDetailResponseDto
+import com.gows.animwatch.data.remote.AuthConfigDto
 import com.gows.animwatch.data.remote.AuthResponseDto
 import com.gows.animwatch.data.remote.CatalogCardDto
 import com.gows.animwatch.data.remote.CommentDto
@@ -10,6 +11,7 @@ import com.gows.animwatch.data.remote.CommentsListResponseDto
 import com.gows.animwatch.data.remote.EpisodeDetailDataDto
 import com.gows.animwatch.data.remote.EpisodeDetailResponseDto
 import com.gows.animwatch.data.remote.ExternalLinkDto
+import com.gows.animwatch.data.remote.GoogleAuthRequestDto
 import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
 import com.gows.animwatch.data.remote.KumanimeApiClient
 import com.gows.animwatch.data.remote.KumanimeApiService
@@ -68,6 +70,8 @@ class KumanimeIntegrationTest {
             )
         )
 
+        override suspend fun getPopularPage(page: Int): PopularResponseDto = getPopular()
+
         override suspend fun getMovies(): MovieResponseDto = MovieResponseDto(
             status = "success",
             data = listOf(
@@ -102,6 +106,8 @@ class KumanimeIntegrationTest {
             )
         )
 
+        override suspend fun getCompletedPage(page: Int): PopularResponseDto = getCompleted()
+
         override suspend fun getOfficialFree(): PopularResponseDto = PopularResponseDto(
             status = "success",
             data = listOf(
@@ -130,6 +136,8 @@ class KumanimeIntegrationTest {
                 )
             )
         )
+
+        override suspend fun getOfficialFreePage(page: Int): PopularResponseDto = getOfficialFree()
 
         override suspend fun searchAnime(query: String): SearchResponseDto = SearchResponseDto(
             status = "success",
@@ -174,6 +182,15 @@ class KumanimeIntegrationTest {
             )
         )
 
+        override suspend fun getAuthConfig(): Response<AuthConfigDto> = Response.success(
+            AuthConfigDto(
+                status = "success",
+                googleEnabled = true,
+                googleWebClientId = "test-client-id.apps.googleusercontent.com",
+                googleWebOAuthEnabled = true
+            )
+        )
+
         override suspend fun register(body: RegisterRequestDto): Response<AuthResponseDto> = Response.success(
             AuthResponseDto(
                 status = "success",
@@ -208,6 +225,22 @@ class KumanimeIntegrationTest {
                 watchlist = mapOf("sousou-no-frieren-154587" to "WATCHING"),
                 watchedEpisodes = mapOf("sousou-no-frieren-154587" to 12),
                 ratings = mapOf("sousou-no-frieren-154587" to 10)
+            )
+        )
+
+        override suspend fun loginWithGoogle(body: GoogleAuthRequestDto): Response<AuthResponseDto> = Response.success(
+            AuthResponseDto(
+                status = "success",
+                token = "tok_google_789",
+                user = UserProfileDto(
+                    id = 2L,
+                    email = "googleuser@gmail.com",
+                    displayName = "Google Watcher",
+                    handle = "@google.watcher",
+                    avatarEmblem = "GW",
+                    memberTier = "Google Member",
+                    hasCompletedThemeSetup = false
+                )
             )
         )
 
@@ -382,5 +415,14 @@ class KumanimeIntegrationTest {
         val likeRes = dataSource.toggleCommentLike(base, "tok_login_456", "db_cmt_99")
         assertTrue(likeRes.isSuccess)
         assertEquals(Pair(true, 4), likeRes.getOrThrow())
+
+        val cfgRes = dataSource.fetchAuthConfig(base)
+        assertTrue(cfgRes.isSuccess)
+        assertEquals(true, cfgRes.getOrThrow().googleEnabled)
+
+        val googleRes = dataSource.loginWithGoogleIdToken(base, "fake_google_id_token")
+        assertTrue(googleRes.isSuccess)
+        assertEquals("tok_google_789", googleRes.getOrThrow().token)
+        assertEquals("Google Watcher", googleRes.getOrThrow().user?.displayName)
     }
 }

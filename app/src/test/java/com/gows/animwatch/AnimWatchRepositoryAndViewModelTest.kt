@@ -150,5 +150,11 @@ class AnimWatchRepositoryAndViewModelTest {
         assertEquals(AppAccentTheme.CRIMSON_RUBY, vm.uiState.value.accentTheme)
         assertTrue("Romance" in vm.uiState.value.preferredGenres)
         assertFalse(vm.uiState.value.exploreFilter.isGridView)
+
+        // Watch tracker activates completed status after finishing an anime
+        val sampleAnime = vm.uiState.value.allAnime.first()
+        vm.markAnimeCompleted(sampleAnime.id)
+        assertEquals(WatchlistCategory.COMPLETED, vm.uiState.value.watchlist[sampleAnime.id])
+        assertTrue((vm.uiState.value.watchedEpisodes[sampleAnime.id] ?: 0) >= sampleAnime.totalEpisodes)
     }
 }

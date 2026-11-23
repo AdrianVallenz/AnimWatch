@@ -112,20 +112,91 @@ class KumanimeRemoteDataSource(
                 }
 
                 completedList.forEach { comp ->
-                    if (!merged.containsKey(comp.id)) {
+                    val existing = merged[comp.id]
+                    if (existing == null) {
                         merged[comp.id] = comp
+                    } else if (comp.isOfficialFree && !existing.isOfficialFree) {
+                        merged[comp.id] = existing.copy(
+                            isOfficialFree = true,
+                            officialChannel = comp.officialChannel ?: existing.officialChannel
+                        )
                     }
                 }
 
                 moviesList.forEach { movie ->
-                    if (!merged.containsKey(movie.id)) {
+                    val existing = merged[movie.id]
+                    if (existing == null) {
                         merged[movie.id] = movie
+                    } else if (movie.isOfficialFree && !existing.isOfficialFree) {
+                        merged[movie.id] = existing.copy(
+                            isOfficialFree = true,
+                            officialChannel = movie.officialChannel ?: existing.officialChannel
+                        )
                     }
                 }
 
                 if (merged.isEmpty()) {
-                    throw IllegalStateException("Kumanime API merespons kosong. Pastikan server aktif.")
+                    throw IllegalStateException("Server katalog merespons kosong. Pastikan koneksi internet aktif.")
                 }
+                merged.values.toList()
+            }
+        }
+    }
+
+    suspend fun fetchCatalogPage(baseUrl: String, page: Int): Result<List<Anime>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val safePage = page.coerceAtLeast(2)
+            val rankOffset = (safePage - 1) * 60
+            val api = serviceProvider(baseUrl)
+            coroutineScope {
+                val officialFreeDeferred = async { runCatching { api.getOfficialFreePage(safePage) }.getOrNull() }
+                val popularDeferred = async { runCatching { api.getPopularPage(safePage) }.getOrNull() }
+                val latestDeferred = async { runCatching { api.getLatestPage(safePage) }.getOrNull() }
+                val completedDeferred = async { runCatching { api.getCompletedPage(safePage) }.getOrNull() }
+                val moviesDeferred = async { runCatching { api.getMoviesPage(safePage) }.getOrNull() }
+
+                val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto.copy(isOfficialFree = true),
+                            index = rankOffset + idx,
+                            defaultStatus = AnimeStatus.ONGOING,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val popularList = popularDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto,
+                            index = rankOffset + idx,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val latestList = latestDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapLatestItem(dto, rankOffset + idx) }
+                val completedList = completedDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto,
+                            index = rankOffset + idx,
+                            defaultStatus = AnimeStatus.COMPLETED,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val moviesList = moviesDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapCatalogCard(dto, rankOffset + idx, isMovieList = true)
+                    }
+
+                val merged = LinkedHashMap<String, Anime>()
+                officialFreeList.forEach { merged[it.id] = it }
+                popularList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                latestList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                completedList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                moviesList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 merged.values.toList()
             }
         }
@@ -209,6 +280,33 @@ class KumanimeRemoteDataSource(
                 body
             } else {
                 throw IllegalStateException(extractErrorMessage(res, "Email atau kata sandi tidak valid"))
+            }
+        }
+    }
+
+    suspend fun fetchAuthConfig(baseUrl: String): Result<AuthConfigDto> = withContext(Dispatchers.IO) {
+        runCatching {
+            val res = serviceProvider(baseUrl).getAuthConfig()
+            val body = res.body()
+            if (res.isSuccessful && body != null) {
+                body
+            } else {
+                AuthConfigDto()
+            }
+        }
+    }
+
+    suspend fun loginWithGoogleIdToken(
+        baseUrl: String,
+        idToken: String
+    ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
+        runCatching {
+            val res = serviceProvider(baseUrl).loginWithGoogle(GoogleAuthRequestDto(idToken))
+            val body = res.body()
+            if (res.isSuccessful && body?.user != null && !body.token.isNullOrBlank()) {
+                body
+            } else {
+                throw IllegalStateException(extractErrorMessage(res, "Gagal masuk dengan akun Google"))
             }
         }
     }

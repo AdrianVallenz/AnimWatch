@@ -14,22 +14,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.rounded.Api
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.ClosedCaption
-import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.HighQuality
@@ -42,16 +43,20 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Subtitles
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,19 +73,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gows.animwatch.data.local.AndroidDeviceStorageManager
-import com.gows.animwatch.data.model.ApiConnectionStatus
+import com.gows.animwatch.data.local.AppPermissionStatus
+import com.gows.animwatch.data.local.DeviceStorageInfo
 import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.data.model.SubtitleSizeOption
 import com.gows.animwatch.data.model.WatchlistCategory
-import com.gows.animwatch.ui.components.CassetteLinearShimmer
+import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
 import com.gows.animwatch.ui.components.GoldTagChip
-import com.gows.animwatch.ui.components.LedStatusDot
 import com.gows.animwatch.ui.components.TactileInputField
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.theme.DividerSubtle
-import com.gows.animwatch.ui.theme.GoldBright
 import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
@@ -92,7 +96,6 @@ import com.gows.animwatch.ui.theme.ObsidianCardAlt
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianGoldCardBrush
 import com.gows.animwatch.ui.theme.ObsidianVoid
-import com.gows.animwatch.ui.theme.StatusAmber
 import com.gows.animwatch.ui.theme.StatusEmerald
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextOnGold
@@ -100,6 +103,7 @@ import com.gows.animwatch.ui.theme.TextPrimary
 import com.gows.animwatch.ui.theme.TextSecondary
 import com.gows.animwatch.ui.theme.TextTertiary
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     uiState: AnimWatchUiState,
@@ -129,13 +133,14 @@ fun ProfileScreen(
     }
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
+    var showPlaybackSheet by remember { mutableStateOf(false) }
+    var showStoragePermissionsSheet by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
     var showApiUrlDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showQualityDialog by remember { mutableStateOf(false) }
-    var showServerDialog by remember { mutableStateOf(false) }
     var showSubtitleLangDialog by remember { mutableStateOf(false) }
     var showSubtitleSizeDialog by remember { mutableStateOf(false) }
-    var showAboutDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -148,7 +153,7 @@ fun ProfileScreen(
             top = 12.dp,
             bottom = bottomInsetPadding
         ),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
             Text(
@@ -158,7 +163,7 @@ fun ProfileScreen(
             )
         }
 
-        // Smooth Member Profile Card
+        // 1. Compact Member Profile Header & Stats
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -178,7 +183,7 @@ fun ProfileScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(62.dp)
+                                .size(58.dp)
                                 .clip(CircleShape)
                                 .background(GoldGradientBrush),
                             contentAlignment = Alignment.Center
@@ -186,7 +191,7 @@ fun ProfileScreen(
                             Text(
                                 text = profile.avatarEmblem,
                                 color = TextOnGold,
-                                fontSize = 22.sp,
+                                fontSize = 21.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -195,22 +200,26 @@ fun ProfileScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             GoldTagChip(text = profile.memberTier, highlighted = true)
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(5.dp))
                             Text(
                                 text = profile.displayName,
                                 style = MaterialTheme.typography.titleLarge,
-                                color = TextPrimary
+                                color = TextPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = profile.handle,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = GoldPrimary
+                                color = GoldPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
                                 .background(GoldTint)
                                 .clickable { showEditProfileDialog = true },
@@ -226,17 +235,19 @@ fun ProfileScreen(
                     }
 
                     if (profile.bio.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = profile.bio,
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
                     HorizontalDivider(
                         color = DividerSubtle,
-                        modifier = Modifier.padding(vertical = 15.dp)
+                        modifier = Modifier.padding(vertical = 14.dp)
                     )
 
                     Row(
@@ -254,375 +265,43 @@ fun ProfileScreen(
             }
         }
 
-        // Theme & Appearance Quick Access Card
+        // 2. Clean 4-Row Unified Settings Menu
         item {
-            SettingsGroupCard(title = "Tema & Tampilan") {
+            SettingsGroupCard(title = "Pengaturan") {
                 SettingRowItem(
                     icon = Icons.Rounded.Palette,
-                    title = "Mode & Warna Tema",
+                    title = "Tema & Tampilan",
                     value = "${uiState.appearanceMode.label} • ${uiState.accentTheme.displayName}",
                     onClick = onOpenThemeEditor
                 )
-            }
-        }
-
-        // Playback Preferences
-        item {
-            SettingsGroupCard(title = "Preferensi Streaming") {
-                SettingRowItem(
-                    icon = Icons.Rounded.HighQuality,
-                    title = "Kualitas Video Default",
-                    value = settings.defaultQuality,
-                    onClick = { showQualityDialog = true }
-                )
                 SettingDivider()
                 SettingRowItem(
-                    icon = Icons.Rounded.Dns,
-                    title = "Server Mirror Utama",
-                    value = settings.defaultServer,
-                    onClick = { showServerDialog = true }
-                )
-                SettingDivider()
-                SettingRowItem(
-                    icon = Icons.Rounded.Subtitles,
-                    title = "Bahasa Subtitle",
-                    value = settings.defaultSubtitle,
-                    onClick = { showSubtitleLangDialog = true }
-                )
-                SettingDivider()
-                SettingRowItem(
-                    icon = Icons.Rounded.ClosedCaption,
-                    title = "Ukuran Teks Subtitle",
-                    value = settings.subtitleSize.label,
-                    onClick = { showSubtitleSizeDialog = true }
-                )
-                SettingDivider()
-                SettingSwitchItem(
-                    icon = Icons.Rounded.PlayCircleOutline,
-                    title = "Putar Episode Berikutnya Otomatis",
-                    subtitle = "Hitung mundur 5 detik di akhir episode",
-                    checked = settings.autoPlayNext,
-                    onCheckedChange = { checked ->
-                        onUpdateSettings { it.copy(autoPlayNext = checked) }
-                    }
-                )
-                SettingDivider()
-                SettingSwitchItem(
-                    icon = Icons.Rounded.FastForward,
-                    title = "Lewati Intro Otomatis",
-                    subtitle = "Langsung lewati lagu pembuka episode",
-                    checked = settings.autoSkipIntro,
-                    onCheckedChange = { checked ->
-                        onUpdateSettings { it.copy(autoSkipIntro = checked) }
-                    }
-                )
-            }
-        }
-
-        // Downloads & Notifications
-        item {
-            SettingsGroupCard(title = "Unduhan & Notifikasi") {
-                SettingSwitchItem(
-                    icon = Icons.Rounded.Wifi,
-                    title = "Unduh Hanya via Wi-Fi",
-                    subtitle = "Hemat kuota data seluler saat mengunduh",
-                    checked = settings.wifiOnlyDownloads,
-                    onCheckedChange = { checked ->
-                        onUpdateSettings { it.copy(wifiOnlyDownloads = checked) }
-                    }
-                )
-                SettingDivider()
-                SettingSwitchItem(
-                    icon = Icons.Rounded.NotificationsActive,
-                    title = "Notifikasi Rilis Episode Baru",
-                    subtitle = "Beri tahu saat anime di Daftar Tonton rilis",
-                    checked = settings.episodeNotifications,
-                    onCheckedChange = { checked ->
-                        onUpdateSettings { it.copy(episodeNotifications = checked) }
-                    }
-                )
-            }
-        }
-
-        // Clean Organic Kumanime API Card
-        item {
-            val ledColor = when (apiConfig.status) {
-                ApiConnectionStatus.CONNECTED -> StatusEmerald
-                ApiConnectionStatus.SYNCING -> GoldBright
-                ApiConnectionStatus.OFFLINE_FALLBACK -> StatusAmber
-                ApiConnectionStatus.DEMO_LOCAL -> TextSecondary
-            }
-            val friendlyStatus = when (apiConfig.status) {
-                ApiConnectionStatus.CONNECTED -> "Terhubung"
-                ApiConnectionStatus.SYNCING -> "Menyinkronkan"
-                ApiConnectionStatus.OFFLINE_FALLBACK -> "Offline"
-                ApiConnectionStatus.DEMO_LOCAL -> "Lokal"
-            }
-
-            Column {
-                Text(
-                    text = "Sumber Streaming",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-                )
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = ObsidianCard,
-                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
-                            .padding(16.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(GoldTint),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Api,
-                                        contentDescription = null,
-                                        tint = GoldPrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = "Kumanime API",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = TextPrimary
-                                )
-                            }
-                            Row(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(ledColor.copy(alpha = 0.14f))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                LedStatusDot(
-                                    color = ledColor,
-                                    pulsing = apiConfig.status == ApiConnectionStatus.SYNCING ||
-                                        apiConfig.status == ApiConnectionStatus.CONNECTED,
-                                    size = 6.dp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = friendlyStatus,
-                                    color = ledColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(ObsidianCardAlt.copy(alpha = if (IsDarkTheme) 0.65f else 0.75f))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Text(
-                                text = "Server: ${apiConfig.baseUrl}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "Backend: Railway PostgreSQL + Kumanime API",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                            Text(
-                                text = apiConfig.lastSyncMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextTertiary,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (apiConfig.status == ApiConnectionStatus.SYNCING) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Aktifkan Kumanime Live API",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
-                            )
-                            Switch(
-                                checked = apiConfig.useLiveApi,
-                                onCheckedChange = onSetUseLiveApi,
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = TextOnGold,
-                                    checkedTrackColor = GoldPrimary,
-                                    uncheckedThumbColor = TextSecondary,
-                                    uncheckedTrackColor = ObsidianCardAlt,
-                                    uncheckedBorderColor = GoldSubtleBorder
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            GoldOutlinedButton(
-                                text = "Ubah Server",
-                                icon = Icons.Rounded.Edit,
-                                onClick = { showApiUrlDialog = true },
-                                modifier = Modifier.weight(1f),
-                                height = 42.dp
-                            )
-                            GoldGradientButton(
-                                text = "Sinkronkan",
-                                icon = Icons.Rounded.Refresh,
-                                onClick = onSyncApi,
-                                modifier = Modifier.weight(1f),
-                                height = 42.dp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // App Permissions & Runtime Access Control
-        if (uiState.appPermissions.isNotEmpty()) {
-            item {
-                SettingsGroupCard(title = "Izin Penggunaan Aplikasi") {
-                    uiState.appPermissions.forEachIndexed { idx, perm ->
-                        if (idx > 0) SettingDivider()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = perm.canRequestRuntime && perm.androidPermission != null) {
-                                    perm.androidPermission?.let { permissionLauncher.launch(it) }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(if (perm.isGranted) StatusEmerald.copy(alpha = 0.14f) else GoldTint),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = when (perm.id) {
-                                        "notifications" -> Icons.Rounded.NotificationsActive
-                                        "storage" -> Icons.Rounded.Storage
-                                        "network" -> Icons.Rounded.Wifi
-                                        else -> Icons.Rounded.Security
-                                    },
-                                    contentDescription = null,
-                                    tint = if (perm.isGranted) StatusEmerald else GoldPrimary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = perm.title,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = perm.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextTertiary
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (perm.isGranted) StatusEmerald.copy(alpha = 0.14f)
-                                        else GoldTintStrong
-                                    )
-                                    .clickable(enabled = perm.canRequestRuntime && perm.androidPermission != null) {
-                                        perm.androidPermission?.let { permissionLauncher.launch(it) }
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                            ) {
-                                Text(
-                                    text = if (perm.isGranted) "Diizinkan" else "Izinkan",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (perm.isGranted) StatusEmerald else GoldPrimary
-                                )
-                            }
-                        }
-                    }
-                    SettingDivider()
-                    SettingRowItem(
-                        icon = Icons.Rounded.Settings,
-                        title = "Pengaturan Izin Sistem Android",
-                        value = "Buka",
-                        onClick = { AndroidDeviceStorageManager.openAppPermissionSettings(context) }
-                    )
-                }
-            }
-        }
-
-        // Storage & About
-        item {
-            SettingsGroupCard(title = "Aplikasi & Penyimpanan Perangkat") {
-                SettingRowItem(
-                    icon = Icons.Rounded.Storage,
-                    title = "Ruang Kosong Perangkat",
-                    value = if (deviceStorage.totalDeviceBytes > 0L) {
-                        "${deviceStorage.availableLabel} / ${deviceStorage.totalLabel}"
-                    } else "Memindai...",
-                    onClick = onRefreshDeviceState
+                    icon = Icons.Rounded.Tune,
+                    title = "Pemutar & Unduhan",
+                    value = "${settings.defaultQuality} • ${settings.defaultSubtitle}",
+                    onClick = { showPlaybackSheet = true }
                 )
                 SettingDivider()
                 SettingRowItem(
-                    icon = Icons.Rounded.CleaningServices,
-                    title = "Bersihkan Cache",
-                    value = deviceStorage.cacheLabel,
-                    onClick = onClearCache
+                    icon = Icons.Rounded.Storage,
+                    title = "Penyimpanan & Izin",
+                    value = if (deviceStorage.totalDeviceBytes > 0L) deviceStorage.availableLabel else "Kelola",
+                    onClick = {
+                        onRefreshDeviceState()
+                        showStoragePermissionsSheet = true
+                    }
                 )
                 SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Info,
-                    title = "Tentang AnimWatch",
-                    value = "v1.1.0",
+                    title = "Tentang Aplikasi",
+                    value = "v1.2.0",
                     onClick = { showAboutDialog = true }
                 )
             }
         }
 
-        // Logout / Switch Account Action
+        // 3. Clean Account Action
         item {
             Row(
                 modifier = Modifier
@@ -654,6 +333,114 @@ fun ProfileScreen(
         }
     }
 
+    // Bottom Sheet: Pemutar & Unduhan
+    if (showPlaybackSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showPlaybackSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = ObsidianElevated
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = "Pemutar & Unduhan",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextPrimary,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = ObsidianCard
+                ) {
+                    Column(
+                        modifier = Modifier.border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                    ) {
+                        SettingRowItem(
+                            icon = Icons.Rounded.HighQuality,
+                            title = "Kualitas Default",
+                            value = settings.defaultQuality,
+                            onClick = { showQualityDialog = true }
+                        )
+                        SettingDivider()
+                        SettingRowItem(
+                            icon = Icons.Rounded.Subtitles,
+                            title = "Bahasa Subtitle",
+                            value = settings.defaultSubtitle,
+                            onClick = { showSubtitleLangDialog = true }
+                        )
+                        SettingDivider()
+                        SettingRowItem(
+                            icon = Icons.Rounded.ClosedCaption,
+                            title = "Ukuran Subtitle",
+                            value = settings.subtitleSize.label,
+                            onClick = { showSubtitleSizeDialog = true }
+                        )
+                        SettingDivider()
+                        SettingSwitchItem(
+                            icon = Icons.Rounded.PlayCircleOutline,
+                            title = "Putar Episode Berikutnya",
+                            subtitle = "Lanjut otomatis saat episode selesai",
+                            checked = settings.autoPlayNext,
+                            onCheckedChange = { checked ->
+                                onUpdateSettings { it.copy(autoPlayNext = checked) }
+                            }
+                        )
+                        SettingDivider()
+                        SettingSwitchItem(
+                            icon = Icons.Rounded.FastForward,
+                            title = "Lewati Intro Otomatis",
+                            subtitle = "Langsung lewati lagu pembuka",
+                            checked = settings.autoSkipIntro,
+                            onCheckedChange = { checked ->
+                                onUpdateSettings { it.copy(autoSkipIntro = checked) }
+                            }
+                        )
+                        SettingDivider()
+                        SettingSwitchItem(
+                            icon = Icons.Rounded.Wifi,
+                            title = "Unduh via Wi-Fi Saja",
+                            subtitle = "Hemat kuota data seluler",
+                            checked = settings.wifiOnlyDownloads,
+                            onCheckedChange = { checked ->
+                                onUpdateSettings { it.copy(wifiOnlyDownloads = checked) }
+                            }
+                        )
+                        SettingDivider()
+                        SettingSwitchItem(
+                            icon = Icons.Rounded.NotificationsActive,
+                            title = "Notifikasi Rilis Episode",
+                            subtitle = "Ingatkan episode baru di Koleksiku",
+                            checked = settings.episodeNotifications,
+                            onCheckedChange = { checked ->
+                                onUpdateSettings { it.copy(episodeNotifications = checked) }
+                            }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+        }
+    }
+
+    // Bottom Sheet: Penyimpanan Perangkat & Izin Penggunaan
+    if (showStoragePermissionsSheet) {
+        StorageAndPermissionsSheet(
+            deviceStorage = deviceStorage,
+            permissions = uiState.appPermissions,
+            onClearCache = onClearCache,
+            onRequestPermission = { perm -> permissionLauncher.launch(perm) },
+            onOpenSystemSettings = { AndroidDeviceStorageManager.openAppPermissionSettings(context) },
+            onDismiss = { showStoragePermissionsSheet = false }
+        )
+    }
+
     if (showLogoutDialog) {
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
@@ -669,7 +456,7 @@ fun ProfileScreen(
             },
             text = {
                 Text(
-                    "Kamu akan kembali ke halaman Masuk / Daftar. Daftar tonton dan riwayat lokal tetap tersimpan di sesi ini.",
+                    "Kamu akan kembali ke halaman Masuk / Daftar. Daftar tonton dan riwayat akun tetap tersimpan.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -701,14 +488,6 @@ fun ProfileScreen(
         )
     }
 
-    if (showApiUrlDialog) {
-        EditApiBaseUrlDialog(
-            currentUrl = apiConfig.baseUrl,
-            onSave = onUpdateApiBaseUrl,
-            onDismiss = { showApiUrlDialog = false }
-        )
-    }
-
     if (showQualityDialog) {
         OptionPickerDialog(
             title = "Kualitas Default",
@@ -716,16 +495,6 @@ fun ProfileScreen(
             selected = settings.defaultQuality,
             onSelect = { q -> onUpdateSettings { it.copy(defaultQuality = q) } },
             onDismiss = { showQualityDialog = false }
-        )
-    }
-
-    if (showServerDialog) {
-        OptionPickerDialog(
-            title = "Server Mirror Utama",
-            options = listOf("SankaStream", "KuroCDN", "DriveMirror", "VidFast HLS"),
-            selected = settings.defaultServer,
-            onSelect = { srv -> onUpdateSettings { it.copy(defaultServer = srv) } },
-            onDismiss = { showServerDialog = false }
         )
     }
 
@@ -762,24 +531,249 @@ fun ProfileScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = GoldPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        "AnimWatch",
-                        style = MaterialTheme.typography.titleLarge
-                    )
+                    Text("AnimWatch v1.2.0", style = MaterialTheme.typography.titleLarge)
                 }
             },
             text = {
-                Text(
-                    "AnimWatch adalah aplikasi streaming anime modern dengan antarmuka lembut, dukungan Mode Gelap & Terang, pilihan warna tema personal, serta integrasi REST API kumanime-api.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Aplikasi streaming anime modern dengan ratusan koleksi serial siap tonton, mode Gelap & Terang, sinkronisasi akun, dan unduhan offline perangkat.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "${uiState.allAnime.size} judul anime termuat saat ini.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        GoldGradientButton(
+                            text = "Segarkan Katalog",
+                            icon = Icons.Rounded.Refresh,
+                            onClick = {
+                                showAboutDialog = false
+                                onSetUseLiveApi(true)
+                                onSyncApi()
+                            },
+                            modifier = Modifier.weight(1f),
+                            height = 40.dp
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = { showAboutDialog = false }) {
                     Text("Tutup", color = GoldPrimary, fontWeight = FontWeight.SemiBold)
                 }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAboutDialog = false
+                        showApiUrlDialog = true
+                    }
+                ) {
+                    Text("Server", color = TextTertiary)
+                }
             }
         )
+    }
+
+    if (showApiUrlDialog) {
+        EditApiBaseUrlDialog(
+            currentUrl = apiConfig.baseUrl,
+            onSave = onUpdateApiBaseUrl,
+            onDismiss = { showApiUrlDialog = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StorageAndPermissionsSheet(
+    deviceStorage: DeviceStorageInfo,
+    permissions: List<AppPermissionStatus>,
+    onClearCache: () -> Unit,
+    onRequestPermission: (String) -> Unit,
+    onOpenSystemSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = ObsidianElevated
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "Penyimpanan & Izin",
+                style = MaterialTheme.typography.titleLarge,
+                color = TextPrimary,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+
+            // Real Device Storage Card
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = ObsidianCard
+            ) {
+                Column(
+                    modifier = Modifier
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Penyimpanan Perangkat",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = if (deviceStorage.totalDeviceBytes > 0L) {
+                                "Tersedia ${deviceStorage.availableLabel}"
+                            } else "Memindai...",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = GoldPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    AnalogMeterGauge(
+                        progress = deviceStorage.deviceUsedFraction.coerceIn(0.03f, 1f),
+                        height = 6.dp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Offline: ${deviceStorage.offlineUsedLabel}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = "Cache: ${deviceStorage.cacheLabel}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary
+                        )
+                        Text(
+                            text = "Total: ${deviceStorage.totalLabel}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                    }
+                    GoldOutlinedButton(
+                        text = "Bersihkan Cache (${deviceStorage.cacheLabel})",
+                        icon = Icons.Rounded.CleaningServices,
+                        onClick = onClearCache,
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 42.dp
+                    )
+                }
+            }
+
+            // Permissions Card
+            if (permissions.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = ObsidianCard
+                ) {
+                    Column(
+                        modifier = Modifier.border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                    ) {
+                        permissions.forEachIndexed { idx, perm ->
+                            if (idx > 0) SettingDivider()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = perm.canRequestRuntime && perm.androidPermission != null) {
+                                        perm.androidPermission?.let(onRequestPermission)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (perm.isGranted) StatusEmerald.copy(alpha = 0.14f) else GoldTint),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = when (perm.id) {
+                                            "notifications" -> Icons.Rounded.NotificationsActive
+                                            "storage" -> Icons.Rounded.Storage
+                                            "network" -> Icons.Rounded.Wifi
+                                            else -> Icons.Rounded.Security
+                                        },
+                                        contentDescription = null,
+                                        tint = if (perm.isGranted) StatusEmerald else GoldPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = perm.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = perm.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextTertiary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (perm.isGranted) StatusEmerald.copy(alpha = 0.14f)
+                                            else GoldTintStrong
+                                        )
+                                        .clickable(enabled = perm.canRequestRuntime && perm.androidPermission != null) {
+                                            perm.androidPermission?.let(onRequestPermission)
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = if (perm.isGranted) "Aktif" else "Izinkan",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (perm.isGranted) StatusEmerald else GoldPrimary
+                                    )
+                                }
+                            }
+                        }
+                        SettingDivider()
+                        SettingRowItem(
+                            icon = Icons.Rounded.Settings,
+                            title = "Pengaturan Izin Sistem",
+                            value = "Buka",
+                            onClick = onOpenSystemSettings
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+        }
     }
 }
 
@@ -959,12 +953,7 @@ private fun OptionPickerDialog(
         containerColor = ObsidianElevated,
         shape = RoundedCornerShape(24.dp),
         titleContentColor = TextPrimary,
-        title = {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleLarge
-            )
-        },
+        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 options.forEach { option ->
@@ -1031,12 +1020,7 @@ private fun EditProfileDialog(
         containerColor = ObsidianElevated,
         shape = RoundedCornerShape(24.dp),
         titleContentColor = TextPrimary,
-        title = {
-            Text(
-                "Edit Profil",
-                style = MaterialTheme.typography.titleLarge
-            )
-        },
+        title = { Text("Edit Profil", style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TactileInputField(
@@ -1101,25 +1085,15 @@ private fun EditApiBaseUrlDialog(
         containerColor = ObsidianElevated,
         shape = RoundedCornerShape(24.dp),
         titleContentColor = TextPrimary,
-        title = {
-            Text(
-                "Server Kumanime API",
-                style = MaterialTheme.typography.titleLarge
-            )
-        },
+        title = { Text("Pengaturan Server", style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Masukkan Base URL server kumanime-api (untuk Emulator gunakan 10.0.2.2:3000 atau URL deploy Vercel/Railway).",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
                 TactileInputField(
-                    label = "Base URL Server",
+                    label = "URL Server",
                     value = urlInput,
                     onValueChange = {
                         urlInput = it
-                        urlError = if (it.isBlank()) "Base URL tidak boleh kosong" else null
+                        urlError = if (it.isBlank()) "URL server tidak boleh kosong" else null
                     },
                     placeholder = "https://kumanime-api-production.up.railway.app/api/",
                     errorText = urlError
@@ -1136,28 +1110,10 @@ private fun EditApiBaseUrlDialog(
                             .padding(horizontal = 11.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "Railway Live",
+                            text = "Server Utama",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = GoldPrimary
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(ObsidianCard)
-                            .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                            .clickable {
-                                urlInput = "http://10.0.2.2:3000/api/"
-                                urlError = null
-                            }
-                            .padding(horizontal = 11.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "Emulator Lokal",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = TextSecondary
                         )
                     }
                 }
@@ -1165,10 +1121,10 @@ private fun EditApiBaseUrlDialog(
         },
         confirmButton = {
             GoldGradientButton(
-                text = "Hubungkan",
+                text = "Simpan",
                 onClick = {
                     if (urlInput.isBlank()) {
-                        urlError = "Base URL tidak boleh kosong"
+                        urlError = "URL server tidak boleh kosong"
                     } else {
                         onSave(urlInput)
                         onDismiss()

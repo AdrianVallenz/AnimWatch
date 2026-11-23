@@ -40,8 +40,8 @@ enum class SortOption(val label: String) {
 }
 
 enum class CatalogPreset(val title: String, val subtitle: String) {
-    ALL("Semua Katalog", "Seluruh koleksi anime Sub Indo"),
-    OFFICIAL_FREE("Gratis Resmi Sub Indo", "Episode resmi dari Muse Indonesia & Ani-One Indonesia"),
+    ALL("Semua Katalog", "Seluruh koleksi anime"),
+    OFFICIAL_FREE("Siap Tonton Lengkap", "Episode lengkap siap diputar langsung di aplikasi"),
     ONGOING("Sedang Tayang", "Episode baru hadir setiap minggu"),
     TRENDING("Sedang Hangat", "Paling banyak ditonton minggu ini"),
     TOP_RATED("Top 10 Peringkat", "Skor tertinggi pilihan penonton"),
@@ -185,7 +185,8 @@ data class Episode(
     val isFiller: Boolean = false,
     val slug: String = "",
     val streamUrl: String = "",
-    val streamType: String = "official_trailer",
+    val streamType: String = "info_only",
+    val thumbnailUrl: String = "",
     val nextEpisodeSlug: String? = null,
     val prevEpisodeSlug: String? = null,
     val servers: List<StreamServer> = emptyList(),

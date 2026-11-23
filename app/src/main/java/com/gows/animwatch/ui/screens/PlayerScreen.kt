@@ -8,6 +8,7 @@ import android.content.pm.ActivityInfo
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -57,8 +58,6 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Forward10
-import androidx.compose.material.icons.rounded.Fullscreen
-import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Lock
@@ -71,6 +70,7 @@ import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Subtitles
+import androidx.compose.material.icons.rounded.TaskAlt
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.AlertDialog
@@ -94,6 +94,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -198,6 +199,8 @@ fun PlayerScreen(
     onToggleLock: () -> Unit,
     onToggleFullscreen: () -> Unit,
     onToggleWebStreamView: () -> Unit,
+    onEpisodeCompleted: (String, Int) -> Unit,
+    onMarkAnimeCompleted: (String) -> Unit,
     onToggleLike: () -> Unit,
     onSelectWatchlist: (String, WatchlistCategory?) -> Unit,
     onDownloadEpisode: (Anime, Episode, String) -> Unit,
@@ -304,7 +307,7 @@ fun PlayerScreen(
 
         val showingLiveWebStream = session.streamUrl.isNotBlank() && session.useWebStreamView
 
-        // Slim Theater Top Header Bar in Portrait Mode (zero overlap over video player!)
+        // Slim Top Header Bar in Portrait Mode (minimize + title only; fullscreen uses player's native button)
         if (!session.isFullscreen && showingLiveWebStream) {
             Row(
                 modifier = Modifier
@@ -337,36 +340,18 @@ fun PlayerScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "Ep ${episode.number} • ${anime.officialChannel ?: if (session.streamType == "official_episode") "Resmi Sub Indo" else "AniList"}",
+                        text = buildString {
+                            append("Ep ${episode.number}")
+                            if (!anime.officialChannel.isNullOrBlank()) {
+                                append(" • ${anime.officialChannel}")
+                            }
+                        },
                         color = MediaTextSecondary,
                         fontSize = 11.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.10f))
-                        .clickable(onClick = onToggleFullscreen)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Fullscreen,
-                        contentDescription = "Layar Penuh",
-                        tint = GoldBright,
-                        modifier = Modifier.size(17.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Penuh",
-                        color = MediaTextLight,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Spacer(modifier = Modifier.width(4.dp))
             }
         }
 
@@ -422,39 +407,15 @@ fun PlayerScreen(
             if (showingLiveWebStream) {
                 KumanimeWebStreamPlayer(
                     streamUrl = session.streamUrl,
+                    isFullscreen = session.isFullscreen,
                     onRequestFullscreen = { wantFull ->
                         if (wantFull != session.isFullscreen) onToggleFullscreen()
                     },
+                    onEpisodeEnded = {
+                        onEpisodeCompleted(anime.id, episode.number)
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
-                // Only show a compact unobtrusive exit pill in Landscape Fullscreen mode
-                if (session.isFullscreen) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = 14.dp, top = 12.dp)
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.72f))
-                            .border(0.75.dp, Color.White.copy(alpha = 0.22f), CircleShape)
-                            .clickable(onClick = onToggleFullscreen)
-                            .padding(horizontal = 11.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.FullscreenExit,
-                            contentDescription = "Keluar Layar Penuh",
-                            tint = GoldBright,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = "Keluar",
-                            color = MediaTextLight,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
             } else {
                 AnimatedStreamingSceneCanvas(
                     artTheme = anime.artTheme,
@@ -889,17 +850,6 @@ fun PlayerScreen(
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
-                                        IconButton(
-                                            onClick = onToggleFullscreen,
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                                                contentDescription = "Layar Penuh",
-                                                tint = GoldBright,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
                                     }
                                 }
                             }
@@ -955,9 +905,7 @@ fun PlayerScreen(
                     Text(
                         text = when {
                             session.isLoadingStream -> "Menyiapkan stream..."
-                            showingLiveWebStream && session.streamType == "official_episode" ->
-                                "${anime.officialChannel ?: "Muse / Ani-One"} • Sub Indo"
-                            showingLiveWebStream -> "Trailer Resmi • AniList"
+                            showingLiveWebStream -> anime.officialChannel ?: "Sedang Diputar"
                             session.isPlaying -> "Mode Pemutar • ${session.selectedQuality}"
                             else -> "Dijeda"
                         },
@@ -1077,10 +1025,10 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             PlayerActionChip(
-                                icon = Icons.Rounded.ThumbUp,
-                                label = if (session.isEpisodeLiked) "Disukai" else "Suka",
-                                active = session.isEpisodeLiked,
-                                onClick = onToggleLike
+                                icon = Icons.Rounded.TaskAlt,
+                                label = if (watchlistCategory == WatchlistCategory.COMPLETED) "Tamat" else "Tamatkan",
+                                active = watchlistCategory == WatchlistCategory.COMPLETED,
+                                onClick = { onMarkAnimeCompleted(anime.id) }
                             )
                             PlayerActionChip(
                                 icon = if (watchlistCategory != null) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
@@ -1102,16 +1050,16 @@ fun PlayerScreen(
                                 onClick = { onDownloadEpisode(anime, episode, session.selectedQuality) }
                             )
                             PlayerActionChip(
+                                icon = Icons.Rounded.ThumbUp,
+                                label = if (session.isEpisodeLiked) "Disukai" else "Suka",
+                                active = session.isEpisodeLiked,
+                                onClick = onToggleLike
+                            )
+                            PlayerActionChip(
                                 icon = Icons.Rounded.Share,
                                 label = "Bagikan",
                                 active = false,
                                 onClick = { onShowMessage("Tautan ${anime.title} Ep ${episode.number} disalin") }
-                            )
-                            PlayerActionChip(
-                                icon = Icons.Rounded.Flag,
-                                label = "Lapor",
-                                active = false,
-                                onClick = { activeModal = PlayerModal.REPORT }
                             )
                         }
                     }
@@ -1667,11 +1615,42 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
     </head>
     <body>
       <iframe
-        src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=1"
+        id="ytplayer"
+        src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=1&enablejsapi=1"
         referrerpolicy="strict-origin-when-cross-origin"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowfullscreen>
       </iframe>
+      <script>
+        (function(){
+          var notified = false;
+          var frame = document.getElementById('ytplayer');
+          function sendListen(){
+            try {
+              frame.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');
+              frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'addEventListener',args:['onStateChange']}),'*');
+            } catch(e){}
+          }
+          frame.addEventListener('load', function(){
+            sendListen();
+            setTimeout(sendListen, 1000);
+          });
+          window.addEventListener('message', function(ev){
+            if(notified || typeof ev.data !== 'string') return;
+            try {
+              var d = JSON.parse(ev.data);
+              var ended = (d.event === 'onStateChange' && d.info === 0) ||
+                          (d.event === 'infoDelivery' && d.info && d.info.playerState === 0);
+              if(ended){
+                notified = true;
+                if(window.AnimWatchPlayer && window.AnimWatchPlayer.onVideoEnded){
+                  window.AnimWatchPlayer.onVideoEnded();
+                }
+              }
+            } catch(e){}
+          });
+        })();
+      </script>
     </body>
     </html>
 """.trimIndent()
@@ -1705,11 +1684,22 @@ private fun loadStreamIntoWebView(webView: WebView, streamUrl: String) {
 @Composable
 private fun KumanimeWebStreamPlayer(
     streamUrl: String,
+    isFullscreen: Boolean,
     onRequestFullscreen: (Boolean) -> Unit,
+    onEpisodeEnded: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var currentWebView by remember { mutableStateOf<WebView?>(null) }
+    var activeFullscreenExit by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val latestOnRequestFullscreen by rememberUpdatedState(onRequestFullscreen)
+    val latestOnEpisodeEnded by rememberUpdatedState(onEpisodeEnded)
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(isFullscreen) {
+        if (!isFullscreen) {
+            activeFullscreenExit?.invoke()
+        }
+    }
 
     DisposableEffect(lifecycleOwner, currentWebView) {
         val observer = LifecycleEventObserver { _, event ->
@@ -1727,6 +1717,8 @@ private fun KumanimeWebStreamPlayer(
 
     DisposableEffect(Unit) {
         onDispose {
+            activeFullscreenExit?.invoke()
+            activeFullscreenExit = null
             currentWebView?.apply {
                 stopLoading()
                 onPause()
@@ -1751,6 +1743,15 @@ private fun KumanimeWebStreamPlayer(
             var customFullscreenView: View? = null
             var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
+            fun exitCustomFullscreen() {
+                if (customFullscreenView != null) {
+                    customFullscreenView?.let { container.removeView(it) }
+                    customFullscreenView = null
+                    customViewCallback?.onCustomViewHidden()
+                    customViewCallback = null
+                }
+            }
+
             val webView = WebView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1766,6 +1767,15 @@ private fun KumanimeWebStreamPlayer(
                 settings.javaScriptCanOpenWindowsAutomatically = false
                 settings.cacheMode = WebSettings.LOAD_DEFAULT
                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                addJavascriptInterface(
+                    object {
+                        @JavascriptInterface
+                        fun onVideoEnded() {
+                            post { latestOnEpisodeEnded() }
+                        }
+                    },
+                    "AnimWatchPlayer"
+                )
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(
                         view: WebView?,
@@ -1787,6 +1797,7 @@ private fun KumanimeWebStreamPlayer(
                         customFullscreenView?.let { container.removeView(it) }
                         customFullscreenView = view
                         customViewCallback = callback
+                        activeFullscreenExit = { exitCustomFullscreen() }
                         container.addView(
                             view,
                             FrameLayout.LayoutParams(
@@ -1794,15 +1805,13 @@ private fun KumanimeWebStreamPlayer(
                                 ViewGroup.LayoutParams.MATCH_PARENT
                             )
                         )
-                        onRequestFullscreen(true)
+                        latestOnRequestFullscreen(true)
                     }
 
                     override fun onHideCustomView() {
-                        customFullscreenView?.let { container.removeView(it) }
-                        customFullscreenView = null
-                        customViewCallback?.onCustomViewHidden()
-                        customViewCallback = null
-                        onRequestFullscreen(false)
+                        exitCustomFullscreen()
+                        activeFullscreenExit = null
+                        latestOnRequestFullscreen(false)
                     }
                 }
                 loadStreamIntoWebView(this, streamUrl)
