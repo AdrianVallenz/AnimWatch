@@ -131,7 +131,9 @@ fun ExploreScreen(
     onSortChange: (SortOption) -> Unit,
     onToggleGridView: () -> Unit,
     onResetFilters: () -> Unit,
+    onResetGenreFilters: () -> Unit = onResetFilters,
     onLoadMoreCatalog: () -> Unit,
+    onRetryLoadMoreCatalog: () -> Unit = onLoadMoreCatalog,
     onSelectScheduleDay: (ReleaseDay) -> Unit,
     onToggleReminder: (String) -> Unit,
     onAnimeClick: (String) -> Unit,
@@ -207,7 +209,9 @@ fun ExploreScreen(
                     onOpenFilterSheet = { showFilterSheet = true },
                     onToggleGridView = onToggleGridView,
                     onResetFilters = onResetFilters,
+                    onResetGenreFilters = onResetGenreFilters,
                     onLoadMoreCatalog = onLoadMoreCatalog,
+                    onRetryLoadMoreCatalog = onRetryLoadMoreCatalog,
                     onAnimeClick = onAnimeClick,
                     onPlayAnime = onPlayAnime,
                     onBookmarkClick = onBookmarkClick
@@ -280,7 +284,9 @@ private fun CatalogExploreContent(
     onOpenFilterSheet: () -> Unit,
     onToggleGridView: () -> Unit,
     onResetFilters: () -> Unit,
+    onResetGenreFilters: () -> Unit,
     onLoadMoreCatalog: () -> Unit,
+    onRetryLoadMoreCatalog: () -> Unit,
     onAnimeClick: (String) -> Unit,
     onPlayAnime: (String) -> Unit,
     onBookmarkClick: (String) -> Unit
@@ -466,7 +472,7 @@ private fun CatalogExploreContent(
                 GenrePillChip(
                     label = "Semua",
                     selected = allSelected,
-                    onClick = { if (!allSelected) onResetFilters() }
+                    onClick = { if (!allSelected) onResetGenreFilters() }
                 )
             }
             item {
@@ -697,12 +703,16 @@ private fun CatalogExploreContent(
                         )
                     }
                 }
-                if (uiState.hasMoreCatalog && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
+                if ((uiState.hasMoreCatalog || uiState.catalogLoadError) && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
                     item(span = { GridItemSpan(2) }) {
                         LoadMoreCatalogFooter(
                             totalLoaded = uiState.allAnime.size,
+                            catalogPageLoaded = uiState.catalogPageLoaded,
                             isLoading = uiState.isLoadingMoreCatalog,
-                            onLoadMore = onLoadMoreCatalog
+                            hasMore = uiState.hasMoreCatalog,
+                            hasError = uiState.catalogLoadError,
+                            onLoadMore = onLoadMoreCatalog,
+                            onRetry = onRetryLoadMoreCatalog
                         )
                     }
                 }
@@ -726,12 +736,16 @@ private fun CatalogExploreContent(
                         onBookmarkClick = { onBookmarkClick(anime.id) }
                     )
                 }
-                if (uiState.hasMoreCatalog && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
+                if ((uiState.hasMoreCatalog || uiState.catalogLoadError) && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
                     item {
                         LoadMoreCatalogFooter(
                             totalLoaded = uiState.allAnime.size,
+                            catalogPageLoaded = uiState.catalogPageLoaded,
                             isLoading = uiState.isLoadingMoreCatalog,
-                            onLoadMore = onLoadMoreCatalog
+                            hasMore = uiState.hasMoreCatalog,
+                            hasError = uiState.catalogLoadError,
+                            onLoadMore = onLoadMoreCatalog,
+                            onRetry = onRetryLoadMoreCatalog
                         )
                     }
                 }
@@ -743,15 +757,48 @@ private fun CatalogExploreContent(
 @Composable
 private fun LoadMoreCatalogFooter(
     totalLoaded: Int,
+    catalogPageLoaded: Int,
     isLoading: Boolean,
-    onLoadMore: () -> Unit
+    hasMore: Boolean,
+    hasError: Boolean,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit
 ) {
-    androidx.compose.runtime.LaunchedEffect(totalLoaded, isLoading) {
-        if (!isLoading) {
+    androidx.compose.runtime.LaunchedEffect(catalogPageLoaded, hasMore, hasError) {
+        if (hasMore && !hasError && !isLoading) {
             onLoadMore()
         }
     }
-    if (isLoading) {
+    if (hasError) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Gagal memuat halaman katalog berikutnya",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextTertiary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                    .clickable(onClick = onRetry)
+                    .padding(horizontal = 14.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    text = "Coba Lagi",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GoldPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    } else if (isLoading) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -821,7 +868,7 @@ private fun ScheduleExploreContent(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = if (isToday) "Hari ini" else "${subOnly.count { it.releaseDay == day }} ep",
+                        text = if (isToday) "Hari ini" else "${subOnly.count { it.releaseDay == day }} judul",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (selected) TextOnGold.copy(alpha = 0.88f) else if (isToday) GoldPrimary else TextTertiary,
                         fontSize = 10.sp

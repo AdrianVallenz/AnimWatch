@@ -12,13 +12,15 @@ import coil.Coil
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.gows.animwatch.data.local.AppNotificationHelper
+import com.gows.animwatch.data.local.NotificationDeepLinkBus
 import com.gows.animwatch.data.remote.GoogleAuthDeepLinkBus
 import com.gows.animwatch.ui.AnimWatchApp
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        GoogleAuthDeepLinkBus.dispatchFromIntent(intent)
+        dispatchDeepLinksOnce(intent)
 
         // Configure lightweight, high-throughput Coil ImageLoader (RGB_565 cuts bitmap RAM in half)
         val appContext = applicationContext
@@ -65,6 +67,22 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        GoogleAuthDeepLinkBus.dispatchFromIntent(intent)
+        dispatchDeepLinksOnce(intent)
+    }
+
+    private fun dispatchDeepLinksOnce(incomingIntent: Intent?) {
+        if (incomingIntent == null) return
+        if (!incomingIntent.getBooleanExtra(EXTRA_DEEP_LINK_CONSUMED, false)) {
+            GoogleAuthDeepLinkBus.dispatchFromIntent(incomingIntent)
+            NotificationDeepLinkBus.dispatchFromIntent(incomingIntent)
+            incomingIntent.putExtra(EXTRA_DEEP_LINK_CONSUMED, true)
+            incomingIntent.data = null
+            incomingIntent.removeExtra(AppNotificationHelper.EXTRA_ANIME_ID)
+            incomingIntent.removeExtra(AppNotificationHelper.EXTRA_NOTIFICATION_ID)
+        }
+    }
+
+    companion object {
+        private const val EXTRA_DEEP_LINK_CONSUMED = "extra_animwatch_deep_link_consumed"
     }
 }

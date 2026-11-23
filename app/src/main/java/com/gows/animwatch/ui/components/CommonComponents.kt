@@ -391,7 +391,7 @@ fun AnimePosterCard(
                         Icon(
                             imageVector = Icons.Rounded.Star,
                             contentDescription = null,
-                            tint = GoldBright,
+                            tint = com.gows.animwatch.ui.theme.MediaAccentBright,
                             modifier = Modifier.size(10.5.dp)
                         )
                         Spacer(modifier = Modifier.width(2.5.dp))
@@ -415,7 +415,7 @@ fun AnimePosterCard(
                     Icon(
                         imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
                         contentDescription = "Simpan ke Daftar Tonton",
-                        tint = if (isBookmarked) GoldBright else MediaTextSecondary,
+                        tint = if (isBookmarked) com.gows.animwatch.ui.theme.MediaAccentBright else MediaTextSecondary,
                         modifier = Modifier.size(15.dp)
                     )
                 }
@@ -562,7 +562,7 @@ fun ContinueWatchingCard(
                         .size(44.dp)
                         .clip(CircleShape)
                         .background(MediaScrimDark.copy(alpha = 0.72f))
-                        .border(1.dp, GoldBright.copy(alpha = 0.75f), CircleShape),
+                        .border(1.dp, com.gows.animwatch.ui.theme.MediaAccentBright.copy(alpha = 0.75f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -684,7 +684,7 @@ fun TopRankedCard(
                         Icon(
                             imageVector = Icons.Rounded.Star,
                             contentDescription = null,
-                            tint = GoldBright,
+                            tint = com.gows.animwatch.ui.theme.MediaAccentBright,
                             modifier = Modifier.size(11.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))

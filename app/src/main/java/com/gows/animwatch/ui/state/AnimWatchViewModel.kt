@@ -33,6 +33,7 @@ import com.gows.animwatch.data.local.SessionStore
 import com.gows.animwatch.data.local.formatStorageBytes
 import com.gows.animwatch.data.remote.AuthResponseDto
 import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
+import com.gows.animwatch.data.remote.HttpStatusException
 import com.gows.animwatch.data.remote.KumanimeApiClient
 import com.gows.animwatch.data.remote.KumanimeRemoteDataSource
 import com.gows.animwatch.data.remote.UpdatePreferencesRequestDto
@@ -40,6 +41,7 @@ import com.gows.animwatch.data.repository.AnimeRepository
 import com.gows.animwatch.data.repository.MockAnimeRepository
 import com.gows.animwatch.ui.theme.AppAccentTheme
 import com.gows.animwatch.ui.theme.AppAppearanceMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -187,7 +189,8 @@ data class AnimWatchUiState(
     val isSearchingRemote: Boolean = false,
     val catalogPageLoaded: Int = 1,
     val isLoadingMoreCatalog: Boolean = false,
-    val hasMoreCatalog: Boolean = true
+    val hasMoreCatalog: Boolean = true,
+    val catalogLoadError: Boolean = false
 ) {
     val currentRoute: AppRoute
         get() = backStack.lastOrNull() ?: AppRoute.TabsRoot
@@ -227,6 +230,9 @@ class AnimWatchViewModel(
     private val _systemNotificationBatch = MutableSharedFlow<List<NotificationItem>>(extraBufferCapacity = 4)
     val systemNotificationBatch: SharedFlow<List<NotificationItem>> = _systemNotificationBatch.asSharedFlow()
 
+    private val _systemNotificationCancelEvent = MutableSharedFlow<Unit>(extraBufferCapacity = 2)
+    val systemNotificationCancelEvent: SharedFlow<Unit> = _systemNotificationCancelEvent.asSharedFlow()
+
     private data class LocalAccount(
         val displayName: String,
         val email: String,
@@ -263,10 +269,23 @@ class AnimWatchViewModel(
     private var playerTickerJob: Job? = null
     private var apiSyncJob: Job? = null
     private var loadMoreJob: Job? = null
+    private var prefetchJob: Job? = null
     private var detailFetchJob: Job? = null
     private var streamFetchJob: Job? = null
     private var remoteSearchJob: Job? = null
     private val downloadJobs = mutableMapOf<String, Job>()
+    private var detailRequestSeq: Long = 0L
+    private var streamRequestSeq: Long = 0L
+    private var searchRequestSeq: Long = 0L
+
+    private data class ThemeEditBackup(
+        val appearanceMode: AppAppearanceMode,
+        val accentTheme: AppAccentTheme,
+        val preferredGenres: Set<String>,
+        val isGridView: Boolean
+    )
+
+    private var themeEditBackup: ThemeEditBackup? = null
 
     fun attachStorageGateway(gateway: OfflineStorageGateway) {
         if (storageAttached) return
@@ -324,7 +343,10 @@ class AnimWatchViewModel(
             state.copy(
                 appearanceMode = savedMode ?: state.appearanceMode,
                 accentTheme = savedAccent ?: state.accentTheme,
-                reminders = if (persistedReminders.isNotEmpty()) persistedReminders else state.reminders,
+                reminders = if (store.hasSavedReminders()) persistedReminders else state.reminders,
+                notifications = state.notifications.map { notif ->
+                    if (notif.id in readNotificationIds) notif.copy(isRead = true) else notif
+                },
                 apiConfig = if (savedUrl != null) {
                     state.apiConfig.copy(baseUrl = KumanimeApiClient.normalizeBaseUrl(savedUrl))
                 } else state.apiConfig
@@ -339,9 +361,11 @@ class AnimWatchViewModel(
             val res = remoteDataSource.fetchCurrentUser(baseUrl, savedToken)
             res.onSuccess { snapshot ->
                 applyCloudAuthSnapshot(snapshot, savedToken, showWelcomeToast = false)
-            }.onFailure {
-                authToken = null
-                sessionStore.saveAuthToken(null)
+            }.onFailure { err ->
+                if (err is HttpStatusException && (err.code == 401 || err.code == 403)) {
+                    authToken = null
+                    sessionStore.saveAuthToken(null)
+                }
             }
         }
     }
@@ -371,7 +395,13 @@ class AnimWatchViewModel(
 
         val rawSettings = u.settings.orEmpty()
         val savedCustomHandle = (rawSettings["customHandle"] as? String)?.trim()?.takeIf { it.isNotBlank() }
-        val savedAvatarUrl = (rawSettings["customAvatarUrl"] as? String)?.trim()?.takeIf { it.isNotBlank() }
+        val hasCustomAvatarSetting = rawSettings.containsKey("customAvatarUrl")
+        val savedAvatarUrl = (rawSettings["customAvatarUrl"] as? String)?.trim().orEmpty()
+        val resolvedAvatarUrl = if (hasCustomAvatarSetting) {
+            savedAvatarUrl
+        } else {
+            u.avatarUrl?.trim().orEmpty()
+        }
         val savedMemberTier = (rawSettings["customMemberTier"] as? String)?.trim()?.takeIf { it.isNotBlank() }
         val savedFavoriteGenre = (rawSettings["customFavoriteGenre"] as? String)?.trim()?.takeIf { it.isNotBlank() }
         val currentSettings = _uiState.value.settings
@@ -407,7 +437,7 @@ class AnimWatchViewModel(
                 durationSeconds = (h.durationSeconds ?: 1440).coerceAtLeast(1),
                 updatedAtLabel = h.updatedAtLabel ?: "Tersimpan"
             )
-        }
+        }.distinctBy { it.animeId }
 
         val restoredRatings = dto.ratings.orEmpty()
         val restoredWatchedEpisodes = dto.watchedEpisodes.orEmpty()
@@ -431,14 +461,16 @@ class AnimWatchViewModel(
                 userRatings = restoredRatings,
                 settings = mergedSettings,
                 exploreFilter = state.exploreFilter.copy(isGridView = restoredGridPref),
-                userProfile = state.userProfile.copy(
-                    displayName = u.displayName?.ifBlank { null } ?: state.userProfile.displayName,
-                    handle = savedCustomHandle ?: u.handle?.ifBlank { null } ?: state.userProfile.handle,
-                    bio = u.bio ?: state.userProfile.bio,
-                    avatarEmblem = u.avatarEmblem?.ifBlank { null } ?: state.userProfile.avatarEmblem,
-                    avatarUrl = u.avatarUrl?.ifBlank { null } ?: savedAvatarUrl ?: state.userProfile.avatarUrl,
-                    memberTier = savedMemberTier ?: u.memberTier?.ifBlank { null } ?: state.userProfile.memberTier,
-                    favoriteGenre = savedFavoriteGenre ?: genres.firstOrNull() ?: state.userProfile.favoriteGenre
+                userProfile = UserProfile(
+                    displayName = u.displayName?.ifBlank { null } ?: "Member AnimWatch",
+                    handle = savedCustomHandle ?: u.handle?.ifBlank { null } ?: buildHandle(u.displayName ?: "member"),
+                    bio = u.bio.orEmpty(),
+                    avatarEmblem = u.avatarEmblem?.ifBlank { null } ?: buildEmblem(u.displayName ?: "AW"),
+                    avatarUrl = resolvedAvatarUrl,
+                    memberTier = savedMemberTier ?: u.memberTier?.ifBlank { null } ?: "Member",
+                    watchedHours = 0,
+                    completedAnimeCount = 0,
+                    favoriteGenre = savedFavoriteGenre ?: genres.firstOrNull() ?: "Action"
                 )
             )
         }
@@ -563,7 +595,7 @@ class AnimWatchViewModel(
                 .replaceFirstChar { it.uppercase() }
                 .ifEmpty { "Google User" }
         }
-        if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
+        if (!Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$").matches(cleanEmail)) {
             onGoogleAuthError("Format alamat email Google tidak valid")
             return
         }
@@ -833,23 +865,34 @@ class AnimWatchViewModel(
     }
 
     fun continueAsGuest() {
+        authJob?.cancel()
         authToken = null
         sessionStore.saveAuthToken(null)
         _uiState.update { state ->
             state.copy(
                 isAuthenticated = true,
                 isGuestSession = true,
+                isGoogleAuthLoading = false,
                 hasCompletedThemeSetup = false,
                 isEditingTheme = false,
                 authError = null,
                 currentTab = MainTab.HOME,
                 backStack = listOf(AppRoute.TabsRoot),
-                userProfile = state.userProfile.copy(
+                watchlist = emptyMap(),
+                watchedEpisodes = emptyMap(),
+                userRatings = emptyMap(),
+                watchHistory = emptyList(),
+                reminders = emptySet(),
+                userProfile = UserProfile(
                     displayName = "Tamu Watcher",
                     handle = "@guest",
+                    bio = "Menjelajah AnimWatch dalam mode tamu.",
                     avatarEmblem = "TM",
+                    avatarUrl = "",
                     memberTier = "Mode Tamu",
-                    bio = "Menjelajah AnimWatch dalam mode tamu."
+                    watchedHours = 0,
+                    completedAnimeCount = 0,
+                    favoriteGenre = "Action"
                 )
             )
         }
@@ -863,8 +906,27 @@ class AnimWatchViewModel(
     fun logout() {
         val currentToken = authToken
         val baseUrl = _uiState.value.apiConfig.baseUrl
+        authJob?.cancel()
+        detailFetchJob?.cancel()
+        streamFetchJob?.cancel()
+        commentsFetchJob?.cancel()
+        loadMoreJob?.cancel()
+        prefetchJob?.cancel()
         authToken = null
+        lastHistorySyncAnimeId = null
+        lastHistorySyncEpisodeId = null
+        lastHistorySyncAtMs = 0L
+        themeEditBackup = null
+
+        readNotificationIds.clear()
+        knownLatestEpisodes.clear()
         sessionStore.saveAuthToken(null)
+        sessionStore.saveReadNotificationIds(emptySet())
+        sessionStore.saveKnownLatestEpisodes(emptyMap())
+        sessionStore.saveReminderAnimeIds(emptySet())
+        sessionStore.saveLastSystemNotifiedSignature("")
+        _systemNotificationCancelEvent.tryEmit(Unit)
+
         if (cloudSyncEnabled && !currentToken.isNullOrBlank()) {
             viewModelScope.launch {
                 remoteDataSource.logoutUser(baseUrl, currentToken)
@@ -875,11 +937,33 @@ class AnimWatchViewModel(
             state.copy(
                 isAuthenticated = false,
                 isGuestSession = false,
+                isGoogleAuthLoading = false,
                 hasCompletedThemeSetup = false,
                 isEditingTheme = false,
                 authError = null,
                 currentTab = MainTab.HOME,
-                backStack = listOf(AppRoute.TabsRoot)
+                backStack = listOf(AppRoute.TabsRoot),
+                isLoadingDetail = false,
+                watchlist = emptyMap(),
+                watchedEpisodes = emptyMap(),
+                userRatings = emptyMap(),
+                watchHistory = emptyList(),
+                reminders = emptySet(),
+                preferredGenres = setOf("Action", "Fantasy", "Sci-Fi"),
+                settings = PlaybackSettings(),
+                notifications = repository.getInitialNotifications(),
+                comments = state.comments.map { if (it.isOwn) it.copy(isOwn = false) else it },
+                userProfile = UserProfile(
+                    displayName = "Anime Watcher",
+                    handle = "@watcher",
+                    bio = "",
+                    avatarEmblem = "AW",
+                    avatarUrl = "",
+                    memberTier = "Member",
+                    watchedHours = 0,
+                    completedAnimeCount = 0,
+                    favoriteGenre = "Action"
+                )
             )
         }
         emitMessage("Berhasil keluar dari akun")
@@ -914,6 +998,7 @@ class AnimWatchViewModel(
     }
 
     fun completeThemeOnboarding() {
+        themeEditBackup = null
         val state = _uiState.value
         val favGenre = state.preferredGenres.firstOrNull() ?: state.userProfile.favoriteGenre
         val wasEditing = state.isEditingTheme
@@ -932,11 +1017,34 @@ class AnimWatchViewModel(
     }
 
     fun openThemeEditorFromProfile() {
+        val state = _uiState.value
+        themeEditBackup = ThemeEditBackup(
+            appearanceMode = state.appearanceMode,
+            accentTheme = state.accentTheme,
+            preferredGenres = state.preferredGenres,
+            isGridView = state.exploreFilter.isGridView
+        )
         _uiState.update { it.copy(isEditingTheme = true) }
     }
 
     fun closeThemeEditor() {
-        _uiState.update { it.copy(isEditingTheme = false) }
+        val backup = themeEditBackup
+        themeEditBackup = null
+        if (backup != null) {
+            sessionStore.saveAppearanceMode(backup.appearanceMode.name)
+            sessionStore.saveAccentTheme(backup.accentTheme.name)
+            _uiState.update { state ->
+                state.copy(
+                    isEditingTheme = false,
+                    appearanceMode = backup.appearanceMode,
+                    accentTheme = backup.accentTheme,
+                    preferredGenres = backup.preferredGenres,
+                    exploreFilter = state.exploreFilter.copy(isGridView = backup.isGridView)
+                )
+            }
+        } else {
+            _uiState.update { it.copy(isEditingTheme = false) }
+        }
     }
 
     // ====================
@@ -944,6 +1052,12 @@ class AnimWatchViewModel(
     // ====================
 
     fun updateApiBaseUrl(rawUrl: String) {
+        if (!KumanimeApiClient.isValidBaseUrl(rawUrl)) {
+            emitMessage("Format URL server tidak valid")
+            return
+        }
+        loadMoreJob?.cancel()
+        prefetchJob?.cancel()
         val normalized = KumanimeApiClient.normalizeBaseUrl(rawUrl)
         sessionStore.saveApiBaseUrl(normalized)
         _uiState.update { state ->
@@ -961,10 +1075,15 @@ class AnimWatchViewModel(
     fun setUseLiveApi(enabled: Boolean) {
         if (!enabled) {
             apiSyncJob?.cancel()
+            loadMoreJob?.cancel()
+            prefetchJob?.cancel()
             _uiState.update { state ->
                 state.copy(
                     allAnime = repository.getAllAnime(),
                     genres = repository.getAllGenres(),
+                    isLoadingMoreCatalog = false,
+                    hasMoreCatalog = false,
+                    catalogLoadError = false,
                     apiConfig = state.apiConfig.copy(
                         useLiveApi = false,
                         status = ApiConnectionStatus.DEMO_LOCAL,
@@ -987,6 +1106,8 @@ class AnimWatchViewModel(
         if (!config.useLiveApi) return
 
         apiSyncJob?.cancel()
+        loadMoreJob?.cancel()
+        prefetchJob?.cancel()
         apiSyncJob = viewModelScope.launch {
             _uiState.update { state ->
                 state.copy(
@@ -1006,7 +1127,9 @@ class AnimWatchViewModel(
                     .distinct()
                     .ifEmpty { repository.getAllGenres() }
 
+                var cleanedReminders: Set<String> = emptySet()
                 _uiState.update { state ->
+                    if (!state.apiConfig.useLiveApi) return@update state
                     val downloadedIds = state.downloads.map { it.animeId }.toSet()
                     val preservedSavedRemote = state.allAnime.filter { existing ->
                         existing.isRemote && existing.id !in remoteIdSet &&
@@ -1015,22 +1138,28 @@ class AnimWatchViewModel(
                                 state.watchHistory.any { h -> h.animeId == existing.id })
                     }
                     val finalCatalog = remoteItems + preservedSavedRemote
+                    val nextReminders = state.reminders.filterNot { it in mockIds }.toSet()
+                    cleanedReminders = nextReminders
                     state.copy(
                         allAnime = finalCatalog,
                         genres = dynamicGenres,
                         watchlist = state.watchlist.filterKeys { it !in mockIds },
                         watchedEpisodes = state.watchedEpisodes.filterKeys { it !in mockIds },
                         watchHistory = state.watchHistory.filterNot { it.animeId in mockIds },
-                        reminders = state.reminders.filterNot { it in mockIds }.toSet(),
+                        reminders = nextReminders,
                         catalogPageLoaded = 1,
                         hasMoreCatalog = true,
                         isLoadingMoreCatalog = false,
+                        catalogLoadError = false,
                         apiConfig = state.apiConfig.copy(
                             status = ApiConnectionStatus.CONNECTED,
                             lastSyncMessage = "Terhubung (${remoteItems.size} judul)",
                             remoteCount = remoteItems.size
                         )
                     )
+                }
+                if (cleanedReminders != _uiState.value.reminders) {
+                    sessionStore.saveReminderAnimeIds(_uiState.value.reminders)
                 }
                 rebuildLiveNotifications(triggerSystemPush = true)
                 if (!silentIfOffline) {
@@ -1043,6 +1172,9 @@ class AnimWatchViewModel(
                 val reason = err.localizedMessage?.take(72) ?: "Server tidak dapat dijangkau"
                 _uiState.update { state ->
                     state.copy(
+                        isLoadingMoreCatalog = false,
+                        hasMoreCatalog = false,
+                        catalogLoadError = true,
                         apiConfig = state.apiConfig.copy(
                             status = ApiConnectionStatus.OFFLINE_FALLBACK,
                             lastSyncMessage = "Fallback lokal ($reason)",
@@ -1057,9 +1189,14 @@ class AnimWatchViewModel(
         }
     }
 
+    fun retryLoadMoreCatalog() {
+        _uiState.update { it.copy(hasMoreCatalog = true, catalogLoadError = false) }
+        loadMoreCatalog(silent = false)
+    }
+
     fun loadMoreCatalog(silent: Boolean = true) {
         val state = _uiState.value
-        if (!state.apiConfig.useLiveApi || state.isLoadingMoreCatalog || !state.hasMoreCatalog) return
+        if (!state.apiConfig.useLiveApi || state.isLoadingMoreCatalog || !state.hasMoreCatalog || state.catalogLoadError) return
         val nextPage = state.catalogPageLoaded + 1
         if (nextPage > 10) {
             _uiState.update { it.copy(hasMoreCatalog = false) }
@@ -1068,12 +1205,15 @@ class AnimWatchViewModel(
 
         loadMoreJob?.cancel()
         loadMoreJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingMoreCatalog = true) }
+            _uiState.update { it.copy(isLoadingMoreCatalog = true, catalogLoadError = false) }
             val result = remoteDataSource.fetchCatalogPage(state.apiConfig.baseUrl, nextPage)
             result.onSuccess { pageItems ->
                 var addedCount = 0
                 var totalSize = 0
                 _uiState.update { cur ->
+                    if (!cur.apiConfig.useLiveApi) {
+                        return@update cur.copy(isLoadingMoreCatalog = false)
+                    }
                     val merged = LinkedHashMap<String, Anime>()
                     cur.allAnime.forEach { merged[it.id] = it }
                     pageItems.forEach { item ->
@@ -1091,12 +1231,14 @@ class AnimWatchViewModel(
                     val finalList = merged.values.toList()
                     totalSize = finalList.size
                     val dynamicGenres = finalList.flatMap { it.genres }.distinct().ifEmpty { cur.genres }
+                    val bestPage = maxOf(cur.catalogPageLoaded, nextPage)
                     cur.copy(
                         allAnime = finalList,
                         genres = dynamicGenres,
-                        catalogPageLoaded = nextPage,
+                        catalogPageLoaded = bestPage,
                         isLoadingMoreCatalog = false,
-                        hasMoreCatalog = addedCount > 0 && nextPage < 10,
+                        hasMoreCatalog = addedCount > 0 && bestPage < 10,
+                        catalogLoadError = false,
                         apiConfig = cur.apiConfig.copy(
                             lastSyncMessage = "Terhubung ($totalSize judul)",
                             remoteCount = totalSize
@@ -1110,7 +1252,13 @@ class AnimWatchViewModel(
                     )
                 }
             }.onFailure {
-                _uiState.update { it.copy(isLoadingMoreCatalog = false) }
+                _uiState.update {
+                    it.copy(
+                        isLoadingMoreCatalog = false,
+                        hasMoreCatalog = false,
+                        catalogLoadError = true
+                    )
+                }
                 if (!silent) {
                     emitMessage("Gagal memuat halaman katalog berikutnya")
                 }
@@ -1123,10 +1271,12 @@ class AnimWatchViewModel(
     // ====================
 
     fun selectTab(tab: MainTab) {
+        detailFetchJob?.cancel()
         _uiState.update { state ->
             state.copy(
                 currentTab = tab,
-                backStack = listOf(AppRoute.TabsRoot)
+                backStack = listOf(AppRoute.TabsRoot),
+                isLoadingDetail = false
             )
         }
     }
@@ -1156,17 +1306,22 @@ class AnimWatchViewModel(
     }
 
     private fun prefetchRemainingOfficialSeasons(baseUrl: String) {
-        viewModelScope.launch {
+        prefetchJob?.cancel()
+        prefetchJob = viewModelScope.launch {
             for (page in 2..10) {
                 val cur = _uiState.value
-                if (!cur.apiConfig.useLiveApi || cur.catalogPageLoaded >= page) continue
+                if (!cur.apiConfig.useLiveApi) break
+                if (cur.catalogPageLoaded >= page || cur.isLoadingMoreCatalog) continue
                 val res = remoteDataSource.fetchCatalogPage(baseUrl, page)
                 val pageItems = res.getOrNull() ?: break
                 if (pageItems.isEmpty()) {
-                    _uiState.update { it.copy(hasMoreCatalog = false, isLoadingMoreCatalog = false) }
+                    _uiState.update { state ->
+                        if (!state.apiConfig.useLiveApi) state else state.copy(hasMoreCatalog = false, isLoadingMoreCatalog = false)
+                    }
                     break
                 }
                 _uiState.update { state ->
+                    if (!state.apiConfig.useLiveApi) return@update state
                     val merged = LinkedHashMap<String, Anime>()
                     state.allAnime.forEach { merged[it.id] = it }
                     var addedCount = 0
@@ -1184,12 +1339,14 @@ class AnimWatchViewModel(
                     }
                     val finalList = merged.values.toList()
                     val dynamicGenres = finalList.flatMap { it.genres }.distinct().ifEmpty { state.genres }
+                    val bestPage = maxOf(state.catalogPageLoaded, page)
                     state.copy(
                         allAnime = finalList,
                         genres = dynamicGenres,
-                        catalogPageLoaded = maxOf(state.catalogPageLoaded, page),
+                        catalogPageLoaded = bestPage,
                         isLoadingMoreCatalog = false,
-                        hasMoreCatalog = addedCount > 0 && page < 10,
+                        hasMoreCatalog = addedCount > 0 && bestPage < 10,
+                        catalogLoadError = false,
                         apiConfig = state.apiConfig.copy(
                             lastSyncMessage = "Terhubung (${finalList.size} judul)",
                             remoteCount = finalList.size
@@ -1197,7 +1354,10 @@ class AnimWatchViewModel(
                     )
                 }
             }
-            _uiState.update { it.copy(hasMoreCatalog = false, isLoadingMoreCatalog = false) }
+            _uiState.update { state ->
+                if (!state.apiConfig.useLiveApi) state
+                else state.copy(hasMoreCatalog = false, isLoadingMoreCatalog = false)
+            }
         }
     }
 
@@ -1229,6 +1389,7 @@ class AnimWatchViewModel(
 
     private fun fetchRemoteDetailBySlug(slug: String) {
         val baseUrl = _uiState.value.apiConfig.baseUrl
+        val mySeq = ++detailRequestSeq
         detailFetchJob?.cancel()
         detailFetchJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingDetail = true) }
@@ -1244,12 +1405,17 @@ class AnimWatchViewModel(
                     state.copy(
                         allAnime = merged,
                         backStack = updatedBackStack,
-                        isLoadingDetail = false
+                        isLoadingDetail = if (mySeq == detailRequestSeq) false else state.isLoadingDetail
                     )
                 }
+                if (detailed.id != slug) {
+                    fetchRemoteCommentsFor(detailed.id)
+                }
             }.onFailure {
-                _uiState.update { it.copy(isLoadingDetail = false) }
-                emitMessage("Detail anime tidak dapat dimuat dari server")
+                if (mySeq == detailRequestSeq) {
+                    _uiState.update { it.copy(isLoadingDetail = false) }
+                    emitMessage("Detail anime tidak dapat dimuat dari server")
+                }
             }
         }
     }
@@ -1270,6 +1436,7 @@ class AnimWatchViewModel(
 
     private fun fetchRemoteDetailFor(anime: Anime) {
         val baseUrl = _uiState.value.apiConfig.baseUrl
+        val mySeq = ++detailRequestSeq
         detailFetchJob?.cancel()
         detailFetchJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingDetail = true) }
@@ -1287,12 +1454,17 @@ class AnimWatchViewModel(
                     state.copy(
                         allAnime = updatedList,
                         backStack = updatedBackStack,
-                        isLoadingDetail = false
+                        isLoadingDetail = if (mySeq == detailRequestSeq) false else state.isLoadingDetail
                     )
                 }
+                if (detailed.id != anime.id) {
+                    fetchRemoteCommentsFor(detailed.id)
+                }
             }.onFailure {
-                _uiState.update { it.copy(isLoadingDetail = false) }
-                emitMessage("Gagal memuat detail anime dari server")
+                if (mySeq == detailRequestSeq) {
+                    _uiState.update { it.copy(isLoadingDetail = false) }
+                    emitMessage("Gagal memuat detail anime dari server")
+                }
             }
         }
     }
@@ -1373,7 +1545,10 @@ class AnimWatchViewModel(
             return true
         }
         if (state.backStack.size > 1) {
-            _uiState.update { it.copy(backStack = it.backStack.dropLast(1)) }
+            if (state.currentRoute is AppRoute.AnimeDetail) {
+                detailFetchJob?.cancel()
+            }
+            _uiState.update { it.copy(backStack = it.backStack.dropLast(1), isLoadingDetail = false) }
             return true
         }
         if (state.currentTab != MainTab.HOME) {
@@ -1403,7 +1578,12 @@ class AnimWatchViewModel(
         return anime.episodes.firstOrNull()
     }
 
-    fun playAnime(animeId: String, episodeId: String? = null, startFromZero: Boolean = false) {
+    fun playAnime(
+        animeId: String,
+        episodeId: String? = null,
+        startFromZero: Boolean = false,
+        preserveFullscreen: Boolean = false
+    ) {
         val state = _uiState.value
         val anime = state.allAnime.find { it.id == animeId }
         val historyForAnime = state.watchHistory.find { it.animeId == animeId }
@@ -1421,7 +1601,7 @@ class AnimWatchViewModel(
                     }
                     val target = resolveTargetEpisode(detailed, episodeId, historyForAnime)
                     if (target != null) {
-                        startPlayerWithEpisode(detailed, target, startFromZero)
+                        startPlayerWithEpisode(detailed, target, startFromZero, preserveFullscreen)
                     } else {
                         emitMessage("Belum ada episode tersedia untuk ${detailed.title}")
                     }
@@ -1451,7 +1631,7 @@ class AnimWatchViewModel(
                     }
                     val target = resolveTargetEpisode(detailed, episodeId, historyForAnime)
                     if (target != null) {
-                        startPlayerWithEpisode(detailed, target, startFromZero)
+                        startPlayerWithEpisode(detailed, target, startFromZero, preserveFullscreen)
                     } else {
                         emitMessage("Belum ada episode tersedia untuk ${detailed.title}")
                     }
@@ -1462,11 +1642,20 @@ class AnimWatchViewModel(
             return
         }
 
-        val targetEpisode = resolveTargetEpisode(anime, episodeId, historyForAnime) ?: return
-        startPlayerWithEpisode(anime, targetEpisode, startFromZero)
+        val targetEpisode = resolveTargetEpisode(anime, episodeId, historyForAnime)
+        if (targetEpisode == null) {
+            emitMessage("Belum ada episode tersedia untuk ${anime.title}")
+            return
+        }
+        startPlayerWithEpisode(anime, targetEpisode, startFromZero, preserveFullscreen)
     }
 
-    private fun startPlayerWithEpisode(anime: Anime, targetEpisode: Episode, startFromZero: Boolean) {
+    private fun startPlayerWithEpisode(
+        anime: Anime,
+        targetEpisode: Episode,
+        startFromZero: Boolean,
+        preserveFullscreen: Boolean = false
+    ) {
         val state = _uiState.value
         val historyForAnime = state.watchHistory.find { it.animeId == anime.id }
 
@@ -1495,6 +1684,7 @@ class AnimWatchViewModel(
             episodeTitle = targetEpisode.title,
             isExpanded = true,
             isPlaying = true,
+            isFullscreen = if (preserveFullscreen) (state.playerSession?.isFullscreen == true) else false,
             positionSeconds = resumePos,
             durationSeconds = targetEpisode.durationSeconds,
             bufferedSeconds = (resumePos + 220).coerceAtMost(targetEpisode.durationSeconds),
@@ -1528,6 +1718,7 @@ class AnimWatchViewModel(
 
     private fun fetchRemoteEpisodeStream(anime: Anime, episode: Episode) {
         val baseUrl = _uiState.value.apiConfig.baseUrl
+        val mySeq = ++streamRequestSeq
         streamFetchJob?.cancel()
         streamFetchJob = viewModelScope.launch {
             val result = remoteDataSource.fetchEpisodeStream(baseUrl, episode)
@@ -1559,14 +1750,16 @@ class AnimWatchViewModel(
                     emitMessage("Link stream tidak tersedia, memakai mode simulasi")
                 }
             }.onFailure {
-                _uiState.update { cur ->
-                    val curSession = cur.playerSession
-                    if (curSession?.episodeId == episode.id) {
-                        cur.copy(playerSession = curSession.copy(isLoadingStream = false))
-                    } else cur
+                if (mySeq == streamRequestSeq) {
+                    _uiState.update { cur ->
+                        val curSession = cur.playerSession
+                        if (curSession?.episodeId == episode.id) {
+                            cur.copy(playerSession = curSession.copy(isLoadingStream = false))
+                        } else cur
+                    }
+                    syncPlayerTickerForSession(_uiState.value.playerSession)
+                    emitMessage("Gagal memuat link video dari server")
                 }
-                syncPlayerTickerForSession(_uiState.value.playerSession)
-                emitMessage("Gagal memuat link video dari server")
             }
         }
     }
@@ -1595,18 +1788,27 @@ class AnimWatchViewModel(
         syncPlayerTickerForSession(_uiState.value.playerSession)
     }
 
+    private fun findAdjacentEpisode(anime: Anime, session: PlayerSession, offset: Int): Episode? {
+        val sorted = anime.episodes.sortedBy { it.number }
+        val idxById = sorted.indexOfFirst { it.id == session.episodeId }
+        val idx = if (idxById >= 0) idxById else sorted.indexOfFirst { it.number == session.episodeNumber }
+        if (idx < 0) return null
+        return sorted.getOrNull(idx + offset)
+    }
+
     fun seekTo(seconds: Int) {
         _uiState.update { state ->
             val session = state.playerSession ?: return@update state
-            val clamped = seconds.coerceIn(0, session.durationSeconds)
+            val maxDur = session.durationSeconds.coerceAtLeast(0)
+            val clamped = seconds.coerceIn(0, maxDur)
             val updated = session.copy(
                 positionSeconds = clamped,
-                bufferedSeconds = maxOf(session.bufferedSeconds, (clamped + 180).coerceAtMost(session.durationSeconds)),
+                bufferedSeconds = maxOf(session.bufferedSeconds, (clamped + 180).coerceAtMost(maxDur)),
                 autoNextCountdownSec = null
             )
             state.copy(playerSession = updated)
         }
-        syncCurrentProgressToHistory()
+        syncCurrentProgressToHistory(forceSync = true)
     }
 
     fun seekBy(deltaSeconds: Int) {
@@ -1625,15 +1827,20 @@ class AnimWatchViewModel(
     fun playNextEpisode() {
         val session = _uiState.value.playerSession ?: return
         val anime = _uiState.value.allAnime.find { it.id == session.animeId } ?: return
-        val nextEp = anime.episodes.find { it.number == session.episodeNumber + 1 }
+        val nextEp = findAdjacentEpisode(anime, session, +1)
         if (nextEp != null) {
-            playAnime(anime.id, nextEp.id, startFromZero = true)
+            playAnime(anime.id, nextEp.id, startFromZero = true, preserveFullscreen = session.isFullscreen)
         } else {
             val nextSeason = FranchiseSeasonHelper.findNextSeason(anime, _uiState.value.allAnime)
             if (nextSeason != null) {
+                val firstEpId = nextSeason.episodes.minByOrNull { it.number }?.id
                 emitMessage("Melanjutkan ke ${nextSeason.title}")
-                playAnime(nextSeason.id, null, startFromZero = true)
+                playAnime(nextSeason.id, firstEpId, startFromZero = true, preserveFullscreen = session.isFullscreen)
             } else {
+                _uiState.update { cur ->
+                    val ps = cur.playerSession ?: return@update cur
+                    cur.copy(playerSession = ps.copy(autoNextCountdownSec = null))
+                }
                 emitMessage("Sudah di episode terakhir yang tersedia")
             }
         }
@@ -1642,11 +1849,87 @@ class AnimWatchViewModel(
     fun playPreviousEpisode() {
         val session = _uiState.value.playerSession ?: return
         val anime = _uiState.value.allAnime.find { it.id == session.animeId } ?: return
-        val prevEp = anime.episodes.find { it.number == session.episodeNumber - 1 }
+        val prevEp = findAdjacentEpisode(anime, session, -1)
         if (prevEp != null) {
-            playAnime(anime.id, prevEp.id, startFromZero = true)
+            playAnime(anime.id, prevEp.id, startFromZero = true, preserveFullscreen = session.isFullscreen)
         } else {
             emitMessage("Sudah di episode pertama")
+        }
+    }
+
+    fun updateWebPlaybackProgress(positionSeconds: Int, durationSeconds: Int) {
+        val state = _uiState.value
+        val session = state.playerSession ?: return
+        val safeDur = if (durationSeconds > 0) durationSeconds else session.durationSeconds.coerceAtLeast(1)
+        val safePos = positionSeconds.coerceIn(0, safeDur)
+        _uiState.update { cur ->
+            val ps = cur.playerSession ?: return@update cur
+            if (ps.episodeId != session.episodeId) return@update cur
+            cur.copy(
+                playerSession = ps.copy(
+                    positionSeconds = safePos,
+                    durationSeconds = safeDur,
+                    bufferedSeconds = safeDur
+                )
+            )
+        }
+        val anime = state.allAnime.find { it.id == session.animeId } ?: return
+        val ep = anime.episodes.find { it.id == session.episodeId } ?: return
+        recordWatchProgress(anime, ep, safePos)
+    }
+
+    fun onWebEpisodeEnded() {
+        val state = _uiState.value
+        val session = state.playerSession ?: return
+        val anime = state.allAnime.find { it.id == session.animeId } ?: return
+        val ep = anime.episodes.find { it.id == session.episodeId }
+        if (ep != null) {
+            recordWatchProgress(anime, ep, session.durationSeconds, forceSync = true)
+        }
+        markEpisodeCompleted(anime.id, session.episodeNumber)
+        val hasNext = findAdjacentEpisode(anime, session, +1) != null ||
+            FranchiseSeasonHelper.findNextSeason(anime, state.allAnime) != null
+        if (state.settings.autoPlayNext && hasNext) {
+            _uiState.update { cur ->
+                val ps = cur.playerSession ?: return@update cur
+                cur.copy(
+                    playerSession = ps.copy(
+                        positionSeconds = ps.durationSeconds,
+                        isPlaying = false,
+                        autoNextCountdownSec = 5
+                    )
+                )
+            }
+            startAutoNextCountdownForWeb()
+        } else {
+            _uiState.update { cur ->
+                val ps = cur.playerSession ?: return@update cur
+                cur.copy(playerSession = ps.copy(positionSeconds = ps.durationSeconds, isPlaying = false))
+            }
+        }
+    }
+
+    private fun startAutoNextCountdownForWeb() {
+        playerTickerJob?.cancel()
+        playerTickerJob = viewModelScope.launch {
+            while (true) {
+                delay(1000L)
+                val session = _uiState.value.playerSession ?: break
+                val countdown = session.autoNextCountdownSec ?: break
+                if (countdown <= 1) {
+                    _uiState.update { cur ->
+                        val ps = cur.playerSession ?: return@update cur
+                        cur.copy(playerSession = ps.copy(autoNextCountdownSec = null))
+                    }
+                    playNextEpisode()
+                    break
+                } else {
+                    _uiState.update { cur ->
+                        val ps = cur.playerSession ?: return@update cur
+                        cur.copy(playerSession = ps.copy(autoNextCountdownSec = countdown - 1))
+                    }
+                }
+            }
         }
     }
 
@@ -1659,9 +1942,20 @@ class AnimWatchViewModel(
     }
 
     fun minimizePlayer() {
+        syncCurrentProgressToHistory(forceSync = true)
         _uiState.update { state ->
             val session = state.playerSession ?: return@update state
-            state.copy(playerSession = session.copy(isExpanded = false, isFullscreen = false))
+            val isWebMode = session.useWebStreamView && session.streamUrl.isNotBlank()
+            state.copy(
+                playerSession = session.copy(
+                    isExpanded = false,
+                    isFullscreen = false,
+                    isPlaying = if (isWebMode) false else session.isPlaying
+                )
+            )
+        }
+        if (_uiState.value.playerSession?.isPlaying == false) {
+            playerTickerJob?.cancel()
         }
     }
 
@@ -1673,6 +1967,7 @@ class AnimWatchViewModel(
     }
 
     fun closePlayer() {
+        syncCurrentProgressToHistory(forceSync = true)
         playerTickerJob?.cancel()
         _uiState.update { it.copy(playerSession = null) }
     }
@@ -1746,10 +2041,10 @@ class AnimWatchViewModel(
         if (session.selectedSubtitleId == "off") return null
         val anime = _uiState.value.allAnime.find { it.id == session.animeId } ?: return null
         val cues: List<SubtitleCue> = repository.getSubtitleCues(anime.title, session.episodeNumber)
-        val cue = cues.find { session.positionSeconds in it.startSec..it.endSec } ?: cues.lastOrNull()
+        val cue = cues.find { session.positionSeconds in it.startSec..it.endSec } ?: return null
         return when (session.selectedSubtitleId) {
-            "en" -> cue?.englishText
-            else -> cue?.indoText
+            "en" -> cue.englishText
+            else -> cue.indoText
         }
     }
 
@@ -1765,7 +2060,12 @@ class AnimWatchViewModel(
                     val countdown = session.autoNextCountdownSec
                     if (countdown != null) {
                         if (countdown <= 1) {
+                            _uiState.update { s ->
+                                val cur = s.playerSession ?: return@update s
+                                s.copy(playerSession = cur.copy(autoNextCountdownSec = null))
+                            }
                             playNextEpisode()
+                            break
                         } else {
                             _uiState.update { s ->
                                 val cur = s.playerSession ?: return@update s
@@ -1789,9 +2089,15 @@ class AnimWatchViewModel(
 
                 if (nextPos >= session.durationSeconds) {
                     if (anime != null) {
+                        if (episode != null) {
+                            recordWatchProgress(anime, episode, session.durationSeconds, forceSync = true)
+                        }
                         markEpisodeCompleted(anime.id, session.episodeNumber)
                     }
-                    val hasNext = anime?.episodes?.any { it.number == session.episodeNumber + 1 } == true
+                    val hasNext = anime != null && (
+                        findAdjacentEpisode(anime, session, +1) != null ||
+                            FranchiseSeasonHelper.findNextSeason(anime, state.allAnime) != null
+                        )
                     if (state.settings.autoPlayNext && hasNext) {
                         _uiState.update { s ->
                             val cur = s.playerSession ?: return@update s
@@ -1833,15 +2139,20 @@ class AnimWatchViewModel(
         }
     }
 
-    private fun syncCurrentProgressToHistory() {
+    private fun syncCurrentProgressToHistory(forceSync: Boolean = false) {
         val state = _uiState.value
         val session = state.playerSession ?: return
         val anime = state.allAnime.find { it.id == session.animeId } ?: return
         val ep = anime.episodes.find { it.id == session.episodeId } ?: return
-        recordWatchProgress(anime, ep, session.positionSeconds)
+        recordWatchProgress(anime, ep, session.positionSeconds, forceSync = forceSync)
     }
 
-    private fun recordWatchProgress(anime: Anime, episode: Episode, positionSeconds: Int) {
+    private fun recordWatchProgress(
+        anime: Anime,
+        episode: Episode,
+        positionSeconds: Int,
+        forceSync: Boolean = false
+    ) {
         _uiState.update { state ->
             val updatedItem = WatchProgress(
                 animeId = anime.id,
@@ -1859,7 +2170,8 @@ class AnimWatchViewModel(
         val token = authToken
         val state = _uiState.value
         val now = System.currentTimeMillis()
-        val shouldSync = lastHistorySyncAnimeId != anime.id ||
+        val shouldSync = forceSync ||
+            lastHistorySyncAnimeId != anime.id ||
             lastHistorySyncEpisodeId != episode.id ||
             (now - lastHistorySyncAtMs) >= 10_000L
         if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession && shouldSync) {
@@ -1930,6 +2242,7 @@ class AnimWatchViewModel(
     }
 
     private suspend fun executeRemoteSearch(baseUrl: String, query: String) {
+        val mySeq = ++searchRequestSeq
         _uiState.update { it.copy(isSearchingRemote = true) }
         val res = remoteDataSource.searchAnime(baseUrl, query)
         res.onSuccess { found ->
@@ -1942,13 +2255,18 @@ class AnimWatchViewModel(
                             merged[item.id] = item
                         }
                     }
-                    state.copy(allAnime = merged.values.toList(), isSearchingRemote = false)
+                    state.copy(
+                        allAnime = merged.values.toList(),
+                        isSearchingRemote = if (mySeq == searchRequestSeq) false else state.isSearchingRemote
+                    )
                 }
-            } else {
+            } else if (mySeq == searchRequestSeq) {
                 _uiState.update { it.copy(isSearchingRemote = false) }
             }
         }.onFailure {
-            _uiState.update { it.copy(isSearchingRemote = false) }
+            if (mySeq == searchRequestSeq) {
+                _uiState.update { it.copy(isSearchingRemote = false) }
+            }
         }
     }
 
@@ -2020,6 +2338,17 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(
                 exploreFilter = ExploreFilterState(isGridView = state.exploreFilter.isGridView)
+            )
+        }
+    }
+
+    fun resetExploreGenreFilter() {
+        _uiState.update { state ->
+            state.copy(
+                exploreFilter = state.exploreFilter.copy(
+                    selectedGenres = emptySet(),
+                    onlyPlayable = false
+                )
             )
         }
     }
@@ -2106,29 +2435,25 @@ class AnimWatchViewModel(
     fun markEpisodeCompleted(animeId: String, episodeNumber: Int) {
         val anime = _uiState.value.allAnime.find { it.id == animeId } ?: return
         val maxEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
-        val lastAvailableEp = anime.episodes.maxOfOrNull { it.number } ?: maxEps
         val currentWatched = _uiState.value.watchedEpisodes[animeId] ?: 0
-        val reachedEnd = episodeNumber >= maxEps || (anime.episodes.isNotEmpty() && episodeNumber >= lastAvailableEp)
+        val reachedEnd = anime.status == AnimeStatus.COMPLETED && episodeNumber >= maxEps
         val nextWatched = if (reachedEnd) maxEps else maxOf(currentWatched, episodeNumber).coerceIn(1, maxEps)
         val existingCat = _uiState.value.watchlist[animeId]
         val nextCategory = when {
             reachedEnd -> WatchlistCategory.COMPLETED
-            else -> existingCat
+            else -> existingCat ?: WatchlistCategory.WATCHING
         }
 
         _uiState.update { state ->
-            val nextWatchlist = if (nextCategory != null) {
-                state.watchlist + (animeId to nextCategory)
-            } else state.watchlist
             state.copy(
                 watchedEpisodes = state.watchedEpisodes + (animeId to nextWatched),
-                watchlist = nextWatchlist
+                watchlist = state.watchlist + (animeId to nextCategory)
             )
         }
 
         val token = authToken
         val state = _uiState.value
-        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession && nextCategory != null) {
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
             viewModelScope.launch {
                 remoteDataSource.syncWatchlist(
                     baseUrl = state.apiConfig.baseUrl,
@@ -2331,25 +2656,29 @@ class AnimWatchViewModel(
         downloadJobs[episode.id]?.cancel()
         downloadJobs[episode.id] = viewModelScope.launch {
             val cues = repository.getSubtitleCues(anime.title, episode.number)
-            val result = storageGateway.downloadEpisodePackage(
-                anime = anime,
-                episode = episode,
-                qualityLabel = qualityLabel,
-                subtitleCues = cues
-            ) { progress, bytesWritten ->
-                _uiState.update { state ->
-                    state.copy(
-                        downloads = state.downloads.map { item ->
-                            if (item.episodeId == episode.id) {
-                                item.copy(
-                                    progress = progress.coerceIn(0.05f, 0.99f),
-                                    sizeBytes = bytesWritten,
-                                    totalMb = (bytesWritten / (1024L * 1024L)).toInt().coerceAtLeast(1)
-                                )
-                            } else item
-                        }
-                    )
+            val result = try {
+                storageGateway.downloadEpisodePackage(
+                    anime = anime,
+                    episode = episode,
+                    qualityLabel = qualityLabel,
+                    subtitleCues = cues
+                ) { progress, bytesWritten ->
+                    _uiState.update { state ->
+                        state.copy(
+                            downloads = state.downloads.map { item ->
+                                if (item.episodeId == episode.id) {
+                                    item.copy(
+                                        progress = progress.coerceIn(0.05f, 0.99f),
+                                        sizeBytes = bytesWritten,
+                                        totalMb = (bytesWritten / (1024L * 1024L)).toInt()
+                                    )
+                                } else item
+                            }
+                        )
+                    }
                 }
+            } catch (ce: CancellationException) {
+                throw ce
             }
 
             result.onSuccess { saved ->
@@ -2363,7 +2692,7 @@ class AnimWatchViewModel(
                                     progress = 1.0f,
                                     status = DownloadStatus.COMPLETED,
                                     sizeBytes = saved.bytesWritten,
-                                    totalMb = (saved.bytesWritten / (1024L * 1024L)).toInt().coerceAtLeast(1),
+                                    totalMb = (saved.bytesWritten / (1024L * 1024L)).toInt(),
                                     localPath = saved.localPath
                                 )
                             } else item
@@ -2374,6 +2703,7 @@ class AnimWatchViewModel(
                     "${anime.title.substringBefore(":")} Ep ${episode.number} tersimpan (${formatStorageBytes(saved.bytesWritten)})"
                 )
             }.onFailure { err ->
+                if (err is CancellationException) throw err
                 _uiState.update { state ->
                     state.copy(
                         downloads = state.downloads.map { item ->
@@ -2502,8 +2832,7 @@ class AnimWatchViewModel(
     fun refreshLatestUpdates() {
         val state = _uiState.value
         if (!state.apiConfig.useLiveApi) {
-            rebuildLiveNotifications(triggerSystemPush = false)
-            emitMessage("Menampilkan pembaruan dari katalog saat ini")
+            emitMessage("Menampilkan pembaruan dari katalog lokal saat ini")
             return
         }
         viewModelScope.launch {
@@ -2514,9 +2843,10 @@ class AnimWatchViewModel(
                         val merged = LinkedHashMap<String, Anime>()
                         cur.allAnime.forEach { merged[it.id] = it }
                         freshUpdates.forEach { aired ->
-                            val mediaSuffix = "-${aired.id.substringAfterLast('-')}"
+                            val aniNumericId = Regex("-(\\d{4,})$").find(aired.id)?.groupValues?.getOrNull(1)
+                            val mediaSuffix = aniNumericId?.let { "-$it" }
                             val existingEntry = merged.entries.firstOrNull { (k, _) ->
-                                k == aired.id || (mediaSuffix.length > 2 && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
+                                k == aired.id || (mediaSuffix != null && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
                             }
                             if (existingEntry == null) {
                                 merged[aired.id] = aired
@@ -2646,9 +2976,25 @@ class AnimWatchViewModel(
             val unread = liveItems.filter { !it.isRead }
             val topSig = unread.take(3).joinToString("|") { it.id }
             if (unread.isNotEmpty() && topSig.isNotBlank() && topSig != sessionStore.getLastSystemNotifiedSignature()) {
-                sessionStore.saveLastSystemNotifiedSignature(topSig)
                 _systemNotificationBatch.tryEmit(unread.take(4))
             }
+        }
+    }
+
+    fun markSystemNotificationDispatched(items: List<NotificationItem>) {
+        val topSig = items.take(3).joinToString("|") { it.id }
+        if (topSig.isNotBlank()) {
+            sessionStore.saveLastSystemNotifiedSignature(topSig)
+        }
+    }
+
+    fun onNotificationPermissionGranted() {
+        val state = _uiState.value
+        if (!state.settings.episodeNotifications) return
+        val unread = state.notifications.filter { !it.isRead }
+        val topSig = unread.take(3).joinToString("|") { it.id }
+        if (unread.isNotEmpty() && topSig.isNotBlank() && topSig != sessionStore.getLastSystemNotifiedSignature()) {
+            _systemNotificationBatch.tryEmit(unread.take(4))
         }
     }
 
@@ -2662,6 +3008,9 @@ class AnimWatchViewModel(
                 }
             )
         }
+        if (_uiState.value.unreadNotificationCount == 0) {
+            _systemNotificationCancelEvent.tryEmit(Unit)
+        }
     }
 
     fun markAllNotificationsRead() {
@@ -2671,6 +3020,7 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(notifications = state.notifications.map { it.copy(isRead = true) })
         }
+        _systemNotificationCancelEvent.tryEmit(Unit)
     }
 
     // ====================
@@ -2711,7 +3061,7 @@ class AnimWatchViewModel(
                     favoriteGenre = cleanFavGenre
                 ),
                 comments = state.comments.map { c ->
-                    if (c.isOwn || c.author.equals(oldName, ignoreCase = true)) {
+                    if (c.isOwn) {
                         c.copy(
                             author = cleanName,
                             authorHandle = cleanHandle,

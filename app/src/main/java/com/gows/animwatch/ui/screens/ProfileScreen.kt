@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -204,10 +205,8 @@ fun ProfileScreen(
     var showSubtitleLangDialog by remember { mutableStateOf(false) }
     var showSubtitleSizeDialog by remember { mutableStateOf(false) }
 
-    val userCommentCount = remember(uiState.comments, profile.displayName) {
-        uiState.comments.count {
-            it.isOwn || it.author.equals(profile.displayName, ignoreCase = true)
-        }
+    val userCommentCount = remember(uiState.comments) {
+        uiState.comments.count { it.isOwn }
     }
 
     LazyColumn(
@@ -349,10 +348,14 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
+                        val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
                         val totalTrackedEps = uiState.watchedEpisodes.values.sum()
-                        val completedCount = uiState.watchlist.values.count { it == WatchlistCategory.COMPLETED }
+                        val visibleSavedCount = uiState.watchlist.keys.count { it in animeById }
+                        val completedCount = uiState.watchlist.entries.count { (id, cat) ->
+                            id in animeById && cat == WatchlistCategory.COMPLETED
+                        }
                         ProfileStatItem("$totalTrackedEps", "Ep Ditonton")
-                        ProfileStatItem("${uiState.watchlist.size}", "Disimpan")
+                        ProfileStatItem("$visibleSavedCount", "Disimpan")
                         ProfileStatItem("$completedCount", "Tamat")
                         ProfileStatItem("$userCommentCount", "Komentar")
                     }
@@ -656,7 +659,7 @@ fun ProfileScreen(
                             icon = Icons.Rounded.Refresh,
                             onClick = {
                                 showAboutDialog = false
-                                onSetUseLiveApi(true)
+                                if (!apiConfig.useLiveApi) onSetUseLiveApi(true) else onSyncApi()
                             },
                             modifier = Modifier.weight(1f),
                             height = 40.dp
@@ -1318,7 +1321,7 @@ private fun SettingRowItem(
             text = title,
             style = MaterialTheme.typography.bodyLarge,
             color = TextPrimary,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f, fill = true),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -1329,7 +1332,8 @@ private fun SettingRowItem(
             fontWeight = FontWeight.SemiBold,
             color = GoldPrimary,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 156.dp)
         )
         Spacer(modifier = Modifier.width(2.dp))
         Icon(

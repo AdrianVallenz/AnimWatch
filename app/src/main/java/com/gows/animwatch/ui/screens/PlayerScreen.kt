@@ -37,6 +37,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -61,6 +63,8 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Forward10
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.HighQuality
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Lock
@@ -140,7 +144,6 @@ import com.gows.animwatch.ui.components.GoldTagChip
 import com.gows.animwatch.ui.components.LedStatusDot
 import com.gows.animwatch.ui.components.TactileInputField
 import com.gows.animwatch.ui.components.TapeReelSpinner
-import com.gows.animwatch.ui.components.WatchlistCategorySheet
 import com.gows.animwatch.ui.components.formatTimeSeconds
 import com.gows.animwatch.ui.state.AnimWatchUiState
 import com.gows.animwatch.ui.state.PlayerSession
@@ -207,6 +210,8 @@ fun PlayerScreen(
     onToggleLock: () -> Unit,
     onToggleFullscreen: () -> Unit,
     onToggleWebStreamView: () -> Unit,
+    onWebProgressUpdate: (positionSec: Int, durationSec: Int) -> Unit = { _, _ -> },
+    onWebEpisodeEnded: () -> Unit = {},
     onEpisodeCompleted: (String, Int) -> Unit,
     onMarkAnimeCompleted: (String) -> Unit,
     onToggleLike: () -> Unit,
@@ -227,9 +232,11 @@ fun PlayerScreen(
     var activeModal by remember { mutableStateOf(PlayerModal.NONE) }
     var showAccessibilitySliders by remember { mutableStateOf(false) }
 
-    val initialBrightness = remember(activity) {
-        val winBr = activity?.window?.attributes?.screenBrightness ?: -1f
-        if (winBr in 0.05f..1.0f) winBr else 0.85f
+    val originalWinBrightness = remember(activity) {
+        activity?.window?.attributes?.screenBrightness ?: -1f
+    }
+    val initialBrightness = remember(originalWinBrightness) {
+        if (originalWinBrightness in 0.05f..1.0f) originalWinBrightness else 1.0f
     }
     val initialVolume = remember(audioManager) {
         val max = (audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15).coerceAtLeast(1)
@@ -237,6 +244,7 @@ fun PlayerScreen(
         (cur.toFloat() / max.toFloat()).coerceIn(0f, 1f)
     }
 
+    var hasAdjustedBrightness by remember(activity) { mutableStateOf(false) }
     var brightnessLevel by remember { mutableFloatStateOf(initialBrightness) }
     var volumeLevel by remember { mutableFloatStateOf(initialVolume) }
     var activeGestureHud by remember { mutableStateOf<String?>(null) }
@@ -244,6 +252,7 @@ fun PlayerScreen(
 
     fun applyBrightness(target: Float) {
         val clamped = target.coerceIn(0.05f, 1.0f)
+        hasAdjustedBrightness = true
         brightnessLevel = clamped
         activity?.window?.let { win ->
             val lp = win.attributes
@@ -277,11 +286,21 @@ fun PlayerScreen(
     var isScrubbing by remember(session.episodeId) { mutableStateOf(false) }
     var scrubSeconds by remember(session.episodeId) { mutableIntStateOf(session.positionSeconds) }
 
-    var commentDraft by remember { mutableStateOf("") }
-    var isSpoilerDraft by remember { mutableStateOf(false) }
-    var filterThisEpisodeOnly by remember { mutableStateOf(false) }
-    var replyTargetAuthor by remember { mutableStateOf<String?>(null) }
-    var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
+    var commentDraft by remember(anime.id) { mutableStateOf("") }
+    var isSpoilerDraft by remember(anime.id) { mutableStateOf(false) }
+    var filterThisEpisodeOnly by remember(anime.id) { mutableStateOf(false) }
+    var replyTargetAuthor by remember(anime.id) { mutableStateOf<String?>(null) }
+    var revealedSpoilers by remember(anime.id) { mutableStateOf(setOf<String>()) }
+
+    DisposableEffect(activity) {
+        onDispose {
+            activity?.window?.let { win ->
+                val lp = win.attributes
+                lp.screenBrightness = originalWinBrightness
+                win.attributes = lp
+            }
+        }
+    }
 
     // Manage landscape orientation, immersive bars & keep-screen-on safely via Context.findActivity()
     DisposableEffect(session.isFullscreen, view) {
@@ -470,12 +489,12 @@ fun PlayerScreen(
                 KumanimeWebStreamPlayer(
                     streamUrl = session.streamUrl,
                     isFullscreen = session.isFullscreen,
+                    isPlaying = session.isPlaying,
                     onRequestFullscreen = { wantFull ->
                         if (wantFull != session.isFullscreen) onToggleFullscreen()
                     },
-                    onEpisodeEnded = {
-                        onEpisodeCompleted(anime.id, episode.number)
-                    },
+                    onWebProgressUpdate = onWebProgressUpdate,
+                    onEpisodeEnded = onWebEpisodeEnded,
                     onVerticalGesture = { isLeftSide, deltaFraction ->
                         if (!session.isLocked) {
                             if (isLeftSide) {
@@ -636,21 +655,21 @@ fun PlayerScreen(
                                 .fillMaxSize()
                                 .padding(16.dp)
                         ) {
-                            IconButton(
-                                onClick = onToggleLock,
-                                modifier = Modifier
-                                    .align(Alignment.CenterStart)
-                                    .size(44.dp)
-                                    .clip(CircleShape)
-                                    .background(MediaScrimDark.copy(alpha = 0.78f))
-                                    .border(1.dp, GoldBright.copy(alpha = 0.8f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Lock,
-                                    contentDescription = "Buka Kunci",
-                                    tint = GoldBright
-                                )
-                            }
+                                IconButton(
+                                    onClick = onToggleLock,
+                                    modifier = Modifier
+                                        .align(Alignment.CenterStart)
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(MediaScrimDark.copy(alpha = 0.78f))
+                                        .border(1.dp, com.gows.animwatch.ui.theme.MediaAccentBright.copy(alpha = 0.8f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Lock,
+                                        contentDescription = "Buka Kunci",
+                                        tint = com.gows.animwatch.ui.theme.MediaAccentBright
+                                    )
+                                }
                         }
                     } else {
                         Box(
@@ -714,7 +733,7 @@ fun PlayerScreen(
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Rounded.PlaylistPlay,
                                             contentDescription = "Episode",
-                                            tint = GoldBright,
+                                            tint = com.gows.animwatch.ui.theme.MediaAccentBright,
                                             modifier = Modifier.size(24.dp)
                                         )
                                     }
@@ -886,6 +905,17 @@ fun PlayerScreen(
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
+                                        IconButton(
+                                            onClick = onToggleFullscreen,
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
+                                                contentDescription = if (session.isFullscreen) "Keluar Layar Penuh" else "Layar Penuh",
+                                                tint = MediaTextLight,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -894,13 +924,65 @@ fun PlayerScreen(
                 }
             }
 
-            // Software screen brightness dimming overlay (works on both WebView & canvas players)
-            if (brightnessLevel < 0.96f) {
+            // Software screen brightness dimming overlay (only after user adjusts brightness below 96%)
+            if (hasAdjustedBrightness && brightnessLevel < 0.96f) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black.copy(alpha = ((1f - brightnessLevel) * 0.55f).coerceIn(0f, 0.52f)))
                 )
+            }
+
+            // Auto-Next Episode Countdown Overlay (works on both live WebView & simulated player)
+            if (showingLiveWebStream) {
+                session.autoNextCountdownSec?.let { count ->
+                    val sortedEps = remember(anime.episodes) { anime.episodes.sortedBy { it.number } }
+                    val curEpIdx = sortedEps.indexOfFirst { it.id == episode.id }
+                    val nextEpTitle = sortedEps.getOrNull(curEpIdx + 1)?.let { "Episode ${it.number}" }
+                        ?: nextSeason?.title
+                        ?: "Episode Berikutnya"
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MediaScrimDark.copy(alpha = 0.84f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(ObsidianElevated)
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
+                                .padding(horizontal = 24.dp, vertical = 20.dp)
+                        ) {
+                            Text(
+                                text = "Episode berikutnya dalam $count dtk",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = nextEpTitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                GoldOutlinedButton(
+                                    text = "Batal",
+                                    onClick = onCancelAutoNext,
+                                    height = 40.dp
+                                )
+                                GoldGradientButton(
+                                    text = "Putar",
+                                    icon = Icons.Rounded.SkipNext,
+                                    onClick = onNextEpisode,
+                                    height = 40.dp
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // Brightness (Left Scroll) & Volume (Right Scroll) Visual HUD Overlay
@@ -1234,7 +1316,31 @@ fun PlayerScreen(
                                 icon = Icons.Rounded.Share,
                                 label = "Bagikan",
                                 active = false,
-                                onClick = { onShowMessage("Tautan ${anime.title} Ep ${episode.number} disalin") }
+                                onClick = {
+                                    val shareUrl = episode.streamUrl.ifBlank { "https://animwatch.id/anime/${anime.slug}" }
+                                    val shareText = "Tonton ${anime.title} Episode ${episode.number} di AnimWatch: $shareUrl"
+                                    val clipboard = view.context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("AnimWatch", shareUrl))
+                                    val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_SUBJECT, "${anime.title} Ep ${episode.number}")
+                                        putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                    }
+                                    runCatching {
+                                        view.context.startActivity(
+                                            android.content.Intent.createChooser(sendIntent, "Bagikan Episode")
+                                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                    }.onFailure {
+                                        onShowMessage("Tautan ${anime.title} Ep ${episode.number} disalin")
+                                    }
+                                }
+                            )
+                            PlayerActionChip(
+                                icon = Icons.Rounded.Flag,
+                                label = "Laporkan",
+                                active = false,
+                                onClick = { activeModal = PlayerModal.REPORT }
                             )
                         }
                     }
@@ -1521,7 +1627,14 @@ fun PlayerScreen(
                 title = "Pilih Kualitas Video",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
-                episode.qualities.forEach { q ->
+                val qualityList = episode.qualities.ifEmpty {
+                    listOf(
+                        com.gows.animwatch.data.model.VideoQuality("1080p", "1920x1080 FHD", 320, true),
+                        com.gows.animwatch.data.model.VideoQuality("720p", "1280x720 HD", 185, false),
+                        com.gows.animwatch.data.model.VideoQuality("480p", "854x480 SD", 105, false)
+                    )
+                }
+                qualityList.forEach { q ->
                     val selected = q.label == session.selectedQuality
                     ModalOptionRow(
                         title = "${q.label} (${q.resolution})",
@@ -1542,7 +1655,12 @@ fun PlayerScreen(
                 title = "Pilih Server Mirror",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
-                episode.servers.forEach { srv ->
+                val serverList = episode.servers.ifEmpty {
+                    listOf(
+                        com.gows.animwatch.data.model.StreamServer("kumanime", "Kumanime Embed", "ID-MAIN", 24, true)
+                    )
+                }
+                serverList.forEach { srv ->
                     val selected = srv.id == session.selectedServerId
                     ModalOptionRow(
                         title = srv.name,
@@ -1563,7 +1681,14 @@ fun PlayerScreen(
                 title = "Pengaturan Subtitle",
                 onDismiss = { activeModal = PlayerModal.NONE }
             ) {
-                episode.subtitles.forEach { sub ->
+                val subtitleList = episode.subtitles.ifEmpty {
+                    listOf(
+                        com.gows.animwatch.data.model.SubtitleTrack("id", "Bahasa Indonesia", "ID"),
+                        com.gows.animwatch.data.model.SubtitleTrack("en", "English", "EN"),
+                        com.gows.animwatch.data.model.SubtitleTrack("off", "Nonaktif", "OFF")
+                    )
+                }
+                subtitleList.forEach { sub ->
                     val selected = sub.id == session.selectedSubtitleId
                     ModalOptionRow(
                         title = sub.label,
@@ -1662,34 +1787,39 @@ fun PlayerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.Tv, contentDescription = null, tint = GoldPrimary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Cast ke Perangkat", style = MaterialTheme.typography.titleMedium)
+                        Text("Cast ke Layar TV", style = MaterialTheme.typography.titleMedium)
                     }
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "Pilih perangkat di jaringan Wi-Fi yang sama:",
+                            text = "Gunakan fitur Cast / Wireless Display sistem Android untuk memproyeksikan pemutar AnimWatch ke Smart TV di jaringan Wi-Fi yang sama.",
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
-                        listOf("Samsung Smart TV 4K (Ruang Tamu)", "Google TV Streamer (Kamar)").forEach { device ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(ObsidianCard)
-                                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
-                                    .clickable {
-                                        onShowMessage("Terhubung ke $device")
-                                        activeModal = PlayerModal.NONE
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(ObsidianCard)
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(14.dp))
+                                .clickable {
+                                    activeModal = PlayerModal.NONE
+                                    runCatching {
+                                        view.context.startActivity(
+                                            android.content.Intent(android.provider.Settings.ACTION_CAST_SETTINGS)
+                                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                    }.onFailure {
+                                        onShowMessage("Buka Pengaturan Android > Perangkat Terhubung > Cast untuk menyambungkan ke TV")
                                     }
-                                    .padding(13.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Rounded.Cast, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(device, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
-                            }
+                                }
+                                .padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.Cast, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Buka Pengaturan Cast Android", style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
                         }
                     }
                 },
@@ -1841,6 +1971,8 @@ private fun PlayerSelectionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 26.dp)
         ) {
@@ -1913,7 +2045,7 @@ private fun ModalOptionRow(
 }
 
 private val YOUTUBE_ID_REGEX = Regex(
-    "(?:youtube-nocookie\\.com/embed/|youtube\\.com/embed/|youtu\\.be/|youtube\\.com/watch\\?v=)([A-Za-z0-9_-]{11})"
+    "(?:youtube-nocookie\\.com/embed/|youtube\\.com/embed/|youtu\\.be/|youtube\\.com/watch\\?(?:[^#]*&)?v=)([A-Za-z0-9_-]{11})"
 )
 
 private fun extractYoutubeVideoId(url: String): String? =
@@ -1940,7 +2072,14 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
       <script>
         (function(){
           var notified = false;
+          var lastSentAt = 0;
+          var knownDuration = 0;
           var frame = document.getElementById('ytplayer');
+          window.__animWatchCommand = function(funcName) {
+            try {
+              frame.contentWindow.postMessage(JSON.stringify({event:'command',func:funcName,args:[]}),'*');
+            } catch(e){}
+          };
           function sendListen(){
             try {
               frame.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');
@@ -1952,12 +2091,26 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
             setTimeout(sendListen, 1000);
           });
           window.addEventListener('message', function(ev){
-            if(notified || typeof ev.data !== 'string') return;
+            if(typeof ev.data !== 'string') return;
             try {
               var d = JSON.parse(ev.data);
+              if(d.event === 'infoDelivery' && d.info) {
+                if(typeof d.info.duration === 'number' && d.info.duration > 0) {
+                  knownDuration = Math.floor(d.info.duration);
+                }
+                if(typeof d.info.currentTime === 'number' && d.info.currentTime >= 0) {
+                  var now = Date.now();
+                  if(now - lastSentAt >= 2000) {
+                    lastSentAt = now;
+                    if(window.AnimWatchPlayer && window.AnimWatchPlayer.onProgress){
+                      window.AnimWatchPlayer.onProgress(Math.floor(d.info.currentTime), knownDuration);
+                    }
+                  }
+                }
+              }
               var ended = (d.event === 'onStateChange' && d.info === 0) ||
                           (d.event === 'infoDelivery' && d.info && d.info.playerState === 0);
-              if(ended){
+              if(!notified && ended){
                 notified = true;
                 if(window.AnimWatchPlayer && window.AnimWatchPlayer.onVideoEnded){
                   window.AnimWatchPlayer.onVideoEnded();
@@ -1971,12 +2124,24 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
     </html>
 """.trimIndent()
 
-private fun isAllowedEmbedNavigation(url: String, isMainFrame: Boolean = true): Boolean {
+private fun isAllowedEmbedNavigation(
+    url: String,
+    isMainFrame: Boolean = true,
+    initialStreamHost: String = ""
+): Boolean {
     val lower = url.lowercase()
     if (lower == "about:blank" ||
         lower.startsWith("https://www.youtube-nocookie.com/embed/") ||
         lower.startsWith("https://www.youtube.com/embed/")
     ) return true
+    if (initialStreamHost.isNotBlank() &&
+        (lower.startsWith("https://") || lower.startsWith("http://"))
+    ) {
+        val targetHost = runCatching { android.net.Uri.parse(url)?.host?.lowercase().orEmpty() }.getOrDefault("")
+        if (targetHost == initialStreamHost || targetHost.endsWith(".$initialStreamHost")) {
+            return true
+        }
+    }
     if (!isMainFrame) {
         return lower.startsWith("https://www.youtube-nocookie.com/") ||
             lower.startsWith("https://www.youtube.com/") ||
@@ -2009,7 +2174,9 @@ private fun loadStreamIntoWebView(webView: WebView, streamUrl: String) {
 private fun KumanimeWebStreamPlayer(
     streamUrl: String,
     isFullscreen: Boolean,
+    isPlaying: Boolean,
     onRequestFullscreen: (Boolean) -> Unit,
+    onWebProgressUpdate: (positionSec: Int, durationSec: Int) -> Unit,
     onEpisodeEnded: () -> Unit,
     onVerticalGesture: (isLeftSide: Boolean, deltaFraction: Float) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
@@ -2017,14 +2184,24 @@ private fun KumanimeWebStreamPlayer(
     var currentWebView by remember { mutableStateOf<WebView?>(null) }
     var activeFullscreenExit by remember { mutableStateOf<(() -> Unit)?>(null) }
     val latestOnRequestFullscreen by rememberUpdatedState(onRequestFullscreen)
+    val latestOnWebProgress by rememberUpdatedState(onWebProgressUpdate)
     val latestOnEpisodeEnded by rememberUpdatedState(onEpisodeEnded)
     val latestOnVerticalGesture by rememberUpdatedState(onVerticalGesture)
+    val initialStreamHost = remember(streamUrl) {
+        runCatching { android.net.Uri.parse(streamUrl)?.host?.lowercase().orEmpty() }.getOrDefault("")
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(isFullscreen) {
         if (!isFullscreen) {
             activeFullscreenExit?.invoke()
         }
+    }
+
+    LaunchedEffect(isPlaying, currentWebView) {
+        val wv = currentWebView ?: return@LaunchedEffect
+        val cmd = if (isPlaying) "playVideo" else "pauseVideo"
+        wv.evaluateJavascript("window.__animWatchCommand && window.__animWatchCommand('$cmd');", null)
     }
 
     DisposableEffect(lifecycleOwner, currentWebView) {
@@ -2050,6 +2227,7 @@ private fun KumanimeWebStreamPlayer(
                 onPause()
                 loadUrl("about:blank")
                 clearHistory()
+                (parent as? ViewGroup)?.removeView(this)
                 removeAllViews()
                 destroy()
             }
@@ -2150,6 +2328,11 @@ private fun KumanimeWebStreamPlayer(
                 addJavascriptInterface(
                     object {
                         @JavascriptInterface
+                        fun onProgress(posSec: Int, durSec: Int) {
+                            post { latestOnWebProgress(posSec, durSec) }
+                        }
+
+                        @JavascriptInterface
                         fun onVideoEnded() {
                             post { latestOnEpisodeEnded() }
                         }
@@ -2164,12 +2347,12 @@ private fun KumanimeWebStreamPlayer(
                         val target = request?.url?.toString().orEmpty()
                         val isMain = request?.isForMainFrame ?: true
                         // Block all external/app redirects (never leave AnimWatch into YouTube app/browser)
-                        return !isAllowedEmbedNavigation(target, isMainFrame = isMain)
+                        return !isAllowedEmbedNavigation(target, isMainFrame = isMain, initialStreamHost = initialStreamHost)
                     }
 
                     @Deprecated("Deprecated in Java")
                     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                        return !isAllowedEmbedNavigation(url.orEmpty())
+                        return !isAllowedEmbedNavigation(url.orEmpty(), initialStreamHost = initialStreamHost)
                     }
                 }
                 webChromeClient = object : WebChromeClient() {

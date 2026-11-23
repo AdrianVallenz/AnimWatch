@@ -215,7 +215,7 @@ class MockAnimeRepository : AnimeRepository {
                 ),
                 relatedIds = listOf("chrono-requiem", "eclipse-alchemist"),
                 episodes = buildEpisodes(
-                    "astral-frieren", 14, 24,
+                    "astral-frieren", 28, 24,
                     listOf(
                         "Akhir Sebuah Petualangan",
                         "Bunga Biru dari Utara",
@@ -304,7 +304,7 @@ class MockAnimeRepository : AnimeRepository {
                     CharacterRole("Alphonse", "Zirah Hidup", "Rie Kugimiya", "A")
                 ),
                 relatedIds = listOf("astral-frieren", "kage-no-ou"),
-                episodes = buildEpisodes("eclipse-alchemist", 12, 24, emptyList())
+                episodes = buildEpisodes("eclipse-alchemist", 24, 24, emptyList())
             ),
             Anime(
                 id = "sakura-wind-chronicles",
@@ -381,7 +381,7 @@ class MockAnimeRepository : AnimeRepository {
                     CharacterRole("Zoro Kuro", "Pendekar 3 Pedang", "Kazuya Nakai", "Z")
                 ),
                 relatedIds = listOf("onigiri-blade", "eclipse-alchemist"),
-                episodes = buildEpisodes("phantom-voyage", 16, 24, emptyList())
+                episodes = buildEpisodes("phantom-voyage", 36, 24, emptyList())
             ),
             Anime(
                 id = "chrono-requiem",
@@ -628,7 +628,7 @@ class MockAnimeRepository : AnimeRepository {
                     CharacterRole("Marcille", "Penyihir Elf", "Sayaka Senbongi", "M")
                 ),
                 relatedIds = listOf("astral-frieren", "phantom-voyage"),
-                episodes = buildEpisodes("dungeon-bistro", 12, 24, emptyList())
+                episodes = buildEpisodes("dungeon-bistro", 24, 24, emptyList())
             ),
             Anime(
                 id = "hollow-academy",
@@ -857,9 +857,9 @@ class MockAnimeRepository : AnimeRepository {
         NotificationItem(
             id = "n3",
             title = "Rekomendasi Maraton Tamat",
-            message = "Aethelgard: Chronicles of the Astral Blade sudah tamat (24 Episode) dan siap ditonton penuh.",
+            message = "Hoshi no Tabibito: Perjalanan Melampaui Bintang sudah tamat (28 Episode) dan siap ditonton penuh.",
             timeAgo = "Kemarin",
-            animeId = "astral-chronicles",
+            animeId = "astral-frieren",
             isRead = true,
             tag = "TAMAT"
         )

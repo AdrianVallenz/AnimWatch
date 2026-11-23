@@ -40,7 +40,6 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -113,7 +112,6 @@ fun HomeScreen(
     onOpenSearch: () -> Unit,
     onOpenSchedule: () -> Unit,
     onOpenRanking: () -> Unit,
-    onOpenRandom: () -> Unit,
     onOpenGenre: (String) -> Unit = {},
     onOpenHistory: () -> Unit = {},
     onLoadMoreCatalog: () -> Unit = {},
@@ -125,7 +123,7 @@ fun HomeScreen(
 
     val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
     val visibleHistory = remember(uiState.watchHistory, animeById) {
-        uiState.watchHistory.filter { it.animeId in animeById }
+        uiState.watchHistory.filter { it.animeId in animeById }.distinctBy { it.animeId }
     }
     val subAnime = remember(uiState.allAnime) { uiState.allAnime.filterNot { it.isDubIndo } }
     val dubIndoList = remember(uiState.allAnime) {
@@ -329,16 +327,27 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
             }
-            items(genreFilteredAnime.take(30), key = { "hg_${it.id}" }) { anime ->
-                CompactAnimeRowCard(
-                    anime = anime,
-                    isBookmarked = anime.id in uiState.watchlist,
-                    onClick = { onAnimeClick(anime.id) },
-                    onPlayClick = { onPlayAnime(anime.id, null) },
-                    onBookmarkClick = { onBookmarkClick(anime.id) },
-                    trailingBadge = if (anime.isOfficialFree) "Siap Putar" else null,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
-                )
+            if (genreFilteredAnime.isEmpty()) {
+                item(key = "home_genre_empty") {
+                    Text(
+                        text = "Belum ada anime di kategori \"$activeGenre\" saat ini.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextTertiary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            } else {
+                items(genreFilteredAnime.take(30), key = { "hg_${it.id}" }) { anime ->
+                    CompactAnimeRowCard(
+                        anime = anime,
+                        isBookmarked = anime.id in uiState.watchlist,
+                        onClick = { onAnimeClick(anime.id) },
+                        onPlayClick = { onPlayAnime(anime.id, null) },
+                        onBookmarkClick = { onBookmarkClick(anime.id) },
+                        trailingBadge = if (anime.isOfficialFree) "Siap Putar" else null,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                    )
+                }
             }
         } else {
             // 4. Continue Watching
@@ -598,7 +607,7 @@ fun HomeScreen(
 
         // 13. Auto-loaded Catalog Summary Footer
         item(key = "home_load_more") {
-            if (uiState.hasMoreCatalog && !uiState.isLoadingMoreCatalog) {
+            if (uiState.hasMoreCatalog && !uiState.catalogLoadError && !uiState.isLoadingMoreCatalog) {
                 LaunchedEffect(uiState.catalogPageLoaded) {
                     onLoadMoreCatalog()
                 }
@@ -621,10 +630,10 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (uiState.isLoadingMoreCatalog) {
-                        "Sedang memuat sisa koleksi anime secara otomatis..."
-                    } else {
-                        "Seluruh katalog & playlist anime otomatis diperbarui."
+                    text = when {
+                        uiState.catalogLoadError -> "Sebagian katalog gagal dimuat. Periksa koneksi lalu coba lagi."
+                        uiState.isLoadingMoreCatalog -> "Sedang memuat sisa koleksi anime secara otomatis..."
+                        else -> "Seluruh katalog & playlist anime otomatis diperbarui."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextTertiary
@@ -886,7 +895,7 @@ private fun HeroCarouselSection(
                         Icon(
                             imageVector = Icons.Rounded.Star,
                             contentDescription = null,
-                            tint = GoldBright,
+                            tint = com.gows.animwatch.ui.theme.MediaAccentBright,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -906,7 +915,11 @@ private fun HeroCarouselSection(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         anime.genres.take(3).forEach { genre ->
                             Box(
                                 modifier = Modifier
@@ -976,7 +989,7 @@ private fun HeroCarouselSection(
                             Icon(
                                 imageVector = if (isSaved) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
                                 contentDescription = "Simpan ke Koleksi",
-                                tint = if (isSaved) GoldBright else MediaTextLight,
+                                tint = if (isSaved) com.gows.animwatch.ui.theme.MediaAccentBright else MediaTextLight,
                                 modifier = Modifier.size(20.dp)
                             )
                         }

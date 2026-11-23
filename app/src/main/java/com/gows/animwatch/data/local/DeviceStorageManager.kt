@@ -20,13 +20,17 @@ import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.DownloadTask
 import com.gows.animwatch.data.model.Episode
 import com.gows.animwatch.data.model.SubtitleCue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 @Immutable
 data class DeviceStorageInfo(
@@ -125,8 +129,10 @@ private data class PersistedDownloadRecord(
  * Real Android device storage inspector, persistent offline episode package manager,
  * Coil/app cache cleaner, and runtime permission status reader.
  */
-class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStorageGateway {
+class AndroidDeviceStorageManager(context: Context) : OfflineStorageGateway {
 
+    private val appContext: Context = context.applicationContext
+    private val indexLock = Any()
     private val gson = Gson()
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -246,7 +252,7 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
         )
     }
 
-    private fun readIndexRecords(): MutableList<PersistedDownloadRecord> {
+    private fun readIndexRecords(): MutableList<PersistedDownloadRecord> = synchronized(indexLock) {
         if (!indexFile.exists()) return mutableListOf()
         return runCatching {
             val type = object : TypeToken<List<PersistedDownloadRecord>>() {}.type
@@ -254,13 +260,13 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
         }.getOrDefault(mutableListOf())
     }
 
-    private fun writeIndexRecords(records: List<PersistedDownloadRecord>) {
+    private fun writeIndexRecords(records: List<PersistedDownloadRecord>) = synchronized(indexLock) {
         runCatching {
             indexFile.writeText(gson.toJson(records))
         }
     }
 
-    override fun loadPersistedDownloads(): List<DownloadTask> {
+    override fun loadPersistedDownloads(): List<DownloadTask> = synchronized(indexLock) {
         val records = readIndexRecords()
         val valid = mutableListOf<PersistedDownloadRecord>()
         val tasks = mutableListOf<DownloadTask>()
@@ -280,7 +286,9 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
                     episodeTitle = rec.episodeTitle,
                     artTheme = theme,
                     qualityLabel = rec.qualityLabel,
-                    totalMb = (realBytes / (1024L * 1024L)).toInt().coerceAtLeast(1),
+                    totalMb = (realBytes / (1024L * 1024L)).toInt().let { mb ->
+                        if (mb == 0 && realBytes >= 512L * 1024L) 1 else mb
+                    },
                     progress = 1.0f,
                     status = DownloadStatus.COMPLETED,
                     sizeBytes = realBytes,
@@ -292,7 +300,7 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
         if (valid.size != records.size) {
             writeIndexRecords(valid)
         }
-        return tasks.sortedByDescending { t -> valid.find { it.episodeId == t.episodeId }?.savedAtMs ?: 0L }
+        tasks.sortedByDescending { t -> valid.find { it.episodeId == t.episodeId }?.savedAtMs ?: 0L }
     }
 
     override suspend fun downloadEpisodePackage(
@@ -302,11 +310,23 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
         subtitleCues: List<SubtitleCue>,
         onProgress: (Float, Long) -> Unit
     ): Result<OfflineSavedResult> = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             val epDir = File(offlineRootDir, safeFolderName(episode.id)).apply { mkdirs() }
             var written = 0L
+            var lastProgressEmitAt = 0L
+            var lastProgressFrac = -1f
 
-            onProgress(0.15f, written)
+            fun emitProgress(frac: Float, bytes: Long, force: Boolean = false) {
+                val now = System.currentTimeMillis()
+                if (force || (frac - lastProgressFrac >= 0.02f && now - lastProgressEmitAt >= 80L)) {
+                    lastProgressFrac = frac
+                    lastProgressEmitAt = now
+                    onProgress(frac, bytes)
+                }
+            }
+
+            coroutineContext.ensureActive()
+            emitProgress(0.15f, written, force = true)
 
             // 1. Save full structured offline package JSON (metadata, synopsis, official link, subtitles)
             val packagePayload = mapOf(
@@ -336,17 +356,23 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
             val metaFile = File(epDir, "episode_package.json")
             metaFile.writeText(gson.toJson(packagePayload))
             written += metaFile.length()
-            onProgress(0.35f, written)
+            emitProgress(0.35f, written, force = true)
 
-            // 2. Download real HD artwork/thumbnail asset to device storage
+            // 2. Download real HD artwork/thumbnail asset to device storage with cooperative cancellation
             val artUrls = listOfNotNull(
-                anime.posterUrl.takeIf { it.startsWith("http") },
-                anime.bannerUrl.takeIf { it.startsWith("http") && it != anime.posterUrl }
+                anime.posterUrl.takeIf { it.startsWith("http", ignoreCase = true) },
+                anime.bannerUrl.takeIf { it.startsWith("http", ignoreCase = true) && it != anime.posterUrl }
             )
+            val parentJob = coroutineContext[Job]
             artUrls.forEachIndexed { idx, imgUrl ->
-                runCatching {
-                    val req = Request.Builder().url(imgUrl).build()
-                    httpClient.newCall(req).execute().use { resp ->
+                coroutineContext.ensureActive()
+                val req = Request.Builder().url(imgUrl).build()
+                val call = httpClient.newCall(req)
+                val handle = parentJob?.invokeOnCompletion { cause ->
+                    if (cause != null) call.cancel()
+                }
+                try {
+                    call.execute().use { resp ->
                         if (resp.isSuccessful) {
                             val body = resp.body ?: return@use
                             val totalExpected = body.contentLength().coerceAtLeast(1L)
@@ -357,54 +383,69 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
                                     var read: Int
                                     var fileBytes = 0L
                                     while (input.read(buf).also { read = it } != -1) {
+                                        coroutineContext.ensureActive()
                                         output.write(buf, 0, read)
                                         fileBytes += read
                                         written += read
                                         val frac = (0.35f + 0.55f * ((idx + (fileBytes.toFloat() / totalExpected).coerceIn(0f, 1f)) / artUrls.size.coerceAtLeast(1)))
                                             .coerceIn(0.35f, 0.92f)
-                                        onProgress(frac, written)
+                                        emitProgress(frac, written)
                                     }
                                 }
                             }
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    coroutineContext.ensureActive()
+                } finally {
+                    handle?.dispose()
                 }
             }
 
+            coroutineContext.ensureActive()
             val totalWritten = directorySizeBytes(epDir).coerceAtLeast(written)
 
-            // 3. Persist index record so downloads survive app restarts
-            val existing = readIndexRecords().filterNot { it.episodeId == episode.id }.toMutableList()
-            existing.add(
-                0,
-                PersistedDownloadRecord(
-                    episodeId = episode.id,
-                    animeId = anime.id,
-                    animeTitle = anime.title,
-                    episodeNumber = episode.number,
-                    episodeTitle = episode.title,
-                    artThemeName = anime.artTheme.name,
-                    qualityLabel = qualityLabel,
-                    posterUrl = anime.posterUrl,
-                    sizeBytes = totalWritten,
-                    localPath = epDir.absolutePath,
-                    savedAtMs = System.currentTimeMillis()
+            // 3. Persist index record atomically so downloads survive app restarts
+            synchronized(indexLock) {
+                coroutineContext.ensureActive()
+                val existing = readIndexRecords().filterNot { it.episodeId == episode.id }.toMutableList()
+                existing.add(
+                    0,
+                    PersistedDownloadRecord(
+                        episodeId = episode.id,
+                        animeId = anime.id,
+                        animeTitle = anime.title,
+                        episodeNumber = episode.number,
+                        episodeTitle = episode.title,
+                        artThemeName = anime.artTheme.name,
+                        qualityLabel = qualityLabel,
+                        posterUrl = anime.posterUrl,
+                        sizeBytes = totalWritten,
+                        localPath = epDir.absolutePath,
+                        savedAtMs = System.currentTimeMillis()
+                    )
                 )
-            )
-            writeIndexRecords(existing)
-            onProgress(1.0f, totalWritten)
+                writeIndexRecords(existing)
+            }
+            emitProgress(1.0f, totalWritten, force = true)
 
-            OfflineSavedResult(bytesWritten = totalWritten, localPath = epDir.absolutePath)
+            Result.success(OfflineSavedResult(bytesWritten = totalWritten, localPath = epDir.absolutePath))
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            Result.failure(t)
         }
     }
 
-    override fun deleteEpisodePackage(episodeId: String): Boolean {
+    override fun deleteEpisodePackage(episodeId: String): Boolean = synchronized(indexLock) {
         val records = readIndexRecords()
         val matched = records.find { it.episodeId == episodeId }
         val targetDir = if (matched != null) File(matched.localPath) else File(offlineRootDir, safeFolderName(episodeId))
         val deleted = if (targetDir.exists()) targetDir.deleteRecursively() else true
         writeIndexRecords(records.filterNot { it.episodeId == episodeId })
-        return deleted
+        deleted
     }
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
@@ -415,12 +456,17 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
             loader.memoryCache?.clear()
             loader.diskCache?.clear()
         }
+        val protectedNames = setOf("coil_poster_cache", "WebView", "org.chromium.android_webview")
         runCatching {
             appContext.cacheDir?.listFiles()?.forEach { child ->
-                child.deleteRecursively()
+                if (child.name !in protectedNames) {
+                    child.deleteRecursively()
+                }
             }
             appContext.externalCacheDir?.listFiles()?.forEach { child ->
-                child.deleteRecursively()
+                if (child.name !in protectedNames) {
+                    child.deleteRecursively()
+                }
             }
         }
         val after = directorySizeBytes(appContext.cacheDir) + directorySizeBytes(appContext.externalCacheDir)

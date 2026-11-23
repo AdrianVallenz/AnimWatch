@@ -1,5 +1,6 @@
 package com.gows.animwatch.data.remote
 
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
@@ -168,19 +169,49 @@ object KumanimeApiClient {
             .build()
     }
 
-    fun normalizeBaseUrl(rawUrl: String): String {
-        val trimmed = rawUrl.trim().ifEmpty { DEFAULT_BASE_URL }
+    private fun isLocalHost(hostOrRaw: String): Boolean {
+        val cleanHost = hostOrRaw
+            .substringAfter("://")
+            .substringBefore("/")
+            .substringBefore(":")
+            .lowercase()
+        return cleanHost == "localhost" ||
+            cleanHost == "127.0.0.1" ||
+            cleanHost == "10.0.2.2" ||
+            cleanHost.startsWith("10.") ||
+            cleanHost.startsWith("192.168.") ||
+            Regex("^172\\.(1[6-9]|2\\d|3[01])\\.").containsMatchIn(cleanHost)
+    }
+
+    fun isValidBaseUrl(rawUrl: String): Boolean {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty()) return false
+        return normalizeBaseUrlOrNull(trimmed) != null
+    }
+
+    private fun normalizeBaseUrlOrNull(rawUrl: String): String? {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty()) return DEFAULT_BASE_URL
         val withScheme = when {
             trimmed.startsWith("http://", ignoreCase = true) ||
                 trimmed.startsWith("https://", ignoreCase = true) -> trimmed
-            else -> "http://$trimmed"
+            isLocalHost(trimmed) -> "http://$trimmed"
+            else -> "https://$trimmed"
         }
         val withoutTrailing = withScheme.trimEnd('/')
-        return if (withoutTrailing.endsWith("/api", ignoreCase = true)) {
-            "$withoutTrailing/"
+        val candidate = if (withoutTrailing.endsWith("/api", ignoreCase = true)) {
+            withoutTrailing.dropLast(4) + "/api/"
         } else {
             "$withoutTrailing/api/"
         }
+        val parsed = candidate.toHttpUrlOrNull() ?: return null
+        return if (parsed.host.isNotBlank()) parsed.toString() else null
+    }
+
+    fun normalizeBaseUrl(rawUrl: String): String {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty()) return DEFAULT_BASE_URL
+        return normalizeBaseUrlOrNull(trimmed) ?: DEFAULT_BASE_URL
     }
 
     fun create(rawBaseUrl: String): KumanimeApiService {

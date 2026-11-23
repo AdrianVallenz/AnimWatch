@@ -211,7 +211,7 @@ fun ThemeOnboardingScreen(
                                     .clickable { onSelectAppearance(mode) },
                                 shape = RoundedCornerShape(20.dp),
                                 color = cardBg,
-                                shadowElevation = if (IsDarkTheme) 0.dp else 3.dp
+                                shadowElevation = if (IsDarkTheme || selected) 0.dp else 2.dp
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -346,7 +346,7 @@ fun ThemeOnboardingScreen(
                                             .clickable { onSelectAccent(theme) },
                                         shape = RoundedCornerShape(18.dp),
                                         color = if (selected) swatchPrimary.copy(alpha = 0.14f) else ObsidianCard,
-                                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                                        shadowElevation = if (IsDarkTheme || selected) 0.dp else 2.dp
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -481,13 +481,15 @@ fun ThemeOnboardingScreen(
                                     color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     listOf("1080p", "720p", "480p", "360p").forEach { q ->
                                         SelectablePrefChip(
                                             label = q,
                                             selected = settings.defaultQuality == q,
-                                            onClick = { onUpdateSettings { it.copy(defaultQuality = q) } },
-                                            modifier = Modifier.weight(1f)
+                                            onClick = { onUpdateSettings { it.copy(defaultQuality = q) } }
                                         )
                                     }
                                 }
@@ -503,13 +505,15 @@ fun ThemeOnboardingScreen(
                                     color = TextPrimary
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     listOf("Indonesia", "English", "Nonaktif").forEach { sub ->
                                         SelectablePrefChip(
                                             label = sub,
                                             selected = settings.defaultSubtitle == sub,
-                                            onClick = { onUpdateSettings { it.copy(defaultSubtitle = sub) } },
-                                            modifier = Modifier.weight(1f)
+                                            onClick = { onUpdateSettings { it.copy(defaultSubtitle = sub) } }
                                         )
                                     }
                                 }

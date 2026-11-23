@@ -289,6 +289,9 @@ val DividerSubtle: Color get() = AppThemeState.current.dividerSubtle
 val MediaScrimDark = Color(0xFF0E1016)
 val MediaTextLight = Color(0xFFF6F7FB)
 val MediaTextSecondary = Color(0xFFCCD2DE)
+val MediaAccentBright: Color get() = AppThemeState.current.let { pal ->
+    if (pal.isDark) pal.accentBright else pal.accentWarm
+}
 
 // Semantic Status Colors
 val StatusLive = Color(0xFFE04856)

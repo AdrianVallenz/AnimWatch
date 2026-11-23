@@ -397,7 +397,24 @@ private fun GoogleAccountQuickInputDialog(
                             modifier = Modifier.size(18.dp)
                         )
                     },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = {
+                            val cleanEmail = email.trim().lowercase()
+                            val cleanName = displayName.trim().ifEmpty {
+                                cleanEmail.substringBefore("@")
+                                    .replace(Regex("[._-]+"), " ")
+                                    .replaceFirstChar { it.uppercase() }
+                            }
+                            emailError = if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
+                                "Masukkan alamat email Google yang valid"
+                            } else null
+                            nameError = if (cleanName.length < 2) "Nama minimal 2 karakter" else null
+                            if (emailError == null && nameError == null) {
+                                onConfirm(cleanEmail, cleanName)
+                            }
+                        }
+                    )
                 )
             }
         },
@@ -412,7 +429,7 @@ private fun GoogleAccountQuickInputDialog(
                             .replace(Regex("[._-]+"), " ")
                             .replaceFirstChar { it.uppercase() }
                     }
-                    emailError = if (!cleanEmail.contains("@") || !cleanEmail.contains(".")) {
+                    emailError = if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
                         "Masukkan alamat email Google yang valid"
                     } else null
                     nameError = if (cleanName.length < 2) "Nama minimal 2 karakter" else null

@@ -9,6 +9,7 @@ import com.gows.animwatch.data.model.AnimeType
 import com.gows.animwatch.data.model.CommentItem
 import com.gows.animwatch.data.model.Episode
 import com.gows.animwatch.data.model.ReleaseDay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -24,6 +25,8 @@ import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
+class HttpStatusException(val code: Int, message: String) : IllegalStateException(message)
+
 data class EpisodeStreamResult(
     val episode: Episode,
     val resolvedAnimeSlug: String?
@@ -38,11 +41,17 @@ class KumanimeRemoteDataSource(
     private val enableDirectAiringFeed: Boolean = false
 ) {
     private val gson = Gson()
-    private val directGraphClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(7, TimeUnit.SECONDS)
-            .readTimeout(9, TimeUnit.SECONDS)
-            .build()
+    private val directGraphClient: OkHttpClient
+        get() = sharedDirectGraphClient
+
+    private suspend inline fun <T> suspendRunCatching(crossinline block: suspend () -> T): Result<T> {
+        return try {
+            Result.success(block())
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            Result.failure(t)
+        }
     }
 
     private fun extractErrorMessage(response: Response<*>, fallback: String): String {
@@ -63,22 +72,39 @@ class KumanimeRemoteDataSource(
     // ======================================================
 
     suspend fun fetchInitialCatalog(baseUrl: String): Result<List<Anime>> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val api = serviceProvider(baseUrl)
             coroutineScope {
-                val officialFreeDeferred = async { runCatching { api.getOfficialFree() }.getOrNull() }
-                val dubIndoDeferred = async { runCatching { api.getDubIndo() }.getOrNull() }
-                val popularDeferred = async { runCatching { api.getPopular() }.getOrNull() }
-                val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
-                val moviesDeferred = async { runCatching { api.getMovies() }.getOrNull() }
-                val completedDeferred = async { runCatching { api.getCompleted() }.getOrNull() }
+                val officialFreeDeferred = async { suspendRunCatching { api.getOfficialFree() }.getOrNull() }
+                val dubIndoDeferred = async { suspendRunCatching { api.getDubIndo() }.getOrNull() }
+                val popularDeferred = async { suspendRunCatching { api.getPopular() }.getOrNull() }
+                val latestDeferred = async { suspendRunCatching { api.getLatest() }.getOrNull() }
+                val moviesDeferred = async { suspendRunCatching { api.getMovies() }.getOrNull() }
+                val completedDeferred = async { suspendRunCatching { api.getCompleted() }.getOrNull() }
                 val recentAiredDeferred = async<List<Anime>> {
                     if (enableDirectAiringFeed) {
-                        runCatching { fetchRecentAiringFromAniList() }.getOrDefault(emptyList())
+                        suspendRunCatching { fetchRecentAiringFromAniList() }.getOrDefault(emptyList())
                     } else emptyList()
                 }
 
-                val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
+                val officialFreeResp = officialFreeDeferred.await()
+                val dubIndoResp = dubIndoDeferred.await()
+                val popularResp = popularDeferred.await()
+                val latestResp = latestDeferred.await()
+                val moviesResp = moviesDeferred.await()
+                val completedResp = completedDeferred.await()
+                val backendResponded = officialFreeResp != null ||
+                    dubIndoResp != null ||
+                    popularResp != null ||
+                    latestResp != null ||
+                    moviesResp != null ||
+                    completedResp != null
+
+                if (!backendResponded) {
+                    throw IllegalStateException("Server Kumanime tidak merespons. Menggunakan katalog lokal.")
+                }
+
+                val officialFreeList = officialFreeResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto.copy(isOfficialFree = true, isDubIndo = false),
@@ -88,7 +114,7 @@ class KumanimeRemoteDataSource(
                             markFeatured = false
                         )
                     }
-                val dubIndoList = dubIndoDeferred.await()?.data.orEmpty()
+                val dubIndoList = dubIndoResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto.copy(isOfficialFree = true, isDubIndo = true, audioLang = "DUB_ID"),
@@ -98,13 +124,13 @@ class KumanimeRemoteDataSource(
                             markFeatured = false
                         )
                     }
-                val popularList = popularDeferred.await()?.data.orEmpty()
+                val popularList = popularResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapPopularItem(dto, idx) }
-                val latestList = latestDeferred.await()?.data.orEmpty()
+                val latestList = latestResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapLatestItem(dto, idx) }
-                val moviesList = moviesDeferred.await()?.data.orEmpty()
+                val moviesList = moviesResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapCatalogCard(dto, idx, isMovieList = true) }
-                val completedList = completedDeferred.await()?.data.orEmpty()
+                val completedList = completedResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto,
@@ -179,9 +205,10 @@ class KumanimeRemoteDataSource(
 
                 val recentAired = recentAiredDeferred.await()
                 recentAired.forEach { aired ->
-                    val mediaSuffix = "-${aired.id.substringAfterLast('-')}"
+                    val aniNumericId = Regex("-(\\d{4,})$").find(aired.id)?.groupValues?.getOrNull(1)
+                    val mediaSuffix = aniNumericId?.let { "-$it" }
                     val existingEntry = merged.entries.firstOrNull { (k, _) ->
-                        k == aired.id || (mediaSuffix.length > 2 && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
+                        k == aired.id || (mediaSuffix != null && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
                     }
                     if (existingEntry == null) {
                         merged[aired.id] = aired
@@ -208,23 +235,39 @@ class KumanimeRemoteDataSource(
     }
 
     suspend fun fetchLatestAiringUpdates(baseUrl: String): Result<List<Anime>> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val api = serviceProvider(baseUrl)
             coroutineScope {
-                val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
+                val latestDeferred = async { suspendRunCatching { api.getLatest() }.getOrNull() }
                 val airedDeferred = async<List<Anime>> {
                     if (enableDirectAiringFeed) {
-                        runCatching { fetchRecentAiringFromAniList() }.getOrDefault(emptyList())
+                        suspendRunCatching { fetchRecentAiringFromAniList() }.getOrDefault(emptyList())
                     } else emptyList()
                 }
 
+                val latestResp = latestDeferred.await()
+                val airedList = airedDeferred.await()
+                if (latestResp == null && airedList.isEmpty()) {
+                    throw IllegalStateException("Gagal memuat update episode terbaru dari server.")
+                }
+
                 val merged = LinkedHashMap<String, Anime>()
-                airedDeferred.await().forEach { merged[it.id] = it }
-                latestDeferred.await()?.data.orEmpty()
+                airedList.forEach { merged[it.id] = it }
+                latestResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapLatestItem(dto, idx) }
                     .forEach { item ->
-                        if (!merged.containsKey(item.id)) {
+                        val existing = merged[item.id]
+                        if (existing == null) {
                             merged[item.id] = item
+                        } else {
+                            merged[item.id] = existing.copy(
+                                isOfficialFree = existing.isOfficialFree || item.isOfficialFree,
+                                officialChannel = item.officialChannel ?: existing.officialChannel,
+                                latestEpisodeSlug = item.latestEpisodeSlug ?: existing.latestEpisodeSlug,
+                                releasedEpisodes = maxOf(existing.releasedEpisodes, item.releasedEpisodes),
+                                releaseDay = existing.releaseDay ?: item.releaseDay,
+                                releaseTimeWib = existing.releaseTimeWib ?: item.releaseTimeWib
+                            )
                         }
                     }
                 merged.values.toList()
@@ -281,7 +324,8 @@ class KumanimeRemoteDataSource(
         directGraphClient.newCall(req).execute().use { res ->
             if (!res.isSuccessful) return emptyList()
             val bodyStr = res.body?.string() ?: return emptyList()
-            val root = JsonParser.parseString(bodyStr).asJsonObject
+            val root = runCatching { JsonParser.parseString(bodyStr) }.getOrNull()
+                ?.takeIf { it.isJsonObject }?.asJsonObject ?: return emptyList()
             val schedules = root.getAsJsonObject("data")
                 ?.getAsJsonObject("Page")
                 ?.getAsJsonArray("airingSchedules")
@@ -289,10 +333,10 @@ class KumanimeRemoteDataSource(
 
             val results = LinkedHashMap<String, Anime>()
             schedules.forEachIndexed { idx, el ->
-                val obj = el.asJsonObject
+                val obj = el.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEachIndexed
                 val media = obj.getAsJsonObject("media") ?: return@forEachIndexed
                 if (media.get("isAdult")?.takeIf { !it.isJsonNull }?.asBoolean == true) return@forEachIndexed
-                val mediaId = media.get("id")?.asInt ?: return@forEachIndexed
+                val mediaId = media.get("id")?.takeIf { !it.isJsonNull }?.asInt ?: return@forEachIndexed
                 val epNum = obj.get("episode")?.takeIf { !it.isJsonNull }?.asInt ?: 1
                 val airingAt = obj.get("airingAt")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
 
@@ -349,17 +393,19 @@ class KumanimeRemoteDataSource(
                     else -> AnimeType.TV_SERIES
                 }
 
-                val wibZoned = Instant.ofEpochSecond(airingAt).atZone(ZoneOffset.ofHours(7))
-                val releaseDay = when (wibZoned.dayOfWeek) {
-                    DayOfWeek.MONDAY -> ReleaseDay.SENIN
-                    DayOfWeek.TUESDAY -> ReleaseDay.SELASA
-                    DayOfWeek.WEDNESDAY -> ReleaseDay.RABU
-                    DayOfWeek.THURSDAY -> ReleaseDay.KAMIS
-                    DayOfWeek.FRIDAY -> ReleaseDay.JUMAT
-                    DayOfWeek.SATURDAY -> ReleaseDay.SABTU
-                    DayOfWeek.SUNDAY -> ReleaseDay.MINGGU
+                val wibZoned = if (airingAt > 0L) Instant.ofEpochSecond(airingAt).atZone(ZoneOffset.ofHours(7)) else null
+                val releaseDay = wibZoned?.dayOfWeek?.let { dow ->
+                    when (dow) {
+                        DayOfWeek.MONDAY -> ReleaseDay.SENIN
+                        DayOfWeek.TUESDAY -> ReleaseDay.SELASA
+                        DayOfWeek.WEDNESDAY -> ReleaseDay.RABU
+                        DayOfWeek.THURSDAY -> ReleaseDay.KAMIS
+                        DayOfWeek.FRIDAY -> ReleaseDay.JUMAT
+                        DayOfWeek.SATURDAY -> ReleaseDay.SABTU
+                        DayOfWeek.SUNDAY -> ReleaseDay.MINGGU
+                    }
                 }
-                val releaseTimeWib = "%02d:%02d WIB".format(wibZoned.hour, wibZoned.minute)
+                val releaseTimeWib = wibZoned?.let { "%02d:%02d WIB".format(it.hour, it.minute) }
 
                 val ep = Episode(
                     id = "remote_ep_ep-$mediaId-$epNum",
@@ -367,7 +413,7 @@ class KumanimeRemoteDataSource(
                     number = epNum,
                     title = "Episode $epNum",
                     durationSeconds = durationMin * 60,
-                    releaseDate = releaseTimeWib,
+                    releaseDate = releaseTimeWib ?: "Rilis Terbaru",
                     synopsis = synopsis,
                     slug = "ep-$mediaId-$epNum",
                     streamUrl = "",
@@ -416,19 +462,36 @@ class KumanimeRemoteDataSource(
     }
 
     suspend fun fetchCatalogPage(baseUrl: String, page: Int): Result<List<Anime>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val safePage = page.coerceAtLeast(2)
+        suspendRunCatching {
+            val safePage = page.coerceAtLeast(1)
             val rankOffset = (safePage - 1) * 60
             val api = serviceProvider(baseUrl)
             coroutineScope {
-                val officialFreeDeferred = async { runCatching { api.getOfficialFreePage(safePage) }.getOrNull() }
-                val dubIndoDeferred = async { runCatching { api.getDubIndoPage(safePage) }.getOrNull() }
-                val popularDeferred = async { runCatching { api.getPopularPage(safePage) }.getOrNull() }
-                val latestDeferred = async { runCatching { api.getLatestPage(safePage) }.getOrNull() }
-                val completedDeferred = async { runCatching { api.getCompletedPage(safePage) }.getOrNull() }
-                val moviesDeferred = async { runCatching { api.getMoviesPage(safePage) }.getOrNull() }
+                val officialFreeDeferred = async { suspendRunCatching { api.getOfficialFreePage(safePage) }.getOrNull() }
+                val dubIndoDeferred = async { suspendRunCatching { api.getDubIndoPage(safePage) }.getOrNull() }
+                val popularDeferred = async { suspendRunCatching { api.getPopularPage(safePage) }.getOrNull() }
+                val latestDeferred = async { suspendRunCatching { api.getLatestPage(safePage) }.getOrNull() }
+                val completedDeferred = async { suspendRunCatching { api.getCompletedPage(safePage) }.getOrNull() }
+                val moviesDeferred = async { suspendRunCatching { api.getMoviesPage(safePage) }.getOrNull() }
 
-                val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
+                val officialFreeResp = officialFreeDeferred.await()
+                val dubIndoResp = dubIndoDeferred.await()
+                val popularResp = popularDeferred.await()
+                val latestResp = latestDeferred.await()
+                val completedResp = completedDeferred.await()
+                val moviesResp = moviesDeferred.await()
+
+                val anySucceeded = officialFreeResp != null ||
+                    dubIndoResp != null ||
+                    popularResp != null ||
+                    latestResp != null ||
+                    completedResp != null ||
+                    moviesResp != null
+                if (!anySucceeded) {
+                    throw IllegalStateException("Gagal memuat halaman katalog $safePage dari server.")
+                }
+
+                val officialFreeList = officialFreeResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto.copy(isOfficialFree = true, isDubIndo = false),
@@ -438,7 +501,7 @@ class KumanimeRemoteDataSource(
                             markFeatured = false
                         )
                     }
-                val dubIndoList = dubIndoDeferred.await()?.data.orEmpty()
+                val dubIndoList = dubIndoResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto.copy(isOfficialFree = true, isDubIndo = true, audioLang = "DUB_ID"),
@@ -448,7 +511,7 @@ class KumanimeRemoteDataSource(
                             markFeatured = false
                         )
                     }
-                val popularList = popularDeferred.await()?.data.orEmpty()
+                val popularList = popularResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto,
@@ -457,9 +520,9 @@ class KumanimeRemoteDataSource(
                             markFeatured = false
                         )
                     }
-                val latestList = latestDeferred.await()?.data.orEmpty()
+                val latestList = latestResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapLatestItem(dto, rankOffset + idx) }
-                val completedList = completedDeferred.await()?.data.orEmpty()
+                val completedList = completedResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
                             dto = dto,
@@ -469,7 +532,7 @@ class KumanimeRemoteDataSource(
                             markFeatured = false
                         )
                     }
-                val moviesList = moviesDeferred.await()?.data.orEmpty()
+                val moviesList = moviesResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapCatalogCard(dto, rankOffset + idx, isMovieList = true)
                     }
@@ -477,7 +540,20 @@ class KumanimeRemoteDataSource(
                 val merged = LinkedHashMap<String, Anime>()
                 officialFreeList.forEach { merged[it.id] = it }
                 popularList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
-                latestList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                latestList.forEach { item ->
+                    val existing = merged[item.id]
+                    if (existing == null) {
+                        merged[item.id] = item
+                    } else {
+                        merged[item.id] = existing.copy(
+                            isNewRelease = true,
+                            releaseDay = existing.releaseDay ?: item.releaseDay,
+                            releaseTimeWib = existing.releaseTimeWib ?: item.releaseTimeWib,
+                            latestEpisodeSlug = existing.latestEpisodeSlug ?: item.latestEpisodeSlug,
+                            releasedEpisodes = maxOf(existing.releasedEpisodes, item.releasedEpisodes)
+                        )
+                    }
+                }
                 completedList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 moviesList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 dubIndoList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
@@ -487,9 +563,9 @@ class KumanimeRemoteDataSource(
     }
 
     suspend fun searchAnime(baseUrl: String, query: String): Result<List<Anime>> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val trimmed = query.trim()
-            if (trimmed.isEmpty()) return@runCatching emptyList()
+            if (trimmed.isEmpty()) return@suspendRunCatching emptyList()
             val api = serviceProvider(baseUrl)
             val response = api.searchAnime(trimmed)
             response.data.orEmpty().mapIndexedNotNull { idx, dto ->
@@ -499,12 +575,12 @@ class KumanimeRemoteDataSource(
     }
 
     suspend fun fetchAnimeDetail(baseUrl: String, existing: Anime): Result<Anime> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val api = serviceProvider(baseUrl)
             var targetSlug = existing.slug
 
             if (existing.isEpisodeEntry) {
-                val epResp = api.getEpisodeDetail(existing.slug).epsDetail
+                val epResp = suspendRunCatching { api.getEpisodeDetail(existing.slug).epsDetail }.getOrNull()
                 val resolvedSlug = epResp?.animeSlug?.trim()
                 if (!resolvedSlug.isNullOrEmpty() && resolvedSlug != "-") {
                     targetSlug = resolvedSlug
@@ -518,7 +594,7 @@ class KumanimeRemoteDataSource(
     }
 
     suspend fun fetchAnimeDetailBySlug(baseUrl: String, slug: String): Result<Anime> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val cleanSlug = slug.trim()
             require(cleanSlug.isNotEmpty()) { "Slug anime kosong" }
             val api = serviceProvider(baseUrl)
@@ -530,8 +606,8 @@ class KumanimeRemoteDataSource(
 
     suspend fun fetchEpisodeStream(baseUrl: String, episode: Episode): Result<EpisodeStreamResult> =
         withContext(Dispatchers.IO) {
-            runCatching {
-                val epSlug = episode.slug.ifBlank { return@runCatching EpisodeStreamResult(episode, null) }
+            suspendRunCatching {
+                val epSlug = episode.slug.ifBlank { return@suspendRunCatching EpisodeStreamResult(episode, null) }
                 val api = serviceProvider(baseUrl)
                 val detailDto = api.getEpisodeDetail(epSlug).epsDetail
                     ?: throw IllegalStateException("Detail episode tidak ditemukan untuk slug: $epSlug")
@@ -552,13 +628,13 @@ class KumanimeRemoteDataSource(
         email: String,
         password: String
     ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).register(RegisterRequestDto(displayName, email, password))
             val body = res.body()
             if (res.isSuccessful && body?.user != null && !body.token.isNullOrBlank()) {
                 body
             } else {
-                throw IllegalStateException(extractErrorMessage(res, "Gagal mendaftar akun"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal mendaftar akun"))
             }
         }
     }
@@ -568,25 +644,25 @@ class KumanimeRemoteDataSource(
         email: String,
         password: String
     ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).login(LoginRequestDto(email, password))
             val body = res.body()
             if (res.isSuccessful && body?.user != null && !body.token.isNullOrBlank()) {
                 body
             } else {
-                throw IllegalStateException(extractErrorMessage(res, "Email atau kata sandi tidak valid"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Email atau kata sandi tidak valid"))
             }
         }
     }
 
     suspend fun fetchAuthConfig(baseUrl: String): Result<AuthConfigDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).getAuthConfig()
             val body = res.body()
             if (res.isSuccessful && body != null) {
                 body
             } else {
-                AuthConfigDto()
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal memuat konfigurasi auth"))
             }
         }
     }
@@ -595,13 +671,13 @@ class KumanimeRemoteDataSource(
         baseUrl: String,
         idToken: String
     ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).loginWithGoogle(GoogleAuthRequestDto(idToken))
             val body = res.body()
             if (res.isSuccessful && body?.user != null && !body.token.isNullOrBlank()) {
                 body
             } else {
-                throw IllegalStateException(extractErrorMessage(res, "Gagal masuk dengan akun Google"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal masuk dengan akun Google"))
             }
         }
     }
@@ -621,7 +697,7 @@ class KumanimeRemoteDataSource(
         name: String,
         picture: String = ""
     ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val cleanEmail = email.trim().lowercase()
             val cleanName = name.trim().ifEmpty {
                 cleanEmail.substringBefore("@")
@@ -632,7 +708,7 @@ class KumanimeRemoteDataSource(
             val api = serviceProvider(baseUrl)
 
             // 1. Try direct Google profile auth endpoint first
-            val googleRes = runCatching {
+            val googleRes = suspendRunCatching {
                 api.loginWithGoogle(
                     GoogleAuthRequestDto(
                         idToken = "",
@@ -645,69 +721,71 @@ class KumanimeRemoteDataSource(
             }.getOrNull()
             val googleBody = googleRes?.body()
             if (googleRes != null && googleRes.isSuccessful && googleBody?.user != null && !googleBody.token.isNullOrBlank()) {
-                return@runCatching googleBody
+                return@suspendRunCatching googleBody
             }
 
             // 2. Fallback to PostgreSQL /api/auth/login -> /api/auth/register when server requires OAuth idToken
             val derivedPass = buildDerivedGooglePassword(cleanEmail)
-            val loginRes = runCatching {
+            val loginRes = suspendRunCatching {
                 api.login(LoginRequestDto(cleanEmail, derivedPass))
             }.getOrNull()
             val loginBody = loginRes?.body()
             if (loginRes != null && loginRes.isSuccessful && loginBody?.user != null && !loginBody.token.isNullOrBlank()) {
-                return@runCatching loginBody
+                return@suspendRunCatching loginBody
             }
 
             if (cleanEmail == "adrian@animwatch.id") {
-                val demoLogin = runCatching {
+                val demoLogin = suspendRunCatching {
                     api.login(LoginRequestDto(cleanEmail, "animwatch123"))
                 }.getOrNull()?.body()
                 if (demoLogin?.user != null && !demoLogin.token.isNullOrBlank()) {
-                    return@runCatching demoLogin
+                    return@suspendRunCatching demoLogin
                 }
             }
 
             val regRes = api.register(RegisterRequestDto(cleanName, cleanEmail, derivedPass))
             val regBody = regRes.body()
             if (regRes.isSuccessful && regBody?.user != null && !regBody.token.isNullOrBlank()) {
-                return@runCatching regBody
+                return@suspendRunCatching regBody
             }
 
             // If email already existed with a different password, create a Google-scoped alias account in PostgreSQL
             if (regRes.code() == 409) {
                 val googleAliasEmail = cleanEmail.substringBefore("@") + "+google@" + cleanEmail.substringAfter("@")
-                val aliasLogin = runCatching {
+                val aliasLogin = suspendRunCatching {
                     api.login(LoginRequestDto(googleAliasEmail, derivedPass))
                 }.getOrNull()?.body()
                 if (aliasLogin?.user != null && !aliasLogin.token.isNullOrBlank()) {
-                    return@runCatching aliasLogin
+                    return@suspendRunCatching aliasLogin
                 }
                 val aliasReg = api.register(RegisterRequestDto(cleanName, googleAliasEmail, derivedPass))
                 val aliasRegBody = aliasReg.body()
                 if (aliasReg.isSuccessful && aliasRegBody?.user != null && !aliasRegBody.token.isNullOrBlank()) {
-                    return@runCatching aliasRegBody
+                    return@suspendRunCatching aliasRegBody
                 }
             }
 
-            throw IllegalStateException(extractErrorMessage(regRes, "Gagal masuk dengan akun Google"))
+            throw HttpStatusException(regRes.code(), extractErrorMessage(regRes, "Gagal masuk dengan akun Google"))
         }
     }
 
     suspend fun logoutUser(baseUrl: String, token: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            serviceProvider(baseUrl).logout(bearer(token))
-            Unit
+        suspendRunCatching {
+            val res = serviceProvider(baseUrl).logout(bearer(token))
+            if (!res.isSuccessful) {
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal logout sesi"))
+            }
         }
     }
 
     suspend fun fetchCurrentUser(baseUrl: String, token: String): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).getMe(bearer(token))
             val body = res.body()
             if (res.isSuccessful && body?.user != null) {
                 body
             } else {
-                throw IllegalStateException(extractErrorMessage(res, "Sesi berakhir"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Sesi berakhir"))
             }
         }
     }
@@ -723,7 +801,7 @@ class KumanimeRemoteDataSource(
         memberTier: String,
         favoriteGenre: String
     ): Result<UserProfileDto> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).updateProfile(
                 bearer(token),
                 UpdateProfileRequestDto(
@@ -738,7 +816,7 @@ class KumanimeRemoteDataSource(
             )
             val user = res.body()?.user
             if (res.isSuccessful && user != null) user
-            else throw IllegalStateException(extractErrorMessage(res, "Gagal menyimpan profil"))
+            else throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal menyimpan profil"))
         }
     }
 
@@ -747,10 +825,10 @@ class KumanimeRemoteDataSource(
         token: String,
         request: UpdatePreferencesRequestDto
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).updatePreferences(bearer(token), request)
             if (!res.isSuccessful) {
-                throw IllegalStateException(extractErrorMessage(res, "Gagal menyimpan preferensi"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal menyimpan preferensi"))
             }
         }
     }
@@ -762,12 +840,12 @@ class KumanimeRemoteDataSource(
         category: String?,
         watchedEpisodes: Int? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).upsertWatchlist(
                 bearer(token),
                 WatchlistUpsertRequestDto(animeId, category, watchedEpisodes)
             )
-            if (!res.isSuccessful) throw IllegalStateException("Gagal menyimpan watchlist")
+            if (!res.isSuccessful) throw HttpStatusException(res.code(), "Gagal menyimpan watchlist")
         }
     }
 
@@ -776,39 +854,42 @@ class KumanimeRemoteDataSource(
         token: String,
         request: HistoryUpsertRequestDto
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).upsertHistory(bearer(token), request)
-            if (!res.isSuccessful) throw IllegalStateException("Gagal menyimpan riwayat")
+            if (!res.isSuccessful) throw HttpStatusException(res.code(), "Gagal menyimpan riwayat")
         }
     }
 
     suspend fun deleteHistoryItem(baseUrl: String, token: String, animeId: String): Result<Unit> =
         withContext(Dispatchers.IO) {
-            runCatching {
-                serviceProvider(baseUrl).deleteHistoryItem(bearer(token), animeId)
-                Unit
+            suspendRunCatching {
+                val res = serviceProvider(baseUrl).deleteHistoryItem(bearer(token), animeId)
+                if (!res.isSuccessful) throw HttpStatusException(res.code(), "Gagal menghapus riwayat")
             }
         }
 
     suspend fun clearHistory(baseUrl: String, token: String): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            serviceProvider(baseUrl).clearHistory(bearer(token))
-            Unit
+        suspendRunCatching {
+            val res = serviceProvider(baseUrl).clearHistory(bearer(token))
+            if (!res.isSuccessful) throw HttpStatusException(res.code(), "Gagal membersihkan riwayat")
         }
     }
 
     suspend fun syncRating(baseUrl: String, token: String, animeId: String, score: Int): Result<Unit> =
         withContext(Dispatchers.IO) {
-            runCatching {
-                serviceProvider(baseUrl).upsertRating(bearer(token), RatingUpsertRequestDto(animeId, score))
-                Unit
+            suspendRunCatching {
+                val res = serviceProvider(baseUrl).upsertRating(bearer(token), RatingUpsertRequestDto(animeId, score))
+                if (!res.isSuccessful) throw HttpStatusException(res.code(), "Gagal menyimpan rating")
             }
         }
 
     suspend fun fetchComments(baseUrl: String, animeId: String, token: String?): Result<List<CommentItem>> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            suspendRunCatching {
                 val res = serviceProvider(baseUrl).getComments(animeId, token?.let { bearer(it) })
+                if (!res.isSuccessful) {
+                    throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal memuat komentar"))
+                }
                 res.body()?.data.orEmpty().mapNotNull { dto ->
                     val id = dto.id?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
                     CommentItem(
@@ -841,7 +922,7 @@ class KumanimeRemoteDataSource(
         isSpoiler: Boolean,
         parentId: String? = null
     ): Result<CommentItem> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).postComment(
                 bearer(token),
                 PostCommentRequestDto(animeId, episodeNumber, content, isSpoiler, parentId)
@@ -866,7 +947,7 @@ class KumanimeRemoteDataSource(
                     parentId = dto.parentId ?: parentId
                 )
             } else {
-                throw IllegalStateException(extractErrorMessage(res, "Gagal mengirim komentar"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal mengirim komentar"))
             }
         }
     }
@@ -876,13 +957,13 @@ class KumanimeRemoteDataSource(
         token: String,
         commentId: String
     ): Result<Pair<Boolean, Int>> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).toggleCommentLike(bearer(token), commentId)
             val body = res.body()
             if (res.isSuccessful && body != null) {
                 Pair(body.liked ?: false, body.likes ?: 0)
             } else {
-                throw IllegalStateException("Gagal menyukai komentar")
+                throw HttpStatusException(res.code(), "Gagal menyukai komentar")
             }
         }
     }
@@ -892,11 +973,20 @@ class KumanimeRemoteDataSource(
         token: String,
         commentId: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
+        suspendRunCatching {
             val res = serviceProvider(baseUrl).deleteComment(bearer(token), commentId)
             if (!res.isSuccessful) {
-                throw IllegalStateException(extractErrorMessage(res, "Gagal menghapus komentar"))
+                throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal menghapus komentar"))
             }
+        }
+    }
+
+    companion object {
+        private val sharedDirectGraphClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(7, TimeUnit.SECONDS)
+                .readTimeout(9, TimeUnit.SECONDS)
+                .build()
         }
     }
 }

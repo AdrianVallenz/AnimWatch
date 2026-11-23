@@ -35,7 +35,9 @@ data class LatestItemDto(
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
     @SerializedName("audio_lang") val audioLang: String? = null,
-    @SerializedName("official_channel") val officialChannel: String? = null
+    @SerializedName("official_channel") val officialChannel: String? = null,
+    @SerializedName("stream_type") val streamType: String? = null,
+    @SerializedName("external_links") val externalLinks: List<ExternalLinkDto>? = null
 )
 
 data class PopularResponseDto(
@@ -71,6 +73,7 @@ data class PopularItemDto(
     @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("stream_type") val streamType: String? = null,
+    @SerializedName("latest_eps_slug") val latestEpsSlug: String? = null,
     @SerializedName("episodes") val episodes: List<AnimeDetailEpisodeDto>? = null,
     @SerializedName("external_links") val externalLinks: List<ExternalLinkDto>? = null
 )
@@ -120,7 +123,10 @@ data class CatalogCardDto(
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
     @SerializedName("audio_lang") val audioLang: String? = null,
-    @SerializedName("official_channel") val officialChannel: String? = null
+    @SerializedName("official_channel") val officialChannel: String? = null,
+    @SerializedName("stream_type") val streamType: String? = null,
+    @SerializedName("latest_eps_slug") val latestEpsSlug: String? = null,
+    @SerializedName("external_links") val externalLinks: List<ExternalLinkDto>? = null
 )
 
 data class AnimeDetailResponseDto(
@@ -147,6 +153,8 @@ data class AnimeDetailDataDto(
     @SerializedName("rating_count") val ratingCount: String? = null,
     @SerializedName("studio") val studio: String? = null,
     @SerializedName("status") val status: String? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("views_label") val viewsLabel: String? = null,
     @SerializedName("year") val year: Int? = null,
     @SerializedName("season") val season: String? = null,
     @SerializedName("duration_minutes") val durationMinutes: Int? = null,

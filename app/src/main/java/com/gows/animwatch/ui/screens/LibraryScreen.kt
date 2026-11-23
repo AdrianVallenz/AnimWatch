@@ -27,13 +27,17 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +67,7 @@ import com.gows.animwatch.ui.theme.GoldTint
 import com.gows.animwatch.ui.theme.MediaScrimDark
 import com.gows.animwatch.ui.theme.MediaTextLight
 import com.gows.animwatch.ui.theme.ObsidianCard
+import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusEmerald
 import com.gows.animwatch.ui.theme.StatusLive
@@ -351,8 +356,42 @@ private fun HistoryContent(
 ) {
     val animeById = remember(allAnime) { allAnime.associateBy { it.id } }
     val visibleHistory = remember(history, animeById) {
-        history.filter { it.animeId in animeById }
+        history.filter { it.animeId in animeById }.distinctBy { it.animeId }
     }
+    var showConfirmClearDialog by remember { mutableStateOf(false) }
+
+    if (showConfirmClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmClearDialog = false },
+            containerColor = ObsidianElevated,
+            shape = RoundedCornerShape(24.dp),
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary,
+            title = { Text("Bersihkan Riwayat Tonton?", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    "Semua ${visibleHistory.size} riwayat episode terakhir akan dihapus dari akun dan perangkat ini.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirmClearDialog = false
+                        onClearAll()
+                    }
+                ) {
+                    Text("Hapus Semua", color = StatusLive, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmClearDialog = false }) {
+                    Text("Batal", color = TextSecondary)
+                }
+            }
+        )
+    }
+
     if (visibleHistory.isEmpty()) {
         EmptyLibraryState(
             icon = Icons.Rounded.History,
@@ -380,7 +419,7 @@ private fun HistoryContent(
                         style = MaterialTheme.typography.labelMedium,
                         color = TextSecondary
                     )
-                    TextButton(onClick = onClearAll) {
+                    TextButton(onClick = { showConfirmClearDialog = true }) {
                         Text(
                             "Bersihkan semua",
                             style = MaterialTheme.typography.labelMedium,

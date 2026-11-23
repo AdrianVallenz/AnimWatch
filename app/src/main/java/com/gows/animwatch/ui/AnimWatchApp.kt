@@ -62,6 +62,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gows.animwatch.R
 import com.gows.animwatch.data.local.AndroidDeviceStorageManager
 import com.gows.animwatch.data.local.AppNotificationHelper
+import com.gows.animwatch.data.local.NotificationDeepLinkBus
 import com.gows.animwatch.data.local.SharedPreferencesSessionStore
 import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.data.remote.GoogleAuthDeepLinkBus
@@ -110,6 +111,7 @@ fun AnimWatchApp(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pendingGoogleCallback by GoogleAuthDeepLinkBus.pendingCallback.collectAsStateWithLifecycle()
+    val pendingNotificationTarget by NotificationDeepLinkBus.pendingTarget.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showNotificationsSheet by remember { mutableStateOf(false) }
     var hasDismissedPermissionPrompt by remember { mutableStateOf(false) }
@@ -122,10 +124,7 @@ fun AnimWatchApp(
     ) {
         hasDismissedPermissionPrompt = true
         viewModel.refreshDeviceStorageAndPermissions()
-        val unread = viewModel.uiState.value.notifications.filter { !it.isRead }
-        if (unread.isNotEmpty() && viewModel.uiState.value.settings.episodeNotifications) {
-            AppNotificationHelper.postEpisodeUpdate(appContext, unread.take(4))
-        }
+        viewModel.onNotificationPermissionGranted()
     }
 
     LaunchedEffect(Unit) {
@@ -138,6 +137,20 @@ fun AnimWatchApp(
         val payload = pendingGoogleCallback ?: return@LaunchedEffect
         GoogleAuthDeepLinkBus.consume()
         viewModel.completeGoogleOAuthCallback(payload.token, payload.error)
+    }
+
+    LaunchedEffect(
+        pendingNotificationTarget,
+        uiState.isAuthenticated,
+        uiState.hasCompletedThemeSetup,
+        uiState.isEditingTheme
+    ) {
+        val target = pendingNotificationTarget ?: return@LaunchedEffect
+        if (uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme) {
+            NotificationDeepLinkBus.consume()
+            target.notificationId?.let(viewModel::markNotificationRead)
+            viewModel.openAnimeDetail(target.animeId)
+        }
     }
 
     LaunchedEffect(uiState.currentTab) {
@@ -169,8 +182,17 @@ fun AnimWatchApp(
         LaunchedEffect(Unit) {
             viewModel.systemNotificationBatch.collect { items ->
                 if (viewModel.uiState.value.settings.episodeNotifications) {
-                    AppNotificationHelper.postEpisodeUpdate(appContext, items)
+                    val posted = AppNotificationHelper.postEpisodeUpdate(appContext, items)
+                    if (posted) {
+                        viewModel.markSystemNotificationDispatched(items)
+                    }
                 }
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            viewModel.systemNotificationCancelEvent.collect {
+                AppNotificationHelper.cancelEpisodeNotifications(appContext)
             }
         }
 
@@ -278,7 +300,11 @@ fun AnimWatchApp(
                                                 null,
                                                 null
                                             )
-                                            googleAccountPickerLauncher.launch(pickerIntent)
+                                            if (pickerIntent.resolveActivity(localContext.packageManager) != null) {
+                                                googleAccountPickerLauncher.launch(pickerIntent)
+                                            } else {
+                                                triggerManualGooglePrompt = true
+                                            }
                                         }.onFailure {
                                             triggerManualGooglePrompt = true
                                         }
@@ -347,7 +373,6 @@ fun AnimWatchApp(
                                 },
                                 onOpenSchedule = viewModel::openExploreSchedule,
                                 onOpenRanking = viewModel::openExploreRanking,
-                                onOpenRandom = viewModel::openRandomAnime,
                                 onOpenGenre = viewModel::openExploreWithGenre,
                                 onOpenHistory = {
                                     viewModel.selectTab(MainTab.LIBRARY)
@@ -381,7 +406,9 @@ fun AnimWatchApp(
                                 onSortChange = viewModel::setSortOption,
                                 onToggleGridView = viewModel::toggleExploreGridMode,
                                 onResetFilters = viewModel::resetExploreFilters,
+                                onResetGenreFilters = viewModel::resetExploreGenreFilter,
                                 onLoadMoreCatalog = { viewModel.loadMoreCatalog(silent = true) },
+                                onRetryLoadMoreCatalog = viewModel::retryLoadMoreCatalog,
                                 onSelectScheduleDay = viewModel::selectScheduleDay,
                                 onToggleReminder = viewModel::toggleAnimeReminder,
                                 onAnimeClick = viewModel::openAnimeDetail,
@@ -443,7 +470,23 @@ fun AnimWatchApp(
                             onDeleteComment = viewModel::deleteComment,
                             onShowMessage = viewModel::emitMessage,
                             onShareClick = { title ->
-                                viewModel.emitMessage("Tautan '$title' disalin ke papan klip")
+                                val shareUrl = "https://animwatch.id/anime/${anime.slug}"
+                                val shareText = "Tonton $title di AnimWatch: $shareUrl"
+                                val clipboard = localContext.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("AnimWatch", shareUrl))
+                                val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_SUBJECT, title)
+                                    putExtra(android.content.Intent.EXTRA_TEXT, shareText)
+                                }
+                                runCatching {
+                                    localContext.startActivity(
+                                        android.content.Intent.createChooser(sendIntent, "Bagikan Anime")
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }.onFailure {
+                                    viewModel.emitMessage("Tautan '$title' disalin ke papan klip")
+                                }
                             }
                         )
                     } else {
@@ -512,7 +555,12 @@ fun AnimWatchApp(
                             route.preset != CatalogPreset.DUB_INDO &&
                             route.preset != CatalogPreset.TOP_RATED,
                         isLoadingMore = uiState.isLoadingMoreCatalog,
-                        onLoadMore = { viewModel.loadMoreCatalog(silent = true) }
+                        catalogPageLoaded = uiState.catalogPageLoaded,
+                        hasLoadError = uiState.catalogLoadError &&
+                            route.preset != CatalogPreset.DUB_INDO &&
+                            route.preset != CatalogPreset.TOP_RATED,
+                        onLoadMore = { viewModel.loadMoreCatalog(silent = true) },
+                        onRetryLoadMore = viewModel::retryLoadMoreCatalog
                     )
                 }
             }
@@ -548,7 +596,7 @@ fun AnimWatchApp(
             if (isTabsRoot) {
                 FloatingGoldBottomNav(
                     currentTab = uiState.currentTab,
-                    libraryBadgeCount = 0,
+                    libraryBadgeCount = uiState.activeDownloadCount,
                     onSelectTab = viewModel::selectTab
                 )
             }
@@ -584,7 +632,14 @@ fun AnimWatchApp(
                     onNextEpisode = viewModel::playNextEpisode,
                     onPreviousEpisode = viewModel::playPreviousEpisode,
                     onCancelAutoNext = viewModel::cancelAutoNext,
-                    onSelectEpisode = { ep -> viewModel.playAnime(playerAnime.id, ep.id, startFromZero = true) },
+                    onSelectEpisode = { ep ->
+                        viewModel.playAnime(
+                            animeId = playerAnime.id,
+                            episodeId = ep.id,
+                            startFromZero = true,
+                            preserveFullscreen = activeSession.isFullscreen
+                        )
+                    },
                     onSelectQuality = viewModel::setPlayerQuality,
                     onSelectServer = viewModel::setPlayerServer,
                     onSelectSubtitle = viewModel::setPlayerSubtitle,
@@ -594,6 +649,8 @@ fun AnimWatchApp(
                     onToggleLock = viewModel::togglePlayerLock,
                     onToggleFullscreen = { viewModel.setPlayerFullscreen(!activeSession.isFullscreen) },
                     onToggleWebStreamView = viewModel::togglePlayerWebStreamView,
+                    onWebProgressUpdate = viewModel::updateWebPlaybackProgress,
+                    onWebEpisodeEnded = viewModel::onWebEpisodeEnded,
                     onEpisodeCompleted = viewModel::markEpisodeCompleted,
                     onMarkAnimeCompleted = viewModel::markAnimeCompleted,
                     onToggleLike = viewModel::toggleEpisodeLike,
@@ -612,13 +669,19 @@ fun AnimWatchApp(
         } // end else (uiState.isAuthenticated)
 
         // 4. Global Smooth Snackbar Toast
+        val snackBottomPadding = when {
+            uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme && isTabsRoot && hasMiniPlayer -> 168.dp
+            uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme && isTabsRoot -> 88.dp
+            hasMiniPlayer -> 88.dp
+            else -> 20.dp
+        }
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(
-                    bottom = if (uiState.isAuthenticated && uiState.hasCompletedThemeSetup && !uiState.isEditingTheme && isTabsRoot) 88.dp else 20.dp,
+                    bottom = snackBottomPadding,
                     start = 16.dp,
                     end = 16.dp
                 )

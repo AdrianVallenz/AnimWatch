@@ -238,7 +238,7 @@ data class Anime(
     val episodes: List<Episode> = emptyList()
 ) {
     val latestEpisodeNumber: Int
-        get() = episodes.maxOfOrNull { it.number } ?: releasedEpisodes
+        get() = maxOf(episodes.maxOfOrNull { it.number } ?: 0, releasedEpisodes)
 }
 
 object FranchiseSeasonHelper {
@@ -359,18 +359,27 @@ object FranchiseSeasonHelper {
     }
 
     fun extractSeasonNumber(anime: Anime): Int? {
-        val t = "${anime.title} ${anime.slug}".lowercase()
-        Regex("(?:season\\s*|\\bs)([1-9])\\b").find(t)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
-        Regex("\\b([1-9])(?:st|nd|rd|th)\\s+season\\b").find(t)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
-        if (Regex("\\bfinal\\s+season\\b").containsMatchIn(t) && t.contains("hero academia")) return 8
-        if (Regex("\\b(second\\s+plate|stone\\s+wars|2nd\\s+season|\\bii\\b|\\s2$)").containsMatchIn(t)) return 2
-        if (Regex("\\b(new\\s+world|3rd\\s+season|\\biii\\b|\\s3$)").containsMatchIn(t)) return 3
-        if (Regex("\\b(science\\s+future|4th\\s+season|\\biv\\b|\\s4$)").containsMatchIn(t)) return 4
+        val cleanTitle = anime.title.trim().lowercase()
+        val cleanSlug = anime.slug.trim().lowercase()
+        val combined = "$cleanTitle $cleanSlug"
+        Regex("(?:season\\s*|\\bs)([1-9][0-9]?)\\b").find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        Regex("\\b([1-9][0-9]?)(?:st|nd|rd|th)\\s+season\\b").find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        Regex("\\b(?:part|cour)\\s*([2-9]|1[0-9])\\b").find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        if (Regex("\\bfinal\\s+season\\b").containsMatchIn(combined) && combined.contains("hero academia")) return 8
+        if (Regex("\\b(second\\s+plate|stone\\s+wars|2nd\\s+season|\\bii\\b)").containsMatchIn(combined) ||
+            Regex("\\s2$").containsMatchIn(cleanTitle)
+        ) return 2
+        if (Regex("\\b(new\\s+world|3rd\\s+season|\\biii\\b)").containsMatchIn(combined) ||
+            Regex("\\s3$").containsMatchIn(cleanTitle)
+        ) return 3
+        if (Regex("\\b(science\\s+future|4th\\s+season|\\biv\\b)").containsMatchIn(combined) ||
+            Regex("\\s4$").containsMatchIn(cleanTitle)
+        ) return 4
         return null
     }
 
     private fun extractTrailingNumericId(slugOrId: String): String? =
-        Regex("-(\\d{3,7})$").find(slugOrId)?.groupValues?.getOrNull(1)
+        Regex("-(\\d{1,8})$").find(slugOrId)?.groupValues?.getOrNull(1)
 
     fun findFranchiseSeasons(current: Anime, allAnime: List<Anime>): List<Anime> {
         val targetKey = extractFranchiseKey(current)

@@ -18,8 +18,11 @@ const OFFICIAL_YT_CHANNELS = [
 let db: SQL | null = null;
 let dbReady = false;
 let dbInitError: string | null = null;
+let lastDbRetryAt = 0;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 async function initDatabase(): Promise<void> {
+  lastDbRetryAt = Date.now();
   const url = (Bun.env.DATABASE_URL ?? "").trim();
   if (!url) {
     dbInitError = "DATABASE_URL not configured";
@@ -294,7 +297,7 @@ async function handleRegister(req: Request): Promise<Response> {
   const password = body?.password ?? "";
 
   if (name.length < 2) return jsonResponse({ status: false, message: "Nama minimal 2 karakter" }, 400);
-  if (!email.includes("@") || !email.includes(".")) {
+  if (!EMAIL_REGEX.test(email)) {
     return jsonResponse({ status: false, message: "Format email tidak valid" }, 400);
   }
   if (password.length < 6) return jsonResponse({ status: false, message: "Kata sandi minimal 6 karakter" }, 400);
@@ -311,7 +314,7 @@ async function handleRegister(req: Request): Promise<Response> {
   const inserted = await db`
     INSERT INTO users (email, password_hash, display_name, handle, bio, avatar_emblem, member_tier, has_completed_theme_setup)
     VALUES (${email}, ${passwordHash}, ${name}, ${handle}, 'Anggota baru AnimWatch.', ${emblem}, 'Member', FALSE)
-    RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
   `;
   const userRow = inserted[0] as DbUserRow;
@@ -333,7 +336,7 @@ async function handleLogin(req: Request): Promise<Response> {
   }
 
   const rows = await db`
-    SELECT id, email, password_hash, display_name, handle, bio, avatar_emblem, member_tier,
+    SELECT id, email, password_hash, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
            appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     FROM users WHERE email = ${email} LIMIT 1
   `;
@@ -381,20 +384,30 @@ async function upsertGoogleUserAndCreateSession(profile: {
   const cleanName = profile.name.trim() || cleanEmail.split("@")[0] || "Google Watcher";
   const cleanPicture = (profile.picture ?? "").trim();
 
-  const existing = await db`
+  const bySub = await db`
     SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
-           appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
+           appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings, google_sub
     FROM users
-    WHERE google_sub = ${profile.sub} OR email = ${cleanEmail}
+    WHERE google_sub = ${profile.sub}
     LIMIT 1
   `;
+  const existing = bySub.length > 0
+    ? bySub
+    : await db`
+        SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings, google_sub
+        FROM users
+        WHERE email = ${cleanEmail}
+        LIMIT 1
+      `;
 
   let userRow: DbUserRow;
   if (existing.length > 0) {
-    const found = existing[0] as DbUserRow;
+    const found = existing[0] as DbUserRow & { google_sub?: string | null };
+    const nextGoogleSub = found.google_sub || profile.sub;
     const updated = await db`
       UPDATE users
-      SET google_sub = ${profile.sub},
+      SET google_sub = ${nextGoogleSub},
           auth_provider = CASE WHEN auth_provider = 'email' THEN 'google' ELSE auth_provider END,
           avatar_url = CASE WHEN ${cleanPicture} <> '' AND (avatar_url = '' OR avatar_url IS NULL) THEN ${cleanPicture} ELSE avatar_url END,
           updated_at = NOW()
@@ -432,9 +445,9 @@ async function upsertGoogleUserAndCreateSession(profile: {
 function handleAuthConfig(): Response {
   return jsonResponse({
     status: "success",
-    googleEnabled: true,
+    googleEnabled: GOOGLE_ALLOWED_AUDIENCES.length > 0,
     googleWebClientId: GOOGLE_CLIENT_ID,
-    googleWebOAuthEnabled: true,
+    googleWebOAuthEnabled: Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
   });
 }
 
@@ -452,7 +465,7 @@ async function handleGoogleIdTokenAuth(req: Request): Promise<Response> {
   // Direct Google Account Profile Sign-In fallback (when device signs in without OAuth Client ID exchange)
   if (!idToken && body?.email) {
     const rawEmail = String(body.email).trim().toLowerCase();
-    if (!rawEmail.includes("@") || !rawEmail.includes(".")) {
+    if (!EMAIL_REGEX.test(rawEmail)) {
       return jsonResponse({ status: false, message: "Format email akun Google tidak valid" }, 400);
     }
     const rawName = String(body.name ?? "").trim() || rawEmail.split("@")[0];
@@ -492,7 +505,7 @@ async function handleGoogleIdTokenAuth(req: Request): Promise<Response> {
   if (!payload.sub || !payload.email || !verifiedEmail) {
     return jsonResponse({ status: false, message: "Email akun Google belum terverifikasi" }, 401);
   }
-  if (GOOGLE_ALLOWED_AUDIENCES.length > 0 && payload.aud && !GOOGLE_ALLOWED_AUDIENCES.includes(payload.aud)) {
+  if (GOOGLE_ALLOWED_AUDIENCES.length > 0 && (!payload.aud || !GOOGLE_ALLOWED_AUDIENCES.includes(payload.aud))) {
     return jsonResponse({ status: false, message: "Google Client ID tidak cocok dengan server" }, 401);
   }
 
@@ -546,7 +559,7 @@ async function handleGoogleDirectWebCallback(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const email = (url.searchParams.get("email") ?? "").trim().toLowerCase();
   const name = (url.searchParams.get("name") ?? "").trim() || email.split("@")[0] || "Google User";
-  if (!email.includes("@") || !email.includes(".")) {
+  if (!EMAIL_REGEX.test(email)) {
     return htmlRedirectResponse(
       `animwatch://auth/google?error=${encodeURIComponent("Alamat email Google tidak valid")}`,
       "Alamat email Google tidak valid."
@@ -622,7 +635,9 @@ async function handleGoogleOAuthCallback(req: Request): Promise<Response> {
       name?: string;
       picture?: string;
     };
-    if (!info.sub || !info.email) throw new Error("Profil Google tidak lengkap");
+    if (!info.sub || !info.email || info.email_verified !== true) {
+      throw new Error("Profil Google tidak lengkap atau email belum terverifikasi");
+    }
 
     const { token } = await upsertGoogleUserAndCreateSession({
       sub: info.sub,
@@ -753,7 +768,7 @@ async function handleUpdatePreferences(req: Request): Promise<Response> {
         settings = ${JSON.stringify(mergedSettings)}::jsonb,
         updated_at = NOW()
     WHERE id = ${Number(user.id)}
-    RETURNING id, email, display_name, handle, bio, avatar_emblem, member_tier,
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
   `;
   return jsonResponse({ status: "success", user: serializeUser(updated[0] as DbUserRow) });
@@ -769,7 +784,12 @@ async function handleUpsertWatchlist(req: Request): Promise<Response> {
   if (!animeId) return jsonResponse({ status: false, message: "animeId required" }, 400);
 
   const category = body?.category?.trim() || null;
-  const watchedEp = body?.watchedEpisodes != null ? Math.max(0, Math.floor(Number(body.watchedEpisodes))) : null;
+  let watchedEp: number | null = null;
+  if (body?.watchedEpisodes != null) {
+    const parsedWatched = Number(body.watchedEpisodes);
+    if (!Number.isFinite(parsedWatched)) return jsonResponse({ status: false, message: "watchedEpisodes must be a number" }, 400);
+    watchedEp = Math.max(0, Math.floor(parsedWatched));
+  }
 
   if (!category && watchedEp === null) {
     await db`DELETE FROM watchlist WHERE user_id = ${Number(user.id)} AND anime_id = ${animeId}`;
@@ -813,10 +833,16 @@ async function handleUpsertHistory(req: Request): Promise<Response> {
   const episodeId = (body?.episodeId ?? "").trim();
   if (!animeId || !episodeId) return jsonResponse({ status: false, message: "animeId & episodeId required" }, 400);
 
-  const epNum = Math.max(1, Number(body?.episodeNumber ?? 1));
+  const rawEpNum = Number(body?.episodeNumber ?? 1);
+  const rawPos = Number(body?.positionSeconds ?? 0);
+  const rawDur = Number(body?.durationSeconds ?? 1440);
+  if (!Number.isFinite(rawEpNum) || !Number.isFinite(rawPos) || !Number.isFinite(rawDur)) {
+    return jsonResponse({ status: false, message: "Numeric history fields must be finite" }, 400);
+  }
+  const epNum = Math.max(1, Math.floor(rawEpNum));
   const epTitle = (body?.episodeTitle ?? `Episode ${epNum}`).trim();
-  const pos = Math.max(0, Math.floor(Number(body?.positionSeconds ?? 0)));
-  const dur = Math.max(1, Math.floor(Number(body?.durationSeconds ?? 1440)));
+  const pos = Math.max(0, Math.floor(rawPos));
+  const dur = Math.max(1, Math.floor(rawDur));
 
   await db`
     INSERT INTO watch_history (user_id, anime_id, episode_id, episode_number, episode_title, position_seconds, duration_seconds, updated_at)
@@ -853,8 +879,11 @@ async function handleUpsertRating(req: Request): Promise<Response> {
 
   const body = await parseJsonBody<{ animeId?: string; score?: number }>(req);
   const animeId = (body?.animeId ?? "").trim();
-  const score = Math.min(10, Math.max(1, Math.round(Number(body?.score ?? 0))));
-  if (!animeId || score < 1) return jsonResponse({ status: false, message: "Invalid rating" }, 400);
+  const rawScore = Number(body?.score ?? 0);
+  if (!animeId || !Number.isFinite(rawScore)) {
+    return jsonResponse({ status: false, message: "Invalid rating" }, 400);
+  }
+  const score = Math.min(10, Math.max(1, Math.round(rawScore)));
 
   await db`
     INSERT INTO user_ratings (user_id, anime_id, score, updated_at)
@@ -915,7 +944,12 @@ async function handlePostComment(req: Request): Promise<Response> {
   const animeId = String(body?.animeId ?? "").trim();
   const content = String(body?.content ?? "").trim();
   if (!animeId || !content) return jsonResponse({ status: false, message: "Komentar tidak boleh kosong" }, 400);
-  const epNum = body?.episodeNumber != null ? Number(body.episodeNumber) : null;
+  let epNum: number | null = null;
+  if (body?.episodeNumber != null) {
+    const parsedEp = Number(body.episodeNumber);
+    if (!Number.isFinite(parsedEp)) return jsonResponse({ status: false, message: "episodeNumber harus berupa angka" }, 400);
+    epNum = Math.max(1, Math.floor(parsedEp));
+  }
   const isSpoiler = Boolean(body?.isSpoiler);
   const rawParentId = body?.parentId ? Number(String(body.parentId).replace(/^db_cmt_/, "")) : null;
   const parentId = rawParentId && Number.isFinite(rawParentId) && rawParentId > 0 ? rawParentId : null;
@@ -958,7 +992,10 @@ async function handleDeleteComment(req: Request, rawId: string): Promise<Respons
     return jsonResponse({ status: false, message: "Invalid comment id" }, 400);
   }
 
-  await db`DELETE FROM comments WHERE id = ${numericId} AND user_id = ${Number(user.id)}`;
+  const deleted = await db`DELETE FROM comments WHERE id = ${numericId} AND user_id = ${Number(user.id)} RETURNING id`;
+  if (deleted.length === 0) {
+    return jsonResponse({ status: false, message: "Komentar tidak ditemukan atau bukan milikmu" }, 404);
+  }
   return jsonResponse({ status: "success", deletedId: `db_cmt_${numericId}` });
 }
 
@@ -970,6 +1007,11 @@ async function handleToggleCommentLike(req: Request, rawId: string): Promise<Res
   const numericId = Number(rawId.replace(/^db_cmt_/, ""));
   if (!Number.isFinite(numericId) || numericId <= 0) {
     return jsonResponse({ status: false, message: "Invalid comment id" }, 400);
+  }
+
+  const targetComment = await db`SELECT id FROM comments WHERE id = ${numericId} LIMIT 1`;
+  if (targetComment.length === 0) {
+    return jsonResponse({ status: false, message: "Komentar tidak ditemukan" }, 404);
   }
 
   const existing = await db`
@@ -1064,12 +1106,16 @@ function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; epi
     .replace(/^dub\s*id\s*[-–:]\s*/i, "")
     .trim();
 
-  const epMatch = clean.match(/(?:episode|eps?\.?|misi)\s*0*(\d+)/i) || clean.match(/s\d+e0*(\d+)/i);
+  const epMatch =
+    clean.match(/(?:episode|eps?\.?|misi)\s*0*(\d+)/i) ||
+    clean.match(/s\d+e0*(\d+)/i) ||
+    clean.match(/[#\-–:]\s*0*(\d+)\b/);
   const episodeNumber = epMatch ? Number(epMatch[1]) : 1;
 
   const seriesTitle = clean
     .replace(/[-–:|]*\s*(?:episode|eps?\.?|misi)\s*\d+.*$/i, "")
     .replace(/[-–:|]*\s*s\d+e\d+.*$/i, "")
+    .replace(/[-–:\s#]+\d+\s*$/, "")
     .replace(/[-–:\s]+$/, "")
     .trim() || rawTitle.slice(0, 48);
 
@@ -1262,8 +1308,9 @@ async function crawlPublicChannelPlaylists(handle: string, channelName: string, 
 
     const dedup = new Map<string, CrawledPlaylistSummary>();
     for (const item of seen.values()) {
-      const key = `${item.audioLang}:${item.cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "")}`;
-      if (key.length < 7) continue;
+      const slugNorm = item.cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (slugNorm.length < 2) continue;
+      const key = `${item.audioLang}:${slugNorm}`;
       const prev = dedup.get(key);
       if (!prev || item.episodeHint > prev.episodeHint) dedup.set(key, item);
     }
@@ -1312,6 +1359,13 @@ async function getAllLiveChannelPlaylists(): Promise<CrawledPlaylistSummary[]> {
 }
 
 async function handleSeedOfficialPlaylists(req: Request): Promise<Response> {
+  const seedSecret = (Bun.env.ADMIN_SEED_SECRET ?? "").trim();
+  if (seedSecret) {
+    const provided = (req.headers.get("x-admin-secret") ?? getBearerToken(req) ?? "").trim();
+    if (provided !== seedSecret) {
+      return jsonResponse({ status: false, message: "Forbidden: invalid admin seed secret" }, 403);
+    }
+  }
   if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
   const body = await parseJsonBody<{ clearFirst?: boolean; items?: Array<{ id: string; title: string; cleanTitle: string; channel: string; epCount: number; ep1Id: string; audioLang?: string; anilistId?: number | null }> }>(req);
   const items = (body?.items ?? []).filter(
@@ -1389,7 +1443,11 @@ async function isVideoEmbeddable(videoId: string): Promise<boolean> {
       `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&format=json`,
       { signal: AbortSignal.timeout(3500) }
     );
-    return setCached(key, res.ok, 30 * 60 * 1000);
+    if (res.ok) return setCached(key, true, 30 * 60 * 1000);
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      return setCached(key, false, 30 * 60 * 1000);
+    }
+    return true;
   } catch {
     return true;
   }
@@ -1555,12 +1613,16 @@ async function handleOfficialFree(page = 1): Promise<Response> {
   const slice = remaining.slice(start, start + pageSize);
   const byAniListId = await fetchAniListMediaByIds(slice.map((p) => p.anilistId ?? 0));
 
+  const emittedSlugs = new Set<string>();
   const data = slice.map((pl, idx) => {
     const media = pl.anilistId ? byAniListId.get(pl.anilistId) : undefined;
     if (media) {
       const common = mapMediaCommon(media);
+      const uniqueSlug = emittedSlugs.has(common.slug) ? `ytpl-${pl.playlistId}` : common.slug;
+      emittedSlugs.add(uniqueSlug);
       return {
         ...common,
+        slug: uniqueSlug,
         is_official_free: true,
         is_dub_indo: false,
         audio_lang: "SUB",
@@ -1594,15 +1656,22 @@ async function handleDubIndo(page = 1): Promise<Response> {
     const media = pl.anilistId ? byAniListId.get(pl.anilistId) : undefined;
     if (media) {
       const common = mapMediaCommon(media);
+      const dubSlug = `dub-${pl.playlistId}`;
+      const epCount = Math.max(pl.episodeHint, common.released_episodes, 1);
       return {
         ...common,
-        slug: `dub-${pl.playlistId}`,
+        slug: dubSlug,
+        released_episodes: epCount,
+        total_episodes: Math.max(epCount, common.total_episodes),
+        episode: `Ep ${epCount}`,
+        latest_eps_slug: dubSlug,
         genres: common.genres.includes("Dub Indo") ? common.genres : [...common.genres, "Dub Indo"],
         is_official_free: true,
         is_dub_indo: true,
         audio_lang: "DUB_ID",
         official_channel: pl.channelName,
         stream_type: "official_episode",
+        external_links: [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }],
       };
     }
     return buildPlaylistCard(pl, 980000 + start + idx, true);
@@ -1687,6 +1756,7 @@ async function queryAniList<T>(query: string, variables: Record<string, unknown>
       "User-Agent": "AnimWatch-API/2.2",
     },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(12000),
   });
 
   if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
@@ -1742,6 +1812,8 @@ function mapMediaCommon(m: AniListMedia) {
       ? totalEpisodes
       : nextEp && nextEp > 1
       ? nextEp - 1
+      : status === "UPCOMING"
+      ? 0
       : Math.min(totalEpisodes, 1);
   const year = m.seasonYear || m.startDate?.year || 2026;
   const studio = m.studios?.nodes?.[0]?.name?.trim() || "Studio Anime";
@@ -1898,10 +1970,23 @@ async function fetchAniListMediaDetail(slugOrId: string): Promise<AniListMedia |
   return res.Media;
 }
 
-const mapYtEpisodes = (list: YtRssEntry[]) => list.slice(0, 48).map((ytEp, idx) => ({
-  eps_title: ytEp.title, eps_slug: `yt-${ytEp.videoId}`, number: idx + 1,
-  stream_url: ytNoCookieEmbed(ytEp.videoId), stream_type: "official_episode", thumbnail: ytEp.thumbnail,
-}));
+  const mapYtEpisodes = (list: YtRssEntry[]) => {
+    const usedNumbers = new Set<number>();
+    return list.slice(0, 48).map((ytEp, idx) => {
+      let parsedNum = parseOfficialEpisodeTitle(ytEp.title).episodeNumber;
+      if (!Number.isFinite(parsedNum) || parsedNum <= 0) parsedNum = idx + 1;
+      while (usedNumbers.has(parsedNum)) parsedNum++;
+      usedNumbers.add(parsedNum);
+      return {
+        eps_title: ytEp.title,
+        eps_slug: `yt-${ytEp.videoId}`,
+        number: parsedNum,
+        stream_url: ytNoCookieEmbed(ytEp.videoId),
+        stream_type: "official_episode",
+        thumbnail: ytEp.thumbnail,
+      };
+    });
+  };
 
 const mapMediaCharacters = (media: AniListMedia | null | undefined, fallbackVa = "Seiyuu Jepang") =>
   (media?.characters?.edges ?? []).map((e) => {
@@ -1909,8 +1994,9 @@ const mapMediaCharacters = (media: AniListMedia | null | undefined, fallbackVa =
     return name ? { name, role: e.role === "MAIN" ? "Karakter Utama" : "Karakter Pendukung", voice_actor: e.voiceActors?.[0]?.name?.full?.trim() || fallbackVa, emblem: name.slice(0, 1).toUpperCase() } : null;
   }).filter(Boolean);
 
-async function handleAnimeDetail(slug: string): Promise<Response> {
-  const key = `anime:${slug.toLowerCase()}`;
+async function handleAnimeDetail(rawSlug: string): Promise<Response> {
+  const slug = decodeURIComponent(rawSlug).trim();
+  const key = `anime:${slug}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
@@ -2002,7 +2088,7 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
     ? mapYtEpisodes(officialPlaylistEpisodes)
     : Array.from({ length: Math.min(Math.max(common.released_episodes, Math.min(streamEps.length, 48), 1), 48) }, (_, i) => {
         const epNum = i + 1;
-        const m = streamEps[i];
+        const m = streamEps.find((se) => parseOfficialEpisodeTitle(se.title ?? "").episodeNumber === epNum) ?? streamEps[i];
         const cleanEpTitle = m?.title ? m.title.replace(/^Episode\s+\d+\s*[-:]\s*/i, "").trim() || `Episode ${epNum}` : `Episode ${epNum}`;
         return { eps_title: `Episode ${epNum}: ${cleanEpTitle}`, eps_slug: `ep-${media.id}-${epNum}`, number: epNum, stream_url: "", stream_type: "info_only", thumbnail: m?.thumbnail || common.poster };
       });
@@ -2025,8 +2111,9 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
   }));
 }
 
-async function handleEpisodeDetail(slug: string): Promise<Response> {
-  const key = `episode:${slug.toLowerCase()}`;
+async function handleEpisodeDetail(rawSlug: string): Promise<Response> {
+  const slug = decodeURIComponent(rawSlug).trim();
+  const key = `episode:${slug}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
@@ -2188,6 +2275,9 @@ Bun.serve({
 
       return jsonResponse({ status: "not_found", message: `Unknown route: ${method} ${path}` }, 404);
     } catch (error) {
+      if (error instanceof URIError) {
+        return jsonResponse({ status: false, message: "Invalid URL encoding in request path" }, 400);
+      }
       const message = error instanceof Error ? error.message : String(error);
       return jsonResponse({ status: false, message }, 502);
     }

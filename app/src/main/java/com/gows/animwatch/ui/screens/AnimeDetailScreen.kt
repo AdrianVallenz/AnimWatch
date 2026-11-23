@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -149,13 +150,13 @@ fun AnimeDetailScreen(
     var showSeasonPickerSheet by remember { mutableStateOf(false) }
     var showRatingDialog by remember { mutableStateOf(false) }
 
-    var commentDraft by remember { mutableStateOf("") }
-    var isSpoilerDraft by remember { mutableStateOf(false) }
-    var selectedCommentEpisode by remember { mutableStateOf<Int?>(null) }
-    var filterCommentEpisode by remember { mutableStateOf<Int?>(null) }
-    var sortCommentsByTop by remember { mutableStateOf(false) }
-    var replyTargetAuthor by remember { mutableStateOf<String?>(null) }
-    var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
+    var commentDraft by remember(anime.id) { mutableStateOf("") }
+    var isSpoilerDraft by remember(anime.id) { mutableStateOf(false) }
+    var selectedCommentEpisode by remember(anime.id) { mutableStateOf<Int?>(null) }
+    var filterCommentEpisode by remember(anime.id) { mutableStateOf<Int?>(null) }
+    var sortCommentsByTop by remember(anime.id) { mutableStateOf(false) }
+    var replyTargetAuthor by remember(anime.id) { mutableStateOf<String?>(null) }
+    var revealedSpoilers by remember(anime.id) { mutableStateOf(setOf<String>()) }
 
     val watchlistCategory = uiState.watchlist[anime.id]
     val isSavedInWatchlist = watchlistCategory != null
@@ -259,7 +260,7 @@ fun AnimeDetailScreen(
                                 Icon(
                                     imageVector = if (hasReminder) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
                                     contentDescription = "Pengingat Episode",
-                                    tint = if (hasReminder) GoldBright else MediaTextLight
+                                    tint = if (hasReminder) com.gows.animwatch.ui.theme.MediaAccentBright else MediaTextLight
                                 )
                             }
                         }
@@ -308,9 +309,10 @@ fun AnimeDetailScreen(
                     Spacer(modifier = Modifier.width(14.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                        androidx.compose.foundation.layout.FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             GoldTagChip(
                                 text = anime.status.label,
@@ -436,8 +438,8 @@ fun AnimeDetailScreen(
                     )
                 }
 
-                // Pelacak Tontonan hanya aktif setelah menamatkan anime
-                if (isCompletedAnime) {
+                // Pelacak Tontonan aktif setelah menamatkan atau memiliki progres tontonan
+                if (isCompletedAnime || watchedEpisodesCount > 0) {
                     Spacer(modifier = Modifier.height(14.dp))
                     val effectiveWatched = if (watchedEpisodesCount > 0) watchedEpisodesCount else maxTrackableEps
                     Column(
@@ -917,7 +919,10 @@ fun AnimeDetailScreen(
                         }
                     }
                 } else {
-                    items(displayedEpisodes, key = { it.id }) { ep ->
+                    itemsIndexed(
+                        items = displayedEpisodes,
+                        key = { idx, ep -> "ep_${ep.id}_$idx" }
+                    ) { _, ep ->
                         val epProgress = if (watchProgress?.episodeId == ep.id) watchProgress.progressFraction else 0f
                         EpisodeRowItem(
                             anime = anime,
@@ -1120,7 +1125,10 @@ fun AnimeDetailScreen(
                                             )
                                         }
                                     }
-                                    items(anime.episodes.take(24), key = { "post_ep_${it.number}" }) { ep ->
+                                    itemsIndexed(
+                                        items = anime.episodes,
+                                        key = { idx, ep -> "post_ep_${ep.id}_$idx" }
+                                    ) { _, ep ->
                                         val isSel = selectedCommentEpisode == ep.number
                                         Box(
                                             modifier = Modifier
@@ -1268,7 +1276,10 @@ fun AnimeDetailScreen(
                                         )
                                     }
                                 }
-                                items(anime.episodes.take(24), key = { "flt_ep_${it.number}" }) { ep ->
+                                itemsIndexed(
+                                    items = anime.episodes,
+                                    key = { idx, ep -> "flt_ep_${ep.id}_$idx" }
+                                ) { _, ep ->
                                     val epSel = filterCommentEpisode == ep.number
                                     Box(
                                         modifier = Modifier

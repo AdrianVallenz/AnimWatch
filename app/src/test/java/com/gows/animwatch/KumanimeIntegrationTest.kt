@@ -417,6 +417,8 @@ class KumanimeIntegrationTest {
         assertTrue(streamRes.isSuccess)
         val stream = streamRes.getOrThrow()
         assertEquals("https://gdriveplayer.to/embed2.php?link=abc", stream.episode.streamUrl)
+        assertEquals("official_episode", stream.episode.streamType)
+        assertEquals("https://anime-indo.biz/img/solo.jpg", stream.episode.thumbnailUrl)
         assertEquals("solo-leveling-s2-episode-11", stream.episode.prevEpisodeSlug)
         assertEquals(null, stream.episode.nextEpisodeSlug)
 

@@ -12,6 +12,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +39,8 @@ object GoogleAuthDeepLinkBus {
         val uri = intent?.data ?: return
         if (!uri.scheme.equals("animwatch", ignoreCase = true)) return
         if (!uri.host.equals("auth", ignoreCase = true)) return
+        val path = uri.path.orEmpty()
+        if (path.isNotEmpty() && !path.startsWith("/google", ignoreCase = true)) return
         val token = uri.getQueryParameter("token")?.takeIf { it.isNotBlank() }
         val error = uri.getQueryParameter("error")?.takeIf { it.isNotBlank() }
         if (token != null || error != null) {
@@ -94,6 +97,8 @@ object GoogleAuthManager {
             GoogleSignInOutcome.Cancelled
         } catch (_: GetCredentialException) {
             GoogleSignInOutcome.OpenInAppGooglePrompt
+        } catch (ce: CancellationException) {
+            throw ce
         } catch (_: Exception) {
             GoogleSignInOutcome.OpenInAppGooglePrompt
         }

@@ -16,6 +16,7 @@ interface SessionStore {
     fun getReadNotificationIds(): Set<String> = emptySet()
     fun saveReadNotificationIds(ids: Set<String>) {}
     fun getReminderAnimeIds(): Set<String> = emptySet()
+    fun hasSavedReminders(): Boolean = false
     fun saveReminderAnimeIds(ids: Set<String>) {}
     fun getKnownLatestEpisodes(): Map<String, Int> = emptyMap()
     fun saveKnownLatestEpisodes(episodes: Map<String, Int>) {}
@@ -30,6 +31,7 @@ class InMemorySessionStore : SessionStore {
     private var accentTheme: String? = null
     private var readNotificationIds: Set<String> = emptySet()
     private var reminderAnimeIds: Set<String> = emptySet()
+    private var remindersSaved: Boolean = false
     private var knownLatestEpisodes: Map<String, Int> = emptyMap()
     private var lastSystemSignature: String? = null
 
@@ -42,9 +44,13 @@ class InMemorySessionStore : SessionStore {
     override fun getAccentTheme(): String? = accentTheme
     override fun saveAccentTheme(theme: String) { this.accentTheme = theme }
     override fun getReadNotificationIds(): Set<String> = readNotificationIds
-    override fun saveReadNotificationIds(ids: Set<String>) { this.readNotificationIds = ids }
+    override fun saveReadNotificationIds(ids: Set<String>) { this.readNotificationIds = ids.toList().takeLast(200).toSet() }
     override fun getReminderAnimeIds(): Set<String> = reminderAnimeIds
-    override fun saveReminderAnimeIds(ids: Set<String>) { this.reminderAnimeIds = ids }
+    override fun hasSavedReminders(): Boolean = remindersSaved
+    override fun saveReminderAnimeIds(ids: Set<String>) {
+        this.remindersSaved = true
+        this.reminderAnimeIds = ids
+    }
     override fun getKnownLatestEpisodes(): Map<String, Int> = knownLatestEpisodes
     override fun saveKnownLatestEpisodes(episodes: Map<String, Int>) { this.knownLatestEpisodes = episodes }
     override fun getLastSystemNotifiedSignature(): String? = lastSystemSignature
@@ -87,14 +93,19 @@ class SharedPreferencesSessionStore(context: Context) : SessionStore {
         prefs.getStringSet(KEY_READ_NOTIFICATIONS, emptySet())?.toSet().orEmpty()
 
     override fun saveReadNotificationIds(ids: Set<String>) {
-        prefs.edit().putStringSet(KEY_READ_NOTIFICATIONS, ids.take(200).toSet()).apply()
+        prefs.edit().putStringSet(KEY_READ_NOTIFICATIONS, ids.toList().takeLast(200).toSet()).apply()
     }
 
     override fun getReminderAnimeIds(): Set<String> =
         prefs.getStringSet(KEY_REMINDER_ANIME_IDS, emptySet())?.toSet().orEmpty()
 
+    override fun hasSavedReminders(): Boolean = prefs.getBoolean(KEY_REMINDERS_INITIALIZED, false)
+
     override fun saveReminderAnimeIds(ids: Set<String>) {
-        prefs.edit().putStringSet(KEY_REMINDER_ANIME_IDS, ids).apply()
+        prefs.edit()
+            .putBoolean(KEY_REMINDERS_INITIALIZED, true)
+            .putStringSet(KEY_REMINDER_ANIME_IDS, ids)
+            .apply()
     }
 
     override fun getKnownLatestEpisodes(): Map<String, Int> {
@@ -124,6 +135,7 @@ class SharedPreferencesSessionStore(context: Context) : SessionStore {
         private const val KEY_ACCENT_THEME = "accent_theme"
         private const val KEY_READ_NOTIFICATIONS = "read_notification_ids"
         private const val KEY_REMINDER_ANIME_IDS = "reminder_anime_ids"
+        private const val KEY_REMINDERS_INITIALIZED = "reminders_initialized"
         private const val KEY_KNOWN_LATEST_EPISODES = "known_latest_episodes"
         private const val KEY_LAST_SYSTEM_SIGNATURE = "last_system_notified_signature"
     }

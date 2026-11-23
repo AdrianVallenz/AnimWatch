@@ -122,10 +122,13 @@ fun AnimePosterArtwork(
     decodeSizePx: Int = 420
 ) {
     val context = LocalContext.current
+    val imageLoadFailedState = androidx.compose.runtime.remember(posterUrl) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
     Box(
         modifier = modifier.background(artTheme.secondaryBg)
     ) {
-        if (posterUrl.isNotBlank()) {
+        if (posterUrl.isNotBlank() && !imageLoadFailedState.value) {
             // Fast path: skip heavy Canvas overdraw when loading real remote poster
             val request = remember(posterUrl, decodeSizePx) {
                 ImageRequest.Builder(context)
@@ -139,6 +142,7 @@ fun AnimePosterArtwork(
                 model = request,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
+                onError = { imageLoadFailedState.value = true },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -315,10 +319,12 @@ private fun DrawScope.drawArtMotif(
 ) {
     val w = size.width
     val h = size.height
+    if (w <= 0f || h <= 0f) return
     val cx = w * 0.5f
     val cy = h * if (isWide) 0.46f else 0.40f
     val minDim = minOf(w, h)
     val pulse = 1f + 0.05f * sin(phase * 2f * PI.toFloat())
+    val haloRadius = (minDim * 0.68f * pulse).coerceAtLeast(1f)
 
     // Ambient central radial halo
     drawCircle(
@@ -329,9 +335,9 @@ private fun DrawScope.drawArtMotif(
                 Color.Transparent
             ),
             center = Offset(cx, cy),
-            radius = minDim * 0.68f * pulse
+            radius = haloRadius
         ),
-        radius = minDim * 0.68f * pulse,
+        radius = haloRadius,
         center = Offset(cx, cy)
     )
 
@@ -441,13 +447,14 @@ private fun DrawScope.drawArtMotif(
 
         ArtMotif.TORII_MOON -> {
             // Crescent/full golden moon + stylized gate silhouette
+            val moonBrushRadius = (minDim * 0.28f).coerceAtLeast(1f)
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(GoldBright.copy(alpha = 0.55f), glow.copy(alpha = 0.18f), Color.Transparent),
                     center = Offset(cx, cy * 0.92f),
-                    radius = minDim * 0.28f
+                    radius = moonBrushRadius
                 ),
-                radius = minDim * 0.24f * pulse,
+                radius = (minDim * 0.24f * pulse).coerceAtLeast(1f),
                 center = Offset(cx, cy * 0.92f)
             )
             // Gate lintels

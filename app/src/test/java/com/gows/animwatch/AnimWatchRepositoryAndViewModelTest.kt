@@ -14,12 +14,33 @@ import com.gows.animwatch.ui.state.AudioFilter
 import com.gows.animwatch.ui.state.MainTab
 import com.gows.animwatch.ui.theme.AppAccentTheme
 import com.gows.animwatch.ui.theme.AppAppearanceMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class AnimWatchRepositoryAndViewModelTest {
+
+    private val testDispatcher = UnconfinedTestDispatcher()
+
+    @Before
+    fun setUpDispatcher() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun tearDownDispatcher() {
+        Dispatchers.resetMain()
+    }
 
     @Test
     fun repositoryProvidesCompleteCatalogAndSchedules() {
@@ -207,5 +228,45 @@ class AnimWatchRepositoryAndViewModelTest {
         assertTrue(vm.uiState.value.notifications.first { it.id == firstNotif.id }.isRead)
         vm.markAllNotificationsRead()
         assertEquals(0, vm.uiState.value.unreadNotificationCount)
+    }
+
+    @Test
+    fun bugFixesRegressionSuiteCoversLogoutOngoingCompletionNextGapAndSubtitles() {
+        val vm = AnimWatchViewModel()
+
+        // 1. Login & customize user data, then verify logout wipes user-scoped data completely
+        vm.loginWithGoogleProfile("user.one@gmail.com", "User One", "https://example.com/u1.png")
+        vm.setWatchlistCategory("kage-no-ou", WatchlistCategory.WATCHING)
+        vm.rateAnime("kage-no-ou", 9)
+        vm.logout()
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertTrue(vm.uiState.value.watchlist.isEmpty())
+        assertTrue(vm.uiState.value.userRatings.isEmpty())
+        assertTrue(vm.uiState.value.watchHistory.isEmpty())
+        assertEquals("", vm.uiState.value.userProfile.avatarUrl)
+
+        // 2. Ongoing anime must NOT be marked COMPLETED just for finishing the latest aired episode
+        vm.markEpisodeCompleted("kage-no-ou", 18)
+        assertEquals(WatchlistCategory.WATCHING, vm.uiState.value.watchlist["kage-no-ou"])
+        assertEquals(18, vm.uiState.value.watchedEpisodes["kage-no-ou"])
+
+        // 3. Genre reset clears genres without wiping search query or sort option
+        vm.updateSearchQuery("Frieren")
+        vm.setSortOption(SortOption.TOP_RATING)
+        vm.toggleGenreFilter("Fantasy")
+        vm.resetExploreGenreFilter()
+        assertEquals("Frieren", vm.uiState.value.exploreFilter.query)
+        assertEquals(SortOption.TOP_RATING, vm.uiState.value.exploreFilter.sortOption)
+        assertTrue(vm.uiState.value.exploreFilter.selectedGenres.isEmpty())
+
+        // 4. Bare number season title still matches even with trailing slug ID
+        val s1 = vm.uiState.value.allAnime.first().copy(id = "konosuba-1", slug = "kono-subarashii-21202", title = "KonoSuba")
+        val s2 = s1.copy(id = "konosuba-2", slug = "kono-subarashii-2-21699", title = "KonoSuba 2")
+        assertEquals(2, FranchiseSeasonHelper.extractSeasonNumber(s2))
+
+        // 5. Subtitle cue must return null past cue bounds instead of sticking to the last cue
+        vm.playAnime("silent-sky-movie", startFromZero = true)
+        val movieSession = vm.uiState.value.playerSession!!
+        assertNull(vm.getCurrentSubtitleText(movieSession.copy(positionSeconds = 5000)))
     }
 }

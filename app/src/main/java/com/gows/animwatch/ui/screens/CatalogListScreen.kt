@@ -77,12 +77,19 @@ fun CatalogListScreen(
     onBookmarkClick: (String) -> Unit,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
+    catalogPageLoaded: Int = 1,
+    hasLoadError: Boolean = false,
     onLoadMore: () -> Unit = {},
+    onRetryLoadMore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var sortOption by remember(title) {
         mutableStateOf(
-            if (title.contains("Terbaru", ignoreCase = true)) SortOption.LATEST else SortOption.POPULAR
+            when {
+                title.contains("Terbaru", ignoreCase = true) -> SortOption.LATEST
+                title.contains("Peringkat", ignoreCase = true) || title.contains("Top", ignoreCase = true) -> SortOption.TOP_RATING
+                else -> SortOption.POPULAR
+            }
         )
     }
     var isGridView by remember { mutableStateOf(true) }
@@ -258,9 +265,16 @@ fun CatalogListScreen(
                         )
                     }
                 }
-                if (hasMore) {
+                if (hasMore || hasLoadError) {
                     item(span = { GridItemSpan(2) }) {
-                        CatalogLoadMoreFooter(isLoadingMore = isLoadingMore, onLoadMore = onLoadMore)
+                        CatalogLoadMoreFooter(
+                            catalogPageLoaded = catalogPageLoaded,
+                            hasMore = hasMore,
+                            isLoadingMore = isLoadingMore,
+                            hasError = hasLoadError,
+                            onLoadMore = onLoadMore,
+                            onRetry = onRetryLoadMore
+                        )
                     }
                 }
             }
@@ -283,9 +297,16 @@ fun CatalogListScreen(
                         onBookmarkClick = { onBookmarkClick(anime.id) }
                     )
                 }
-                if (hasMore) {
+                if (hasMore || hasLoadError) {
                     item {
-                        CatalogLoadMoreFooter(isLoadingMore = isLoadingMore, onLoadMore = onLoadMore)
+                        CatalogLoadMoreFooter(
+                            catalogPageLoaded = catalogPageLoaded,
+                            hasMore = hasMore,
+                            isLoadingMore = isLoadingMore,
+                            hasError = hasLoadError,
+                            onLoadMore = onLoadMore,
+                            onRetry = onRetryLoadMore
+                        )
                     }
                 }
             }
@@ -295,16 +316,49 @@ fun CatalogListScreen(
 
 @Composable
 private fun CatalogLoadMoreFooter(
+    catalogPageLoaded: Int,
+    hasMore: Boolean,
     isLoadingMore: Boolean,
-    onLoadMore: () -> Unit
+    hasError: Boolean,
+    onLoadMore: () -> Unit,
+    onRetry: () -> Unit
 ) {
-    androidx.compose.runtime.LaunchedEffect(isLoadingMore) {
-        if (!isLoadingMore) {
+    androidx.compose.runtime.LaunchedEffect(catalogPageLoaded, hasMore, hasError) {
+        if (hasMore && !hasError && !isLoadingMore) {
             onLoadMore()
         }
     }
 
-    if (isLoadingMore) {
+    if (hasError) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Gagal memuat sisa koleksi anime",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextTertiary
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                    .clickable(onClick = onRetry)
+                    .padding(horizontal = 14.dp, vertical = 7.dp)
+            ) {
+                Text(
+                    text = "Coba Lagi",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GoldPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    } else if (isLoadingMore) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

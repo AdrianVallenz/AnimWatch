@@ -36,7 +36,10 @@ object KumanimeMapper {
 
     fun normalizeUrl(raw: String?): String {
         val value = raw?.trim().orEmpty()
-        if (value.isEmpty() || value == "-") return ""
+        if (value.isEmpty() || value == "-" || value == "#" ||
+            value.equals("null", ignoreCase = true) ||
+            value.equals("n/a", ignoreCase = true)
+        ) return ""
         return when {
             value.startsWith("http://", ignoreCase = true) ||
                 value.startsWith("https://", ignoreCase = true) -> value
@@ -54,6 +57,31 @@ object KumanimeMapper {
     private fun extractNumber(text: String?, fallback: Int = 1): Int {
         if (text.isNullOrBlank()) return fallback
         return Regex("\\d+").find(text)?.value?.toIntOrNull() ?: fallback
+    }
+
+    private fun extractEpisodeNumber(text: String?, fallback: Int = 1): Int {
+        if (text.isNullOrBlank()) return fallback
+        Regex("(?:episode|eps?\\.?|misi|s\\d+e)\\s*0*(\\d+)", RegexOption.IGNORE_CASE)
+            .find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        Regex("[#\\-–:]\\s*0*(\\d+)\\b")
+            .find(text)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { return it }
+        return extractNumber(text, fallback)
+    }
+
+    private fun extractDurationMinutes(text: String?, fallback: Int): Int {
+        if (text.isNullOrBlank()) return fallback
+        val hr = Regex("(\\d+)\\s*(?:hr|hour|jam)", RegexOption.IGNORE_CASE)
+            .find(text)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        val min = Regex("(\\d+)\\s*(?:min|menit|m\\b)", RegexOption.IGNORE_CASE)
+            .find(text)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        if (hr > 0 || min > 0) return hr * 60 + min
+        return extractNumber(text, fallback)
+    }
+
+    private fun extractYear(text: String?, fallback: Int = 2025): Int {
+        if (text.isNullOrBlank()) return fallback
+        val yearMatch = Regex("\\b(19[7-9]\\d|20[0-3]\\d)\\b").find(text)?.value?.toIntOrNull()
+        return yearMatch ?: fallback
     }
 
     private fun parseAnimeType(rawType: String?): AnimeType {
@@ -77,7 +105,7 @@ object KumanimeMapper {
     private fun parseIsDubIndo(flag: Boolean?, audioLang: String?, slug: String = ""): Boolean {
         return flag == true ||
             audioLang.equals("DUB_ID", ignoreCase = true) ||
-            slug.startsWith("dub-", ignoreCase = true)
+            slug.startsWith("dub-PL", ignoreCase = true)
     }
 
     private fun parseReleaseDay(rawDay: String?): ReleaseDay? {
@@ -98,7 +126,7 @@ object KumanimeMapper {
         val title = dto.title?.trim().orEmpty()
         if (slug.isEmpty() || title.isEmpty()) return null
 
-        val epNumber = dto.releasedEpisodes?.takeIf { it > 0 } ?: extractNumber(dto.episode, fallback = 1)
+        val epNumber = dto.releasedEpisodes?.takeIf { it > 0 } ?: extractEpisodeNumber(dto.episode, fallback = 1)
         val totalEpisodes = dto.totalEpisodes?.takeIf { it > 0 } ?: maxOf(epNumber, 12)
         val poster = normalizeUrl(dto.poster)
         val banner = normalizeUrl(dto.banner).ifEmpty { poster }
@@ -107,6 +135,13 @@ object KumanimeMapper {
         val genres = dto.genres?.map { it.trim() }?.filter { it.isNotEmpty() }
             ?.ifEmpty { listOf("Anime", "Ongoing") }
             ?: listOf("Anime", "Ongoing")
+        val mappedLinks = dto.externalLinks.orEmpty().mapNotNull { link ->
+            val site = link.site?.trim().orEmpty()
+            val url = link.url?.trim().orEmpty()
+            if (site.isNotEmpty() && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                ExternalPlatformLink(site, url)
+            } else null
+        }
 
         val ep = Episode(
             id = "remote_ep_$latestEpSlug",
@@ -118,7 +153,7 @@ object KumanimeMapper {
             synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Streaming anime di AnimWatch." },
             slug = latestEpSlug,
             streamUrl = "",
-            streamType = "info_only",
+            streamType = dto.streamType?.takeIf { it.isNotBlank() } ?: "info_only",
             servers = defaultServers,
             qualities = defaultQualities,
             subtitles = defaultSubtitles
@@ -161,6 +196,7 @@ object KumanimeMapper {
             isRemote = true,
             isEpisodeEntry = !hasCanonicalSlug,
             latestEpisodeSlug = latestEpSlug,
+            externalLinks = mappedLinks,
             episodes = listOf(ep)
         )
     }
@@ -195,13 +231,15 @@ object KumanimeMapper {
         val mappedLinks = dto.externalLinks.orEmpty().mapNotNull { link ->
             val site = link.site?.trim().orEmpty()
             val url = link.url?.trim().orEmpty()
-            if (site.isNotEmpty() && url.startsWith("http")) ExternalPlatformLink(site, url) else null
+            if (site.isNotEmpty() && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                ExternalPlatformLink(site, url)
+            } else null
         }
         val mappedEpisodes = dto.episodes.orEmpty().mapIndexedNotNull { idx, epDto ->
             val epSlug = epDto.epsSlug?.trim().orEmpty()
             if (epSlug.isEmpty()) return@mapIndexedNotNull null
             val epLabel = epDto.epsTitle?.trim().orEmpty()
-            val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
+            val number = epDto.number?.takeIf { it > 0 } ?: extractEpisodeNumber(epLabel, fallback = idx + 1)
             val epStream = normalizeUrl(epDto.streamUrl)
             Episode(
                 id = "remote_ep_$epSlug",
@@ -219,7 +257,7 @@ object KumanimeMapper {
                 qualities = defaultQualities,
                 subtitles = defaultSubtitles
             )
-        }.sortedBy { it.number }
+        }.distinctBy { it.id }.sortedBy { it.number }
 
         return Anime(
             id = slug,
@@ -262,6 +300,7 @@ object KumanimeMapper {
             bannerUrl = banner,
             isRemote = true,
             isEpisodeEntry = false,
+            latestEpisodeSlug = dto.latestEpsSlug?.trim()?.takeIf { it.isNotEmpty() },
             externalLinks = mappedLinks,
             episodes = mappedEpisodes
         )
@@ -276,9 +315,9 @@ object KumanimeMapper {
         val banner = normalizeUrl(dto.banner).ifEmpty { poster }
         val type = if (isMovieList) AnimeType.MOVIE else parseAnimeType(dto.type)
         val durationMin = dto.durationMinutes?.takeIf { it > 0 }
-            ?: extractNumber(dto.duration, fallback = if (type == AnimeType.MOVIE) 105 else 24)
+            ?: extractDurationMinutes(dto.duration, fallback = if (type == AnimeType.MOVIE) 105 else 24)
         val year = dto.year?.takeIf { it in 1970..2035 }
-            ?: extractNumber(dto.release, fallback = 2025).let { if (it in 1970..2035) it else 2025 }
+            ?: extractYear(dto.release, fallback = 2025)
         val genres = dto.genres?.map { it.trim() }?.filter { it.isNotEmpty() }
             ?.ifEmpty { listOf(type.label) }
             ?: listOf(type.label)
@@ -292,6 +331,13 @@ object KumanimeMapper {
         val isDubIndo = parseIsDubIndo(dto.isDubIndo, dto.audioLang, slug)
         val isOfficialFree = dto.isOfficialFree == true
         val officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() }
+        val mappedLinks = dto.externalLinks.orEmpty().mapNotNull { link ->
+            val site = link.site?.trim().orEmpty()
+            val url = link.url?.trim().orEmpty()
+            if (site.isNotEmpty() && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                ExternalPlatformLink(site, url)
+            } else null
+        }
 
         return Anime(
             id = slug,
@@ -336,6 +382,8 @@ object KumanimeMapper {
             bannerUrl = banner,
             isRemote = true,
             isEpisodeEntry = false,
+            latestEpisodeSlug = dto.latestEpsSlug?.trim()?.takeIf { it.isNotEmpty() },
+            externalLinks = mappedLinks,
             episodes = emptyList()
         )
     }
@@ -358,7 +406,7 @@ object KumanimeMapper {
             val epSlug = epDto.epsSlug?.trim().orEmpty()
             if (epSlug.isEmpty()) return@mapIndexedNotNull null
             val epLabel = epDto.epsTitle?.trim().orEmpty()
-            val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
+            val number = epDto.number?.takeIf { it > 0 } ?: extractEpisodeNumber(epLabel, fallback = idx + 1)
             val resolvedStream = normalizeUrl(epDto.streamUrl)
             val resolvedType = epDto.streamType?.takeIf { it.isNotBlank() && it != "official_trailer" }
                 ?: if (resolvedStream.isNotBlank()) "official_episode" else "info_only"
@@ -378,12 +426,14 @@ object KumanimeMapper {
                 qualities = defaultQualities,
                 subtitles = defaultSubtitles
             )
-        }.sortedBy { it.number }
+        }.distinctBy { it.id }.sortedBy { it.number }
 
         val mappedLinks = detail.externalLinks.orEmpty().mapNotNull { link ->
             val site = link.site?.trim().orEmpty()
             val url = link.url?.trim().orEmpty()
-            if (site.isNotEmpty() && url.startsWith("http")) ExternalPlatformLink(site, url) else null
+            if (site.isNotEmpty() && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                ExternalPlatformLink(site, url)
+            } else null
         }
 
         val mappedCharacters = detail.characters.orEmpty().mapNotNull { ch ->
@@ -397,11 +447,22 @@ object KumanimeMapper {
             )
         }
 
-        val finalEpisodes = if (mappedEpisodes.isNotEmpty()) mappedEpisodes else existing?.episodes.orEmpty()
-        val epCount = detail.releasedEpisodes?.takeIf { it > 0 }
-            ?: finalEpisodes.size.coerceAtLeast(existing?.releasedEpisodes ?: 1)
+        val finalEpisodes = if (mappedEpisodes.isNotEmpty()) {
+            mappedEpisodes
+        } else {
+            existing?.episodes.orEmpty().map { it.copy(animeId = slug) }
+        }
+        val epCount = maxOf(
+            detail.releasedEpisodes ?: 0,
+            finalEpisodes.size,
+            existing?.releasedEpisodes ?: 1
+        )
         val totalEps = detail.totalEpisodes?.takeIf { it > 0 }
             ?: maxOf(epCount, existing?.totalEpisodes ?: epCount)
+        val resolvedType = if (!detail.type.isNullOrBlank()) parseAnimeType(detail.type) else existing?.type ?: AnimeType.TV_SERIES
+        val resolvedViews = detail.viewsLabel?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.viewsLabel ?: "Live"
+        val resolvedIsDub = parseIsDubIndo(detail.isDubIndo, detail.audioLang, slug) || (existing?.isDubIndo == true)
+        val resolvedIsOfficialFree = (detail.isOfficialFree == true) || (existing?.isOfficialFree == true)
 
         return (existing ?: Anime(
             id = slug,
@@ -418,15 +479,15 @@ object KumanimeMapper {
             season = detail.season?.trim().orEmpty().ifEmpty { "Tersedia" },
             studio = detail.studio?.trim().orEmpty().ifEmpty { "Studio Anime" },
             status = parseAnimeStatus(detail.status, AnimeStatus.ONGOING),
-            type = AnimeType.TV_SERIES,
+            type = resolvedType,
             ageRating = "13+",
             genres = genres,
             releaseDay = parseReleaseDay(detail.airingDay),
             releaseTimeWib = detail.airingTime?.trim()?.takeIf { it.isNotEmpty() },
-            viewsLabel = "Live",
+            viewsLabel = resolvedViews,
             popularityRank = 99,
             artTheme = pickArtTheme(slug),
-            posterTag = if (parseIsDubIndo(detail.isDubIndo, detail.audioLang, slug)) "Dub Indo" else "Populer",
+            posterTag = if (resolvedIsDub) "Dub Indo" else "Populer",
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true
@@ -442,6 +503,8 @@ object KumanimeMapper {
             season = detail.season?.trim().orEmpty().ifEmpty { existing?.season ?: "Tersedia" },
             year = detail.year?.takeIf { it in 1970..2035 } ?: existing?.year ?: 2026,
             status = parseAnimeStatus(detail.status, existing?.status ?: AnimeStatus.ONGOING),
+            type = resolvedType,
+            viewsLabel = resolvedViews,
             durationMinutes = durationMin,
             posterUrl = poster,
             bannerUrl = banner,
@@ -450,11 +513,17 @@ object KumanimeMapper {
             releaseTimeWib = detail.airingTime?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.releaseTimeWib,
             totalEpisodes = maxOf(totalEps, epCount),
             releasedEpisodes = epCount,
+            posterTag = when {
+                resolvedIsDub -> "Dub Indo"
+                resolvedIsOfficialFree -> channelLabel ?: existing?.posterTag ?: "Pilihan"
+                else -> existing?.posterTag ?: "Populer"
+            },
             isRemote = true,
             isEpisodeEntry = false,
-            isOfficialFree = (detail.isOfficialFree == true) || (existing?.isOfficialFree == true),
-            isDubIndo = parseIsDubIndo(detail.isDubIndo, detail.audioLang, slug) || (existing?.isDubIndo == true),
-            officialChannel = detail.officialChannel?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.officialChannel,
+            latestEpisodeSlug = finalEpisodes.lastOrNull()?.slug ?: existing?.latestEpisodeSlug,
+            isOfficialFree = resolvedIsOfficialFree,
+            isDubIndo = resolvedIsDub,
+            officialChannel = channelLabel,
             episodes = finalEpisodes,
             characters = mappedCharacters.ifEmpty { existing?.characters.orEmpty() },
             relatedIds = detail.relatedSlugs?.filter { it.isNotBlank() }?.ifEmpty { existing?.relatedIds.orEmpty() }
@@ -465,13 +534,16 @@ object KumanimeMapper {
 
     fun applyEpisodeDetail(episode: Episode, detail: EpisodeDetailDataDto): Episode {
         val stream = normalizeUrl(detail.streamUrl)
+        val thumb = normalizeUrl(detail.poster)
         val nextSlug = detail.nextEpsSlug?.trim()?.takeIf { it.isNotEmpty() && it != "-" }
         val prevSlug = detail.prevEpsSlug?.trim()?.takeIf { it.isNotEmpty() && it != "-" }
         return episode.copy(
             title = detail.title?.trim().orEmpty().ifEmpty { episode.title },
             synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { episode.synopsis },
             streamUrl = stream.ifEmpty { episode.streamUrl },
-            streamType = detail.streamType?.takeIf { it.isNotBlank() } ?: episode.streamType,
+            streamType = detail.streamType?.takeIf { it.isNotBlank() }
+                ?: if (stream.isNotBlank()) "official_episode" else episode.streamType,
+            thumbnailUrl = thumb.ifEmpty { episode.thumbnailUrl },
             nextEpisodeSlug = nextSlug,
             prevEpisodeSlug = prevSlug
         )
