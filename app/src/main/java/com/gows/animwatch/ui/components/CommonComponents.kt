@@ -370,34 +370,50 @@ fun AnimePosterCard(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Top row: Soft pill rating & bookmark button
+            // Top row: Anime streaming site SUB/Muse pill + rating & bookmark
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
+                    .padding(7.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(MediaScrimDark.copy(alpha = 0.72f))
-                        .padding(horizontal = 7.dp, vertical = 3.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Star,
-                            contentDescription = null,
-                            tint = GoldBright,
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (anime.isOfficialFree) GoldGradientBrush else Brush.linearGradient(listOf(MediaScrimDark.copy(alpha = 0.78f), MediaScrimDark.copy(alpha = 0.78f))))
+                            .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    ) {
                         Text(
-                            text = anime.rating.toString(),
-                            color = MediaTextLight,
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.SemiBold
+                            text = if (anime.isOfficialFree) "SUB INDO" else "ANILIST",
+                            color = if (anime.isOfficialFree) TextOnGold else MediaTextLight,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.4.sp
                         )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(MediaScrimDark.copy(alpha = 0.76f))
+                            .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.Star,
+                                contentDescription = null,
+                                tint = GoldBright,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.5.dp))
+                            Text(
+                                text = anime.rating.toString(),
+                                color = MediaTextLight,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
@@ -418,37 +434,36 @@ fun AnimePosterCard(
                 }
             }
 
-            // Bottom episode pill over smooth vignette
+            // Bottom streaming episode bar over smooth vignette
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = 9.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (anime.status == AnimeStatus.ONGOING) {
-                        // Static dot inside scrolling cards to avoid dozens of simultaneous infinite animations
-                        LedStatusDot(color = StatusLive, pulsing = false, size = 6.dp)
-                        Spacer(modifier = Modifier.width(5.dp))
+                        LedStatusDot(color = StatusLive, pulsing = false, size = 5.5.dp)
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
                     Text(
                         text = when {
-                            anime.isOfficialFree -> anime.officialChannel?.substringBefore(" ") ?: "Resmi"
                             anime.type.label == "Movie" -> "Movie"
+                            anime.status == AnimeStatus.COMPLETED -> "${anime.totalEpisodes} Ep"
                             else -> "Ep ${anime.releasedEpisodes}/${anime.totalEpisodes}"
                         },
                         color = MediaTextLight,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 Text(
-                    text = if (anime.isOfficialFree) "Gratis" else "${anime.year}",
+                    text = if (anime.isOfficialFree) "Muse ID" else "${anime.year}",
                     color = if (anime.isOfficialFree) GoldBright else MediaTextSecondary,
-                    fontSize = 10.sp,
-                    fontWeight = if (anime.isOfficialFree) FontWeight.SemiBold else FontWeight.Normal
+                    fontSize = 9.5.sp,
+                    fontWeight = if (anime.isOfficialFree) FontWeight.Bold else FontWeight.Medium
                 )
             }
         }
@@ -485,31 +500,28 @@ fun ContinueWatchingCard(
     onRemoveClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    Column(
         modifier = modifier
             .width(248.dp)
-            .clickable(onClick = onPlayClick),
-        shape = RoundedCornerShape(20.dp),
-        color = ObsidianCard,
-        shadowElevation = if (IsDarkTheme) 0.dp else 3.dp
+            .clip(RoundedCornerShape(20.dp))
+            .background(ObsidianCard)
+            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+            .clickable(onClick = onPlayClick)
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            ) {
-                AnimePosterArtwork(
-                    artTheme = anime.artTheme,
-                    title = anime.title,
-                    posterUrl = anime.posterUrl,
-                    modifier = Modifier.fillMaxSize(),
-                    showKanjiWatermark = false
-                )
+            AnimePosterArtwork(
+                artTheme = anime.artTheme,
+                title = anime.title,
+                posterUrl = anime.posterUrl,
+                modifier = Modifier.fillMaxSize(),
+                showKanjiWatermark = false,
+                decodeSizePx = 360
+            )
 
                 // Soft circular play button
                 Box(
@@ -593,7 +605,6 @@ fun ContinueWatchingCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-        }
     }
 }
 
@@ -614,48 +625,43 @@ fun TopRankedCard(
                 .padding(start = 16.dp)
                 .fillMaxWidth()
         ) {
-            Surface(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(0.72f),
-                shape = RoundedCornerShape(18.dp),
-                color = ObsidianCard,
-                shadowElevation = if (IsDarkTheme) 0.dp else 4.dp
+                    .aspectRatio(0.72f)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
             ) {
+                AnimePosterArtwork(
+                    artTheme = anime.artTheme,
+                    title = anime.title,
+                    posterUrl = anime.posterUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    decodeSizePx = 360
+                )
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .clip(CircleShape)
+                        .background(MediaScrimDark.copy(alpha = 0.74f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
-                    AnimePosterArtwork(
-                        artTheme = anime.artTheme,
-                        title = anime.title,
-                        posterUrl = anime.posterUrl,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.74f))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Star,
-                                contentDescription = null,
-                                tint = GoldBright,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "${anime.rating}",
-                                color = MediaTextLight,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "${anime.rating}",
+                            color = MediaTextLight,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
@@ -715,48 +721,45 @@ fun CompactAnimeRowCard(
     trailingBadge: String? = null,
     rankNumber: Int? = null
 ) {
-    Surface(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = ObsidianCard,
-        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+            .clip(RoundedCornerShape(18.dp))
+            .background(ObsidianCard)
+            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(11.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                .padding(11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (rankNumber != null) {
-                Text(
-                    text = "#$rankNumber",
-                    style = TextStyle(
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        brush = if (rankNumber <= 3) GoldGradientBrush else Brush.linearGradient(
-                            listOf(TextSecondary, TextTertiary)
-                        )
-                    ),
-                    modifier = Modifier.width(34.dp)
-                )
-            }
+        if (rankNumber != null) {
+            Text(
+                text = "#$rankNumber",
+                style = TextStyle(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    brush = if (rankNumber <= 3) GoldGradientBrush else Brush.linearGradient(
+                        listOf(TextSecondary, TextTertiary)
+                    )
+                ),
+                modifier = Modifier.width(34.dp)
+            )
+        }
 
-            Box(
-                modifier = Modifier
-                    .width(68.dp)
-                    .aspectRatio(0.72f)
-                    .clip(RoundedCornerShape(12.dp))
-            ) {
-                AnimePosterArtwork(
-                    artTheme = anime.artTheme,
-                    title = anime.title,
-                    posterUrl = anime.posterUrl,
-                    modifier = Modifier.fillMaxSize(),
-                    showKanjiWatermark = false
-                )
-            }
+        Box(
+            modifier = Modifier
+                .width(68.dp)
+                .aspectRatio(0.72f)
+                .clip(RoundedCornerShape(12.dp))
+        ) {
+            AnimePosterArtwork(
+                artTheme = anime.artTheme,
+                title = anime.title,
+                posterUrl = anime.posterUrl,
+                modifier = Modifier.fillMaxSize(),
+                showKanjiWatermark = false,
+                decodeSizePx = 240
+            )
+        }
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -840,7 +843,6 @@ fun CompactAnimeRowCard(
                     )
                 }
             }
-        }
     }
 }
 

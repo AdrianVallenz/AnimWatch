@@ -54,6 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gows.animwatch.data.local.DeviceStorageInfo
+import com.gows.animwatch.data.local.formatStorageBytes
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.DownloadTask
@@ -179,6 +181,7 @@ fun LibraryScreen(
 
             LibraryTab.DOWNLOADS -> DownloadsContent(
                 downloads = uiState.downloads,
+                deviceStorage = uiState.deviceStorage,
                 bottomInsetPadding = bottomInsetPadding,
                 onPause = onPauseDownload,
                 onResume = onResumeDownload,
@@ -517,6 +520,7 @@ private fun HistoryContent(
 @Composable
 private fun DownloadsContent(
     downloads: List<DownloadTask>,
+    deviceStorage: DeviceStorageInfo,
     bottomInsetPadding: Dp,
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
@@ -524,9 +528,6 @@ private fun DownloadsContent(
     onPlayOffline: (DownloadTask) -> Unit,
     onAnimeClick: (String) -> Unit
 ) {
-    val totalUsedMb = downloads.sumOf { it.downloadedMb }
-    val maxBudgetMb = 4096
-
     LazyColumn(
         contentPadding = PaddingValues(
             start = 16.dp,
@@ -537,49 +538,74 @@ private fun DownloadsContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                color = ObsidianCard,
-                shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                    .padding(16.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
-                        .padding(16.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Storage,
-                                contentDescription = null,
-                                tint = GoldPrimary,
-                                modifier = Modifier.size(19.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Penyimpanan Offline",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Storage,
+                            contentDescription = null,
+                            tint = GoldPrimary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "$totalUsedMb MB / 4 GB",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = GoldPrimary,
-                            fontWeight = FontWeight.SemiBold
+                            text = "Penyimpanan Perangkat",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary
                         )
                     }
-                    Spacer(modifier = Modifier.height(10.dp))
-                    AnalogMeterGauge(
-                        progress = (totalUsedMb.toFloat() / maxBudgetMb).coerceIn(0.02f, 1f),
-                        height = 7.dp
+                    Text(
+                        text = if (deviceStorage.totalDeviceBytes > 0L) {
+                            "Tersedia ${deviceStorage.availableLabel}"
+                        } else {
+                            "Memindai..."
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
+                Spacer(modifier = Modifier.height(10.dp))
+                AnalogMeterGauge(
+                    progress = deviceStorage.deviceUsedFraction.coerceIn(0.02f, 1f),
+                    height = 7.dp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Terpakai ${deviceStorage.usedLabel} / ${deviceStorage.totalLabel}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "AnimWatch: ${deviceStorage.offlineUsedLabel}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${deviceStorage.storagePathLabel} • Cache ${deviceStorage.cacheLabel}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -587,77 +613,75 @@ private fun DownloadsContent(
             item {
                 EmptyLibraryState(
                     icon = Icons.Rounded.DownloadDone,
-                    title = "Belum ada unduhan offline",
-                    subtitle = "Unduh episode dari halaman Detail atau Player untuk ditonton tanpa internet."
+                    title = "Belum ada paket episode offline",
+                    subtitle = "Tekan tombol Unduh di Detail Anime atau Player untuk menyimpan paket episode (poster, sinopsis & subtitle) ke penyimpanan perangkat."
                 )
             }
         } else {
             items(downloads, key = { it.episodeId }) { task ->
-                Surface(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(ObsidianCard)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
                         .clickable {
                             if (task.status == DownloadStatus.COMPLETED) onPlayOffline(task)
                             else onAnimeClick(task.animeId)
-                        },
-                    shape = RoundedCornerShape(18.dp),
-                    color = ObsidianCard,
-                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .width(60.dp)
+                            .aspectRatio(0.76f)
+                            .clip(RoundedCornerShape(12.dp))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(60.dp)
-                                .aspectRatio(0.76f)
-                                .clip(RoundedCornerShape(12.dp))
+                        AnimePosterArtwork(
+                            artTheme = task.artTheme,
+                            title = task.animeTitle,
+                            posterUrl = task.posterUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            showKanjiWatermark = false,
+                            decodeSizePx = 220
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            AnimePosterArtwork(
-                                artTheme = task.artTheme,
-                                title = task.animeTitle,
-                                modifier = Modifier.fillMaxSize(),
-                                showKanjiWatermark = false
+                            GoldTagChip(
+                                text = "Ep ${task.episodeNumber} • ${task.qualityLabel}",
+                                highlighted = task.status == DownloadStatus.COMPLETED
+                            )
+                            Text(
+                                text = when (task.status) {
+                                    DownloadStatus.COMPLETED -> formatStorageBytes(task.sizeBytes)
+                                    DownloadStatus.DOWNLOADING -> "${(task.progress * 100).toInt()}%"
+                                    DownloadStatus.PAUSED -> "Jeda ${(task.progress * 100).toInt()}%"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (task.status == DownloadStatus.COMPLETED) StatusEmerald else GoldPrimary
                             )
                         }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                GoldTagChip(
-                                    text = "Ep ${task.episodeNumber} • ${task.qualityLabel}",
-                                    highlighted = task.status == DownloadStatus.COMPLETED
-                                )
-                                Text(
-                                    text = when (task.status) {
-                                        DownloadStatus.COMPLETED -> "${task.totalMb} MB"
-                                        DownloadStatus.DOWNLOADING -> "${(task.progress * 100).toInt()}%"
-                                        DownloadStatus.PAUSED -> "Jeda ${(task.progress * 100).toInt()}%"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (task.status == DownloadStatus.COMPLETED) StatusEmerald else GoldPrimary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(5.dp))
-                            Text(
-                                text = task.animeTitle,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = TextPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = task.episodeTitle,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary,
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = task.animeTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = TextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = task.episodeTitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -728,7 +752,6 @@ private fun DownloadsContent(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                    }
                 }
             }
         }

@@ -5,12 +5,15 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -220,11 +223,12 @@ fun PlayerScreen(
     var commentDraft by remember { mutableStateOf("") }
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
 
-    // Manage landscape orientation & immersive bars safely via Context.findActivity()
+    // Manage landscape orientation, immersive bars & keep-screen-on safely via Context.findActivity()
     DisposableEffect(session.isFullscreen, view) {
         val activity = view.context.findActivity()
         val window = activity?.window
         if (activity != null && window != null) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             val controller = WindowCompat.getInsetsController(window, view)
             if (session.isFullscreen) {
                 activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -238,6 +242,7 @@ fun PlayerScreen(
         }
         onDispose {
             if (activity != null && window != null) {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 WindowCompat.getInsetsController(window, view)
                     .show(WindowInsetsCompat.Type.systemBars())
@@ -299,6 +304,72 @@ fun PlayerScreen(
 
         val showingLiveWebStream = session.streamUrl.isNotBlank() && session.useWebStreamView
 
+        // Slim Theater Top Header Bar in Portrait Mode (zero overlap over video player!)
+        if (!session.isFullscreen && showingLiveWebStream) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MediaScrimDark)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onMinimize,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = "Perkecil Player",
+                        tint = MediaTextLight
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 6.dp)
+                ) {
+                    Text(
+                        text = anime.title,
+                        color = MediaTextLight,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Ep ${episode.number} • ${anime.officialChannel ?: if (session.streamType == "official_episode") "Resmi Sub Indo" else "AniList"}",
+                        color = MediaTextSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .clickable(onClick = onToggleFullscreen)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Fullscreen,
+                        contentDescription = "Layar Penuh",
+                        tint = GoldBright,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Penuh",
+                        color = MediaTextLight,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+        }
+
         Box(
             modifier = playerBoxModifier
                 .background(MediaScrimDark)
@@ -351,41 +422,36 @@ fun PlayerScreen(
             if (showingLiveWebStream) {
                 KumanimeWebStreamPlayer(
                     streamUrl = session.streamUrl,
+                    onRequestFullscreen = { wantFull ->
+                        if (wantFull != session.isFullscreen) onToggleFullscreen()
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .fillMaxWidth()
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = { if (session.isFullscreen) onToggleFullscreen() else onMinimize() },
+                // Only show a compact unobtrusive exit pill in Landscape Fullscreen mode
+                if (session.isFullscreen) {
+                    Row(
                         modifier = Modifier
-                            .size(36.dp)
+                            .align(Alignment.TopStart)
+                            .padding(start = 14.dp, top = 12.dp)
                             .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.68f))
+                            .background(MediaScrimDark.copy(alpha = 0.72f))
+                            .border(0.75.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+                            .clickable(onClick = onToggleFullscreen)
+                            .padding(horizontal = 11.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "Perkecil Player",
-                            tint = MediaTextLight
+                            imageVector = Icons.Rounded.FullscreenExit,
+                            contentDescription = "Keluar Layar Penuh",
+                            tint = GoldBright,
+                            modifier = Modifier.size(16.dp)
                         )
-                    }
-
-                    IconButton(
-                        onClick = onToggleFullscreen,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.68f))
-                    ) {
-                        Icon(
-                            imageVector = if (session.isFullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                            contentDescription = "Layar Penuh",
-                            tint = GoldBright
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Keluar",
+                            color = MediaTextLight,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -867,68 +933,92 @@ fun PlayerScreen(
         // PORTRAIT CONTENT BELOW VIDEO
         // ===========================
         if (!session.isFullscreen) {
-            // Smooth Playback Status Bar
+            // Streaming-site Episode Navigation & Source Status Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(ObsidianCard)
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TapeReelSpinner(
-                        isSpinning = session.isPlaying && !showingLiveWebStream,
-                        size = 18.dp,
-                        tint = GoldPrimary
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    LedStatusDot(
+                        color = if (session.streamType == "official_episode") StatusEmerald else GoldPrimary,
+                        pulsing = false,
+                        size = 7.dp
                     )
-                    Spacer(modifier = Modifier.width(9.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = when {
                             session.isLoadingStream -> "Menyiapkan stream..."
                             showingLiveWebStream && session.streamType == "official_episode" ->
-                                "Episode Resmi • Gratis Legal"
+                                "${anime.officialChannel ?: "Muse / Ani-One"} • Sub Indo"
                             showingLiveWebStream -> "Trailer Resmi • AniList"
-                            session.isPlaying -> "Sedang memutar • ${session.selectedQuality}"
+                            session.isPlaying -> "Mode Pemutar • ${session.selectedQuality}"
                             else -> "Dijeda"
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(ObsidianVoid)
+                            .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                            .clickable(onClick = onPreviousEpisode),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SkipPrevious,
+                            contentDescription = "Episode Sebelumnya",
+                            tint = TextPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(ObsidianVoid)
+                            .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                            .clickable(onClick = onNextEpisode),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SkipNext,
+                            contentDescription = "Episode Berikutnya",
+                            tint = GoldPrimary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                     if (session.streamUrl.isNotBlank()) {
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .background(GoldTintStrong)
                                 .clickable(onClick = onToggleWebStreamView)
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
                         ) {
                             Text(
-                                text = if (session.useWebStreamView) "Mode Pemutar" else "Live Stream",
+                                text = if (session.useWebStreamView) "Pemutar" else "Video",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 color = GoldPrimary
                             )
                         }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        LedStatusDot(
-                            color = if (session.isPlaying) StatusEmerald else StatusLive,
-                            pulsing = false,
-                            size = 6.dp
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = if (showingLiveWebStream) "In-App" else "${currentServer?.latencyMs ?: 24} ms",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = TextSecondary
-                        )
                     }
                 }
             }
@@ -1615,6 +1705,7 @@ private fun loadStreamIntoWebView(webView: WebView, streamUrl: String) {
 @Composable
 private fun KumanimeWebStreamPlayer(
     streamUrl: String,
+    onRequestFullscreen: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var currentWebView by remember { mutableStateOf<WebView?>(null) }
@@ -1650,8 +1741,18 @@ private fun KumanimeWebStreamPlayer(
 
     AndroidView(
         factory = { context ->
-            WebView(context).apply {
+            val container = FrameLayout(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setBackgroundColor(android.graphics.Color.parseColor("#0C0C10"))
+            }
+            var customFullscreenView: View? = null
+            var customViewCallback: WebChromeClient.CustomViewCallback? = null
+
+            val webView = WebView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
@@ -1680,13 +1781,45 @@ private fun KumanimeWebStreamPlayer(
                         return !isAllowedEmbedNavigation(url.orEmpty())
                     }
                 }
-                webChromeClient = WebChromeClient()
+                webChromeClient = object : WebChromeClient() {
+                    override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                        if (view == null) return
+                        customFullscreenView?.let { container.removeView(it) }
+                        customFullscreenView = view
+                        customViewCallback = callback
+                        container.addView(
+                            view,
+                            FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                        )
+                        onRequestFullscreen(true)
+                    }
+
+                    override fun onHideCustomView() {
+                        customFullscreenView?.let { container.removeView(it) }
+                        customFullscreenView = null
+                        customViewCallback?.onCustomViewHidden()
+                        customViewCallback = null
+                        onRequestFullscreen(false)
+                    }
+                }
                 loadStreamIntoWebView(this, streamUrl)
                 currentWebView = this
             }
+
+            container.addView(webView)
+            container
         },
-        update = { webView ->
-            loadStreamIntoWebView(webView, streamUrl)
+        update = { container ->
+            val webView = (0 until container.childCount)
+                .map { container.getChildAt(it) }
+                .filterIsInstance<WebView>()
+                .firstOrNull()
+            if (webView != null) {
+                loadStreamIntoWebView(webView, streamUrl)
+            }
         },
         modifier = modifier
     )

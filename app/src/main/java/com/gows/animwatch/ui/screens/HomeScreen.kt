@@ -115,22 +115,30 @@ fun HomeScreen(
 ) {
     val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
     val featuredList = remember(uiState.allAnime) {
-        uiState.allAnime.filter { it.isFeatured }.ifEmpty { uiState.allAnime.take(4) }
-    }
-    val officialFreeList = remember(uiState.allAnime) {
-        uiState.allAnime.filter { it.isOfficialFree }
+        uiState.allAnime
+            .sortedWith(
+                compareByDescending<Anime> { it.isOfficialFree && it.rating >= 8.3 }
+                    .thenByDescending { it.isFeatured }
+                    .thenByDescending { it.rating }
+            )
+            .take(6)
     }
     val latestReleases = remember(uiState.allAnime) {
-        uiState.allAnime.filter { !it.isOfficialFree && (it.isNewRelease || it.status == AnimeStatus.ONGOING) }
+        uiState.allAnime.filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
     }
     val top10List = remember(uiState.allAnime) {
-        uiState.allAnime.filter { !it.isOfficialFree }.sortedByDescending { it.rating }.take(10)
+        uiState.allAnime.sortedByDescending { it.rating }.take(10)
     }
     val trendingList = remember(uiState.allAnime) {
-        uiState.allAnime.filter { it.isTrending }.sortedBy { it.popularityRank }
+        uiState.allAnime
+            .filter { it.isTrending || it.isOfficialFree }
+            .sortedWith(compareByDescending<Anime> { it.isTrending }.thenBy { it.popularityRank })
+            .take(18)
     }
     val completedMarathon = remember(uiState.allAnime) {
-        uiState.allAnime.filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
+        uiState.allAnime
+            .filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
+            .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
     }
     val moviesList = remember(uiState.allAnime) {
         uiState.allAnime.filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
@@ -142,7 +150,7 @@ fun HomeScreen(
             .background(ObsidianVoid),
         contentPadding = PaddingValues(bottom = bottomInsetPadding)
     ) {
-        // 1. Clean Organic Header Bar
+        // 1. Anime Streaming Portal Header Bar
         item(key = "home_top_bar") {
             HomeTopBar(
                 unreadNotifications = uiState.unreadNotificationCount,
@@ -153,35 +161,66 @@ fun HomeScreen(
             )
         }
 
-        // 2. Soft Connection Pill + Hero Featured Carousel
+        // 2. Streaming Portal Quick Search Pill + Optional Sync Notice + Cinematic Hero Banner
         item(key = "home_hero") {
-            val apiStatus = uiState.apiConfig.status
-            val ledColor = when (apiStatus) {
-                ApiConnectionStatus.CONNECTED -> StatusEmerald
-                ApiConnectionStatus.SYNCING -> GoldBright
-                ApiConnectionStatus.OFFLINE_FALLBACK -> StatusAmber
-                ApiConnectionStatus.DEMO_LOCAL -> GoldPrimary
-            }
-            val statusLabel = when (apiStatus) {
-                ApiConnectionStatus.CONNECTED -> "AniList & Resmi Gratis Aktif"
-                ApiConnectionStatus.SYNCING -> "Menyinkronkan katalog..."
-                ApiConnectionStatus.OFFLINE_FALLBACK -> "Mode Katalog Offline"
-                ApiConnectionStatus.DEMO_LOCAL -> "Katalog Pilihan Siap"
-            }
-            CassetteTelemetryStrip(
-                code = statusLabel,
-                statusText = if (apiStatus == ApiConnectionStatus.CONNECTED) {
-                    "${uiState.apiConfig.remoteCount} judul • ${officialFreeList.size} gratis resmi"
-                } else {
-                    "${uiState.allAnime.size} anime • Sub Indo"
-                },
-                ledColor = ledColor,
-                pulsing = apiStatus == ApiConnectionStatus.SYNCING,
+            // Compact search bar like an anime streaming website
+            Row(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clickable(onClick = onOpenProfile)
-            )
-            Spacer(modifier = Modifier.height(10.dp))
+                    .clip(CircleShape)
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                    .clickable(onClick = onOpenSearch)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = "Cari Anime",
+                    tint = GoldPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Cari Mushoku Tensei, Frieren, SPY×FAMILY...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(GoldTint)
+                        .padding(horizontal = 8.dp, vertical = 2.5.dp)
+                ) {
+                    Text(
+                        text = "AniList",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            val apiStatus = uiState.apiConfig.status
+            if (apiStatus == ApiConnectionStatus.SYNCING || apiStatus == ApiConnectionStatus.OFFLINE_FALLBACK) {
+                Spacer(modifier = Modifier.height(6.dp))
+                CassetteTelemetryStrip(
+                    code = if (apiStatus == ApiConnectionStatus.SYNCING) "Memuat katalog AniList..." else "Mode Katalog Offline",
+                    statusText = "${uiState.allAnime.size} judul",
+                    ledColor = if (apiStatus == ApiConnectionStatus.SYNCING) GoldBright else StatusAmber,
+                    pulsing = apiStatus == ApiConnectionStatus.SYNCING,
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .clickable(onClick = onOpenProfile)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
             HeroCarouselSection(
                 featuredAnime = featuredList,
                 watchlist = uiState.watchlist.keys,
@@ -191,9 +230,9 @@ fun HomeScreen(
             )
         }
 
-        // 3. Soft Quick Discovery Shortcuts
+        // 3. Streaming Category Navigation Strip
         item(key = "home_shortcuts") {
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             QuickShortcutStrip(
                 onScheduleClick = onOpenSchedule,
                 onOngoingClick = { onOpenCatalog(CatalogPreset.ONGOING, "Sedang Tayang") },
@@ -201,33 +240,6 @@ fun HomeScreen(
                 onMoviesClick = { onOpenCatalog(CatalogPreset.MOVIES, "Anime Movie & OVA") },
                 onRandomClick = onOpenRandom
             )
-        }
-
-        // 3.5. Official Legal Free Sub Indo (Muse Indonesia & Ani-One Indonesia)
-        if (officialFreeList.isNotEmpty()) {
-            item(key = "home_official_free") {
-                Spacer(modifier = Modifier.height(26.dp))
-                SectionHeader(
-                    title = "Gratis Resmi Sub Indo",
-                    subtitle = "Episode resmi Muse Indonesia & Ani-One Indonesia",
-                    actionLabel = "Lihat Semua",
-                    onActionClick = { onOpenCatalog(CatalogPreset.OFFICIAL_FREE, "Gratis Resmi Sub Indo") }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(officialFreeList, key = { "free_${it.id}" }) { anime ->
-                        AnimePosterCard(
-                            anime = anime,
-                            isBookmarked = anime.id in uiState.watchlist,
-                            onClick = { onAnimeClick(anime.id) },
-                            onBookmarkClick = { onBookmarkClick(anime.id) }
-                        )
-                    }
-                }
-            }
         }
 
         // 4. Continue Watching
@@ -538,7 +550,7 @@ private fun HeroCarouselSection(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(356.dp)
+                    .height(380.dp)
                     .clip(RoundedCornerShape(24.dp))
                     .background(ObsidianCard)
                     .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
@@ -560,7 +572,7 @@ private fun HeroCarouselSection(
                         .background(heroScrimBrush)
                 )
 
-                    // Top floating capsule pills
+                    // Top floating streaming portal badges
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -583,7 +595,11 @@ private fun HeroCarouselSection(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = anime.posterTag,
+                                text = if (anime.isOfficialFree) {
+                                    "SUB INDO • ${anime.officialChannel ?: "Muse ID"}"
+                                } else {
+                                    anime.posterTag
+                                },
                                 color = TextOnGold,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold

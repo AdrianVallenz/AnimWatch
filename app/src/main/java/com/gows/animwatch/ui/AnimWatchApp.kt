@@ -1,6 +1,8 @@
 package com.gows.animwatch.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -11,19 +13,31 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,8 +52,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gows.animwatch.data.local.AndroidDeviceStorageManager
 import com.gows.animwatch.data.local.SharedPreferencesSessionStore
 import com.gows.animwatch.ui.components.FloatingGoldBottomNav
+import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.MiniPlayerBar
 import com.gows.animwatch.ui.components.NotificationsBottomSheet
 import com.gows.animwatch.ui.screens.AnimeDetailScreen
@@ -58,9 +74,13 @@ import com.gows.animwatch.ui.state.MainTab
 import com.gows.animwatch.ui.theme.AnimWatchTheme
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
+import com.gows.animwatch.ui.theme.ObsidianCard
 import com.gows.animwatch.ui.theme.ObsidianElevated
 import com.gows.animwatch.ui.theme.ObsidianVoid
+import com.gows.animwatch.ui.theme.StatusEmerald
 import com.gows.animwatch.ui.theme.TextPrimary
+import com.gows.animwatch.ui.theme.TextSecondary
+import com.gows.animwatch.ui.theme.TextTertiary
 
 @Composable
 fun AnimWatchApp(
@@ -69,10 +89,25 @@ fun AnimWatchApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var showNotificationsSheet by remember { mutableStateOf(false) }
+    var hasDismissedPermissionPrompt by remember { mutableStateOf(false) }
     val appContext = LocalContext.current.applicationContext
+
+    val multiPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        hasDismissedPermissionPrompt = true
+        viewModel.refreshDeviceStorageAndPermissions()
+    }
 
     LaunchedEffect(Unit) {
         viewModel.attachSessionStore(SharedPreferencesSessionStore(appContext))
+        viewModel.attachStorageGateway(AndroidDeviceStorageManager(appContext))
+    }
+
+    LaunchedEffect(uiState.currentTab) {
+        if (uiState.currentTab == MainTab.LIBRARY || uiState.currentTab == MainTab.PROFILE) {
+            viewModel.refreshDeviceStorageAndPermissions()
+        }
     }
 
     AnimWatchTheme(
@@ -245,6 +280,7 @@ fun AnimWatchApp(
                                 onSyncApi = { viewModel.syncKumanimeCatalog(silentIfOffline = false) },
                                 onOpenThemeEditor = viewModel::openThemeEditorFromProfile,
                                 onClearCache = viewModel::clearAppCache,
+                                onRefreshDeviceState = viewModel::refreshDeviceStorageAndPermissions,
                                 onLogout = viewModel::logout
                             )
                         }
@@ -425,6 +461,102 @@ fun AnimWatchApp(
             },
             onMarkAllRead = viewModel::markAllNotificationsRead,
             onDismiss = { showNotificationsSheet = false }
+        )
+    }
+
+    val pendingRuntimePermissions = remember(uiState.appPermissions) {
+        uiState.appPermissions.filter { it.canRequestRuntime && it.androidPermission != null }
+    }
+    val showPermissionsWelcome = uiState.isAuthenticated &&
+        uiState.hasCompletedThemeSetup &&
+        !uiState.isEditingTheme &&
+        !hasDismissedPermissionPrompt &&
+        pendingRuntimePermissions.isNotEmpty()
+
+    if (showPermissionsWelcome) {
+        AlertDialog(
+            onDismissRequest = { hasDismissedPermissionPrompt = true },
+            containerColor = ObsidianElevated,
+            shape = RoundedCornerShape(24.dp),
+            titleContentColor = TextPrimary,
+            textContentColor = TextSecondary,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Security,
+                        contentDescription = null,
+                        tint = GoldPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Izin Penggunaan Aplikasi",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "AnimWatch memerlukan beberapa izin berikut agar pengingat rilis episode dan penyimpanan offline di perangkat berjalan lancar:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                    uiState.appPermissions.forEach { perm ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(ObsidianCard, RoundedCornerShape(12.dp))
+                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 11.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = perm.title,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = perm.description,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextTertiary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (perm.isGranted) "Aktif" else "Perlu Izin",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (perm.isGranted) StatusEmerald else GoldPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                GoldGradientButton(
+                    text = "Izinkan Semua",
+                    onClick = {
+                        val toRequest = pendingRuntimePermissions
+                            .mapNotNull { it.androidPermission }
+                            .toTypedArray()
+                        if (toRequest.isNotEmpty()) {
+                            multiPermissionLauncher.launch(toRequest)
+                        } else {
+                            hasDismissedPermissionPrompt = true
+                        }
+                    },
+                    height = 40.dp
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { hasDismissedPermissionPrompt = true }) {
+                    Text("Nanti Saja", color = TextSecondary)
+                }
+            }
         )
     }
     } // end AnimWatchTheme

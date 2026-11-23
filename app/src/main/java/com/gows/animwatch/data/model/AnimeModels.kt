@@ -276,6 +276,7 @@ enum class DownloadStatus(val label: String) {
     COMPLETED("Tersimpan")
 }
 
+@Immutable
 data class DownloadTask(
     val episodeId: String,
     val animeId: String,
@@ -286,7 +287,10 @@ data class DownloadTask(
     val qualityLabel: String,
     val totalMb: Int,
     val progress: Float,
-    val status: DownloadStatus
+    val status: DownloadStatus,
+    val sizeBytes: Long = 0L,
+    val posterUrl: String = "",
+    val localPath: String = ""
 ) {
     val downloadedMb: Int
         get() = (totalMb * progress).toInt()

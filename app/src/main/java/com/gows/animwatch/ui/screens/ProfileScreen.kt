@@ -1,5 +1,7 @@
 package com.gows.animwatch.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +38,9 @@ import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
@@ -56,14 +61,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gows.animwatch.data.local.AndroidDeviceStorageManager
 import com.gows.animwatch.data.model.ApiConnectionStatus
 import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.data.model.SubtitleSizeOption
+import com.gows.animwatch.data.model.WatchlistCategory
 import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
@@ -104,12 +112,21 @@ fun ProfileScreen(
     onSyncApi: () -> Unit,
     onOpenThemeEditor: () -> Unit,
     onClearCache: () -> Unit,
+    onRefreshDeviceState: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val profile = uiState.userProfile
     val settings = uiState.settings
     val apiConfig = uiState.apiConfig
+    val deviceStorage = uiState.deviceStorage
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        onRefreshDeviceState()
+    }
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showApiUrlDialog by remember { mutableStateOf(false) }
@@ -226,10 +243,12 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
-                        ProfileStatItem("${profile.watchedHours}j", "Jam Tonton")
+                        val totalTrackedEps = uiState.watchedEpisodes.values.sum()
+                        val completedCount = uiState.watchlist.values.count { it == WatchlistCategory.COMPLETED }
+                        ProfileStatItem("$totalTrackedEps", "Ep Ditonton")
                         ProfileStatItem("${uiState.watchlist.size}", "Koleksi")
-                        ProfileStatItem("${uiState.downloads.size}", "Unduhan")
-                        ProfileStatItem("${profile.completedAnimeCount}", "Tamat")
+                        ProfileStatItem("${uiState.downloads.size}", "Offline")
+                        ProfileStatItem("$completedCount", "Tamat")
                     }
                 }
             }
@@ -494,20 +513,110 @@ fun ProfileScreen(
             }
         }
 
+        // App Permissions & Runtime Access Control
+        if (uiState.appPermissions.isNotEmpty()) {
+            item {
+                SettingsGroupCard(title = "Izin Penggunaan Aplikasi") {
+                    uiState.appPermissions.forEachIndexed { idx, perm ->
+                        if (idx > 0) SettingDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = perm.canRequestRuntime && perm.androidPermission != null) {
+                                    perm.androidPermission?.let { permissionLauncher.launch(it) }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(if (perm.isGranted) StatusEmerald.copy(alpha = 0.14f) else GoldTint),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = when (perm.id) {
+                                        "notifications" -> Icons.Rounded.NotificationsActive
+                                        "storage" -> Icons.Rounded.Storage
+                                        "network" -> Icons.Rounded.Wifi
+                                        else -> Icons.Rounded.Security
+                                    },
+                                    contentDescription = null,
+                                    tint = if (perm.isGranted) StatusEmerald else GoldPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = perm.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Text(
+                                    text = perm.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextTertiary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (perm.isGranted) StatusEmerald.copy(alpha = 0.14f)
+                                        else GoldTintStrong
+                                    )
+                                    .clickable(enabled = perm.canRequestRuntime && perm.androidPermission != null) {
+                                        perm.androidPermission?.let { permissionLauncher.launch(it) }
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = if (perm.isGranted) "Diizinkan" else "Izinkan",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (perm.isGranted) StatusEmerald else GoldPrimary
+                                )
+                            }
+                        }
+                    }
+                    SettingDivider()
+                    SettingRowItem(
+                        icon = Icons.Rounded.Settings,
+                        title = "Pengaturan Izin Sistem Android",
+                        value = "Buka",
+                        onClick = { AndroidDeviceStorageManager.openAppPermissionSettings(context) }
+                    )
+                }
+            }
+        }
+
         // Storage & About
         item {
-            SettingsGroupCard(title = "Aplikasi & Penyimpanan") {
+            SettingsGroupCard(title = "Aplikasi & Penyimpanan Perangkat") {
+                SettingRowItem(
+                    icon = Icons.Rounded.Storage,
+                    title = "Ruang Kosong Perangkat",
+                    value = if (deviceStorage.totalDeviceBytes > 0L) {
+                        "${deviceStorage.availableLabel} / ${deviceStorage.totalLabel}"
+                    } else "Memindai...",
+                    onClick = onRefreshDeviceState
+                )
+                SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.CleaningServices,
                     title = "Bersihkan Cache",
-                    value = "${uiState.cacheSizeMb} MB",
+                    value = deviceStorage.cacheLabel,
                     onClick = onClearCache
                 )
                 SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Info,
                     title = "Tentang AnimWatch",
-                    value = "v1.0.0",
+                    value = "v1.1.0",
                     onClick = { showAboutDialog = true }
                 )
             }

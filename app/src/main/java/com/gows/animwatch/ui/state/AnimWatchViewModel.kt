@@ -23,8 +23,13 @@ import com.gows.animwatch.data.model.UserProfile
 import com.gows.animwatch.data.model.VideoAspectMode
 import com.gows.animwatch.data.model.WatchProgress
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.data.local.AppPermissionStatus
+import com.gows.animwatch.data.local.DeviceStorageInfo
 import com.gows.animwatch.data.local.InMemorySessionStore
+import com.gows.animwatch.data.local.NoOpOfflineStorageGateway
+import com.gows.animwatch.data.local.OfflineStorageGateway
 import com.gows.animwatch.data.local.SessionStore
+import com.gows.animwatch.data.local.formatStorageBytes
 import com.gows.animwatch.data.remote.AuthResponseDto
 import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
 import com.gows.animwatch.data.remote.KumanimeApiClient
@@ -34,8 +39,10 @@ import com.gows.animwatch.data.repository.AnimeRepository
 import com.gows.animwatch.data.repository.MockAnimeRepository
 import com.gows.animwatch.ui.theme.AppAccentTheme
 import com.gows.animwatch.ui.theme.AppAppearanceMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -159,7 +166,9 @@ data class AnimWatchUiState(
     ),
     val settings: PlaybackSettings = PlaybackSettings(),
     val playerSession: PlayerSession? = null,
-    val cacheSizeMb: Int = 184,
+    val cacheSizeMb: Int = 0,
+    val deviceStorage: DeviceStorageInfo = DeviceStorageInfo(),
+    val appPermissions: List<AppPermissionStatus> = emptyList(),
     val apiConfig: ApiConfigState = ApiConfigState(),
     val isLoadingDetail: Boolean = false,
     val isSearchingRemote: Boolean = false
@@ -220,6 +229,8 @@ class AnimWatchViewModel(
     )
 
     private var sessionStore: SessionStore = InMemorySessionStore()
+    private var storageGateway: OfflineStorageGateway = NoOpOfflineStorageGateway()
+    private var storageAttached: Boolean = false
     private var cloudSyncEnabled: Boolean = false
     private var authToken: String? = null
     private var authJob: Job? = null
@@ -234,6 +245,40 @@ class AnimWatchViewModel(
     private var streamFetchJob: Job? = null
     private var remoteSearchJob: Job? = null
     private val downloadJobs = mutableMapOf<String, Job>()
+
+    fun attachStorageGateway(gateway: OfflineStorageGateway) {
+        if (storageAttached) return
+        storageGateway = gateway
+        storageAttached = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val storage = gateway.inspectStorage()
+            val perms = gateway.readPermissions()
+            val persistedDownloads = gateway.loadPersistedDownloads()
+            _uiState.update { state ->
+                state.copy(
+                    downloads = persistedDownloads,
+                    deviceStorage = storage,
+                    appPermissions = perms,
+                    cacheSizeMb = (storage.appCacheBytes / (1024L * 1024L)).toInt()
+                )
+            }
+        }
+    }
+
+    fun refreshDeviceStorageAndPermissions() {
+        if (!storageAttached) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val storage = storageGateway.inspectStorage()
+            val perms = storageGateway.readPermissions()
+            _uiState.update { state ->
+                state.copy(
+                    deviceStorage = storage,
+                    appPermissions = perms,
+                    cacheSizeMb = (storage.appCacheBytes / (1024L * 1024L)).toInt()
+                )
+            }
+        }
+    }
 
     fun attachSessionStore(store: SessionStore) {
         if (cloudSyncEnabled) return
@@ -409,7 +454,7 @@ class AnimWatchViewModel(
             genres = repository.getAllGenres(),
             watchlist = repository.getInitialWatchlist(),
             watchHistory = repository.getInitialWatchHistory(),
-            downloads = repository.getInitialDownloads(),
+            downloads = emptyList(),
             comments = repository.getInitialComments(),
             notifications = repository.getInitialNotifications(),
             reminders = repository.getInitialReminders(),
@@ -980,10 +1025,14 @@ class AnimWatchViewModel(
         val state = _uiState.value
         val anime = state.allAnime.find { it.id == animeId } ?: return
 
-        // Jika anime dari Kumanime API belum memuat daftar episode, ambil detailnya terlebih dahulu
-        if (anime.isRemote && anime.episodes.isEmpty()) {
+        // Jika anime dari AniList belum memuat episode penuh Muse/Ani-One, ambil detailnya terlebih dahulu
+        val needsOfficialEpisodeResolve = anime.isRemote && (
+            anime.episodes.isEmpty() ||
+                (anime.episodes.size == 1 && anime.episodes.first().streamType != "official_episode" && anime.characters.isEmpty())
+            )
+        if (needsOfficialEpisodeResolve) {
             val baseUrl = state.apiConfig.baseUrl
-            emitMessage("Memuat episode dari Kumanime API...")
+            emitMessage("Menghubungkan ke episode resmi...")
             detailFetchJob?.cancel()
             detailFetchJob = viewModelScope.launch {
                 val detailRes = remoteDataSource.fetchAnimeDetail(baseUrl, anime)
@@ -999,7 +1048,7 @@ class AnimWatchViewModel(
                         emitMessage("Belum ada episode tersedia untuk ${detailed.title}")
                     }
                 }.onFailure {
-                    emitMessage("Gagal mengambil daftar episode dari API")
+                    emitMessage("Gagal mengambil daftar episode dari server")
                 }
             }
             return
@@ -1687,7 +1736,7 @@ class AnimWatchViewModel(
     }
 
     // ====================
-    // Offline Downloads Simulation
+    // Real Device Offline Episode Packages
     // ====================
 
     fun handleEpisodeDownloadAction(
@@ -1706,7 +1755,7 @@ class AnimWatchViewModel(
                 emitMessage("Melanjutkan unduhan Ep ${episode.number}")
             }
             DownloadStatus.COMPLETED -> {
-                emitMessage("Episode ${episode.number} sudah tersimpan offline")
+                emitMessage("Episode ${episode.number} sudah tersimpan di penyimpanan perangkat")
             }
             null -> startEpisodeDownload(anime, episode, qualityLabel)
         }
@@ -1716,14 +1765,13 @@ class AnimWatchViewModel(
         val existing = _uiState.value.downloads.find { it.episodeId == episode.id }
         if (existing != null) {
             when (existing.status) {
-                DownloadStatus.COMPLETED -> emitMessage("Episode ${episode.number} sudah tersimpan offline")
-                DownloadStatus.DOWNLOADING -> emitMessage("Episode ${episode.number} sedang diunduh")
+                DownloadStatus.COMPLETED -> emitMessage("Episode ${episode.number} sudah tersimpan di perangkat")
+                DownloadStatus.DOWNLOADING -> emitMessage("Episode ${episode.number} sedang disimpan")
                 DownloadStatus.PAUSED -> resumeDownload(episode.id)
             }
             return
         }
 
-        val sizeMb = episode.qualities.find { it.label == qualityLabel }?.sizeEstimateMb ?: 195
         val task = DownloadTask(
             episodeId = episode.id,
             animeId = anime.id,
@@ -1732,16 +1780,18 @@ class AnimWatchViewModel(
             episodeTitle = episode.title,
             artTheme = anime.artTheme,
             qualityLabel = qualityLabel,
-            totalMb = sizeMb,
-            progress = 0.04f,
-            status = DownloadStatus.DOWNLOADING
+            totalMb = 1,
+            progress = 0.05f,
+            status = DownloadStatus.DOWNLOADING,
+            sizeBytes = 0L,
+            posterUrl = anime.posterUrl
         )
 
         _uiState.update { state ->
             state.copy(downloads = listOf(task) + state.downloads)
         }
-        emitMessage("Mengunduh ${anime.title.substringBefore(":")} Ep ${episode.number} ($qualityLabel)")
-        launchDownloadProgress(episode.id)
+        emitMessage("Menyimpan paket offline ${anime.title.substringBefore(":")} Ep ${episode.number}...")
+        launchRealOfflineDownload(anime, episode, qualityLabel)
     }
 
     fun pauseDownload(episodeId: String) {
@@ -1758,6 +1808,9 @@ class AnimWatchViewModel(
     }
 
     fun resumeDownload(episodeId: String) {
+        val task = _uiState.value.downloads.find { it.episodeId == episodeId } ?: return
+        val anime = _uiState.value.allAnime.find { it.id == task.animeId }
+        val ep = anime?.episodes?.find { it.id == episodeId }
         _uiState.update { state ->
             state.copy(
                 downloads = state.downloads.map {
@@ -1767,7 +1820,9 @@ class AnimWatchViewModel(
                 }
             )
         }
-        launchDownloadProgress(episodeId)
+        if (anime != null && ep != null) {
+            launchRealOfflineDownload(anime, ep, task.qualityLabel)
+        }
     }
 
     fun removeDownload(episodeId: String) {
@@ -1776,37 +1831,69 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(downloads = state.downloads.filterNot { it.episodeId == episodeId })
         }
-        emitMessage("Unduhan dihapus dari penyimpanan")
+        viewModelScope.launch(Dispatchers.IO) {
+            storageGateway.deleteEpisodePackage(episodeId)
+            val refreshed = storageGateway.inspectStorage()
+            _uiState.update { it.copy(deviceStorage = refreshed) }
+        }
+        emitMessage("Paket offline dihapus dari penyimpanan perangkat")
     }
 
-    private fun launchDownloadProgress(episodeId: String) {
-        downloadJobs[episodeId]?.cancel()
-        downloadJobs[episodeId] = viewModelScope.launch {
-            while (true) {
-                delay(280L)
-                val task = _uiState.value.downloads.find { it.episodeId == episodeId } ?: break
-                if (task.status != DownloadStatus.DOWNLOADING) break
-
-                val nextProgress = (task.progress + 0.08f).coerceAtMost(1.0f)
-                val completed = nextProgress >= 1.0f
-
+    private fun launchRealOfflineDownload(anime: Anime, episode: Episode, qualityLabel: String) {
+        downloadJobs[episode.id]?.cancel()
+        downloadJobs[episode.id] = viewModelScope.launch {
+            val cues = repository.getSubtitleCues(anime.title, episode.number)
+            val result = storageGateway.downloadEpisodePackage(
+                anime = anime,
+                episode = episode,
+                qualityLabel = qualityLabel,
+                subtitleCues = cues
+            ) { progress, bytesWritten ->
                 _uiState.update { state ->
                     state.copy(
-                        downloads = state.downloads.map {
-                            if (it.episodeId == episodeId) {
-                                it.copy(
-                                    progress = nextProgress,
-                                    status = if (completed) DownloadStatus.COMPLETED else DownloadStatus.DOWNLOADING
+                        downloads = state.downloads.map { item ->
+                            if (item.episodeId == episode.id) {
+                                item.copy(
+                                    progress = progress.coerceIn(0.05f, 0.99f),
+                                    sizeBytes = bytesWritten,
+                                    totalMb = (bytesWritten / (1024L * 1024L)).toInt().coerceAtLeast(1)
                                 )
-                            } else it
+                            } else item
                         }
                     )
                 }
+            }
 
-                if (completed) {
-                    emitMessage("${task.animeTitle.substringBefore(":")} Ep ${task.episodeNumber} selesai diunduh!")
-                    break
+            result.onSuccess { saved ->
+                val refreshed = withContext(Dispatchers.IO) { storageGateway.inspectStorage() }
+                _uiState.update { state ->
+                    state.copy(
+                        deviceStorage = refreshed,
+                        downloads = state.downloads.map { item ->
+                            if (item.episodeId == episode.id) {
+                                item.copy(
+                                    progress = 1.0f,
+                                    status = DownloadStatus.COMPLETED,
+                                    sizeBytes = saved.bytesWritten,
+                                    totalMb = (saved.bytesWritten / (1024L * 1024L)).toInt().coerceAtLeast(1),
+                                    localPath = saved.localPath
+                                )
+                            } else item
+                        }
+                    )
                 }
+                emitMessage(
+                    "${anime.title.substringBefore(":")} Ep ${episode.number} tersimpan (${formatStorageBytes(saved.bytesWritten)})"
+                )
+            }.onFailure { err ->
+                _uiState.update { state ->
+                    state.copy(
+                        downloads = state.downloads.map { item ->
+                            if (item.episodeId == episode.id) item.copy(status = DownloadStatus.PAUSED) else item
+                        }
+                    )
+                }
+                emitMessage("Gagal menyimpan paket offline: ${err.localizedMessage ?: "Periksa koneksi"}")
             }
         }
     }
@@ -1968,8 +2055,17 @@ class AnimWatchViewModel(
     }
 
     fun clearAppCache() {
-        _uiState.update { it.copy(cacheSizeMb = 0) }
-        emitMessage("Cache aplikasi berhasil dibersihkan (184 MB dibebaskan)")
+        viewModelScope.launch(Dispatchers.IO) {
+            val freedBytes = storageGateway.clearAppCache()
+            val refreshed = storageGateway.inspectStorage()
+            _uiState.update {
+                it.copy(
+                    deviceStorage = refreshed,
+                    cacheSizeMb = (refreshed.appCacheBytes / (1024L * 1024L)).toInt()
+                )
+            }
+            emitMessage("Cache dibersihkan (${formatStorageBytes(freedBytes)} dibebaskan)")
+        }
     }
 
     // ====================

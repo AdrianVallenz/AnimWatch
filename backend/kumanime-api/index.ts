@@ -830,60 +830,35 @@ function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; epi
   return { seriesTitle, episodeNumber };
 }
 
-interface FeaturedOfficialPlaylist {
-  anilistId: number;
-  playlistId: string;
-  channelName: string;
-  fallbackTitle: string;
-  fallbackStudio: string;
-  fallbackRating: number;
-  fallbackGenres: string[];
-  fallbackTotalEpisodes: number;
-}
-
-const FEATURED_OFFICIAL_PLAYLISTS: FeaturedOfficialPlaylist[] = [
-  {
-    anilistId: 108465,
-    playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv",
-    channelName: "Muse Indonesia",
-    fallbackTitle: "Mushoku Tensei: Jobless Reincarnation",
-    fallbackStudio: "Studio Bind",
-    fallbackRating: 8.4,
-    fallbackGenres: ["Adventure", "Drama", "Fantasy", "Gratis Resmi"],
-    fallbackTotalEpisodes: 23,
-  },
-  {
-    anilistId: 154587,
-    playlistId: "PLPanbgyToztZ7OBDPkXwBuhPvgd5OBZ70",
-    channelName: "Muse Indonesia",
-    fallbackTitle: "Frieren: Beyond Journey's End",
-    fallbackStudio: "Madhouse",
-    fallbackRating: 9.1,
-    fallbackGenres: ["Adventure", "Drama", "Fantasy", "Gratis Resmi"],
-    fallbackTotalEpisodes: 28,
-  },
-  {
-    anilistId: 140960,
-    playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf",
-    channelName: "Muse Indonesia",
-    fallbackTitle: "SPY×FAMILY",
-    fallbackStudio: "WIT STUDIO",
-    fallbackRating: 8.5,
-    fallbackGenres: ["Action", "Comedy", "Slice of Life", "Gratis Resmi"],
-    fallbackTotalEpisodes: 25,
-  },
-  {
-    anilistId: 171018,
-    playlistId: "PLPanbgyToztaeQFokLfCgkmP_C3szkxCR",
-    channelName: "Muse Indonesia",
-    fallbackTitle: "DAN DA DAN",
-    fallbackStudio: "Science SARU",
-    fallbackRating: 8.4,
-    fallbackGenres: ["Action", "Comedy", "Sci-Fi", "Supernatural"],
-    fallbackTotalEpisodes: 12,
-  },
+const FEATURED_MUSE_ANILIST_IDS: number[] = [
+  108465, // Mushoku Tensei: Jobless Reincarnation
+  154587, // Frieren: Beyond Journey's End
+  140960, // SPY x FAMILY
+  171018, // DAN DA DAN
+  16498,  // Attack on Titan
+  21087,  // One-Punch Man
+  101280, // That Time I Got Reincarnated as a Slime (Tensura)
+  11061,  // Hunter x Hunter (2011)
+  21355,  // Re:ZERO S1
+  108632, // Re:ZERO S2
+  163134, // Re:ZERO S3
+  151970, // Shangri-La Frontier
+  21507,  // Mob Psycho 100
+  98659,  // Classroom of the Elite
+  101165, // Goblin Slayer
+  129188, // Goblin Slayer II
+  12189,  // Hyouka
+  159831, // Zom 100: Bucket List of the Dead
+  155783, // Campfire Cooking in Another World
+  139095, // Fairy Tail: 100 Years Quest
+  99749,  // Fairy Tail Final Series
+  14719,  // JoJo's Bizarre Adventure (Part 1-2)
+  20474,  // JoJo's Bizarre Adventure: Stardust Crusaders
+  21450,  // JoJo's Bizarre Adventure: Diamond is Unbreakable
+  105156, // Cautious Hero
 ];
 
+// Verified live Muse Indonesia official YouTube playlists mapped to AniList IDs
 const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, { playlistId: string; channelName: string }> = {
   108465: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
   127720: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
@@ -891,191 +866,129 @@ const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, { playlistId: string; chann
   166873: { playlistId: "PLPanbgyToztYFBI_bkaDF21nfP_c--FPv", channelName: "Muse Indonesia" },
   154587: { playlistId: "PLPanbgyToztZ7OBDPkXwBuhPvgd5OBZ70", channelName: "Muse Indonesia" },
   140960: { playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", channelName: "Muse Indonesia" },
+  142838: { playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", channelName: "Muse Indonesia" },
+  158927: { playlistId: "PLPanbgyToztbu7tZq6L49MPhra92n2ixf", channelName: "Muse Indonesia" },
   171018: { playlistId: "PLPanbgyToztaeQFokLfCgkmP_C3szkxCR", channelName: "Muse Indonesia" },
+  16498:  { playlistId: "PLPanbgyToztZJLy-bGH_tD6rA1ObhW7iz", channelName: "Muse Indonesia" },
+  21087:  { playlistId: "PLPanbgyToztaXLViGiE8Tzu_h5GWrlV04", channelName: "Muse Indonesia" },
+  101280: { playlistId: "PLPanbgyToztbl5IdZxm_aC5G7U5QYHjTG", channelName: "Muse Indonesia" },
+  108511: { playlistId: "PLPanbgyToztbl5IdZxm_aC5G7U5QYHjTG", channelName: "Muse Indonesia" },
+  11061:  { playlistId: "PLPanbgyToztYQo4C8qRLt4cN_MEjp-lRp", channelName: "Muse Indonesia" },
+  21355:  { playlistId: "PLPanbgyToztbLcypmWAFGf739Alfxk3qS", channelName: "Muse Indonesia" },
+  108632: { playlistId: "PLPanbgyToztYThySIw-tvX8O3J-NHhMAT", channelName: "Muse Indonesia" },
+  119661: { playlistId: "PLPanbgyToztYThySIw-tvX8O3J-NHhMAT", channelName: "Muse Indonesia" },
+  163134: { playlistId: "PLPanbgyToztZpP3zanOqFo20ky85-q1Yp", channelName: "Muse Indonesia" },
+  151970: { playlistId: "PLPanbgyToztYlSxKLf7qFl6VpLYn2T_i1", channelName: "Muse Indonesia" },
+  176508: { playlistId: "PLPanbgyToztYlSxKLf7qFl6VpLYn2T_i1", channelName: "Muse Indonesia" },
+  21507:  { playlistId: "PLPanbgyToztZRzP5dkn8dVWL_OAPEaciO", channelName: "Muse Indonesia" },
+  98659:  { playlistId: "PLPanbgyToztZBmp90FrnrDGXDDu5J6-LR", channelName: "Muse Indonesia" },
+  101165: { playlistId: "PLPanbgyTozta-OkjrTHB_-ClPo6IuEWlE", channelName: "Muse Indonesia" },
+  129188: { playlistId: "PLPanbgyToztbd-2Qc8zKa3p8hl2KWKyZq", channelName: "Muse Indonesia" },
+  12189:  { playlistId: "PLPanbgyToztYq6eXRxJCx8wxaQ0Yc2NHz", channelName: "Muse Indonesia" },
+  159831: { playlistId: "PLPanbgyToztZN2SaJWB2i_pKwtsdGv2p7", channelName: "Muse Indonesia" },
+  155783: { playlistId: "PLPanbgyToztZmsgNPEL9XHwb0ilTs5ljv", channelName: "Muse Indonesia" },
+  6702:   { playlistId: "PLPanbgyToztaDhNmS0krUvUkYmylqD7Mi", channelName: "Muse Indonesia" },
+  99749:  { playlistId: "PLPanbgyToztaDhNmS0krUvUkYmylqD7Mi", channelName: "Muse Indonesia" },
+  139095: { playlistId: "PLPanbgyToztYlvpi2MvbIYlZ1_8xUDf4o", channelName: "Muse Indonesia" },
+  14719:  { playlistId: "PLPanbgyToztYALUW3f2cdwP4NA17n8h28", channelName: "Muse Indonesia" },
+  20474:  { playlistId: "PLPanbgyTozta2tXEFHzZMLQQ9tKHNEgbL", channelName: "Muse Indonesia" },
+  20799:  { playlistId: "PLPanbgyTozta2tXEFHzZMLQQ9tKHNEgbL", channelName: "Muse Indonesia" },
+  21450:  { playlistId: "PLPanbgyToztY2RnKQVkxDGhJcLlIV9bIT", channelName: "Muse Indonesia" },
+  105156: { playlistId: "PLPanbgyToztYOhY1JG0xIvTkGdHNyCRlU", channelName: "Muse Indonesia" },
 };
 
-async function handleOfficialFree(): Promise<Response> {
-  const key = "official-free-id-v2";
-  const cached = getCached(key);
-  if (cached) return jsonResponse(cached);
+function normalizeTitleForMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[:\-–—_.,!?'"()\[\]【】]/g, " ")
+    .replace(/\b(season|cour|part|the|animation|takarir|indonesia|bahasa|sub|indo|dub)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  // 1. Fetch curated iconic Muse Indonesia Sub Indo playlists + AniList metadata in parallel
-  const featuredIds = FEATURED_OFFICIAL_PLAYLISTS.map((f) => f.anilistId);
-  const [featuredAniListRes, featuredPlaylistEntries, channelFeedResults] = await Promise.all([
-    queryAniList<{ Page: { media: AniListMedia[] } }>(
-      `query ($ids: [Int]) { Page(page: 1, perPage: 10) { media(id_in: $ids, type: ANIME) { ${MEDIA_CARD_FIELDS} } } }`,
-      { ids: featuredIds }
-    ).catch(() => ({ Page: { media: [] as AniListMedia[] } })),
-    Promise.all(
-      FEATURED_OFFICIAL_PLAYLISTS.map((f) =>
-        fetchYouTubeAtomFeed(
-          `https://www.youtube.com/feeds/videos.xml?playlist_id=${f.playlistId}`,
-          f.channelName
-        )
+async function getRecentChannelOfficialEpisodes(): Promise<YtRssEntry[]> {
+  const key = "yt-recent-channels-v1";
+  const cached = getCached<YtRssEntry[]>(key);
+  if (cached) return cached;
+
+  const feedResults = await Promise.all(
+    OFFICIAL_YT_CHANNELS.map((ch) =>
+      fetchYouTubeAtomFeed(
+        `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.channelId}`,
+        ch.name
       )
-    ),
-    Promise.all(
-      OFFICIAL_YT_CHANNELS.map((ch) =>
-        fetchYouTubeAtomFeed(
-          `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.channelId}`,
-          ch.name
-        )
-      )
-    ),
-  ]);
-
-  const anilistById = new Map<number, AniListMedia>();
-  for (const m of featuredAniListRes.Page.media) {
-    anilistById.set(m.id, m);
-  }
-
-  const featuredCards: Array<Record<string, unknown>> = [];
-  FEATURED_OFFICIAL_PLAYLISTS.forEach((feat, idx) => {
-    const rawEntries = (featuredPlaylistEntries[idx] ?? []).filter(
-      (e) => !/\b(preview|trailer|teaser|pv)\b/i.test(e.title)
-    );
-    if (rawEntries.length === 0) return;
-
-    const media = anilistById.get(feat.anilistId);
-    const common = media ? mapMediaCommon(media) : null;
-    const episodes = rawEntries.map((ytEp, epIdx) => ({
-      eps_title: ytEp.title,
-      eps_slug: `yt-${ytEp.videoId}`,
-      number: epIdx + 1,
-      stream_url: ytNoCookieEmbed(ytEp.videoId),
-      stream_type: "official_episode",
-      thumbnail: ytEp.thumbnail,
-    }));
-
-    const latestEp = episodes[episodes.length - 1];
-    featuredCards.push({
-      ...(common ?? {
-        id: feat.anilistId,
-        title: feat.fallbackTitle,
-        japanese_title: `${feat.channelName} • Gratis Resmi`,
-        slug: makeAnimeSlug(feat.fallbackTitle, feat.anilistId),
-        poster: rawEntries[0].thumbnail,
-        banner: rawEntries[0].thumbnail,
-        synopsis: `Tonton episode resmi Sub Indo ${feat.fallbackTitle} gratis dan legal dari kanal ${feat.channelName}.`,
-        genres: feat.fallbackGenres,
-        rating: feat.fallbackRating,
-        rating_count: "Resmi",
-        views_label: feat.channelName,
-        studio: feat.fallbackStudio,
-        status: "COMPLETED",
-        type: "TV Series",
-        year: 2024,
-        season: "Gratis Resmi",
-        duration_minutes: 24,
-        total_episodes: feat.fallbackTotalEpisodes,
-        released_episodes: episodes.length,
-      }),
-      episode: `Ep ${latestEp.number}`,
-      latest_eps_slug: latestEp.eps_slug,
-      trailer_url: episodes[0].stream_url,
-      is_official_free: true,
-      official_channel: feat.channelName,
-      stream_type: "official_episode",
-      episodes,
-      external_links: [
-        {
-          site: feat.channelName,
-          url: `https://www.youtube.com/playlist?list=${feat.playlistId}`,
-        },
-      ],
-    });
-  });
-
-  // 2. Also include latest live uploads from Muse Indonesia & Ani-One Indonesia channel RSS
-  const allEntries = channelFeedResults
+    )
+  );
+  const filtered = feedResults
     .flat()
     .filter((entry) => isOfficialFullEpisodeTitle(entry.title))
     .sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
 
-  // Group multiple episodes of the same series together so each anime card has all recent official episodes
-  const grouped = new Map<
-    string,
-    {
-      slug: string;
-      seriesTitle: string;
-      channelName: string;
-      latestThumbnail: string;
-      latestPublished: string;
-      episodes: Array<{ eps_title: string; eps_slug: string; number: number; stream_url: string; stream_type: string; thumbnail: string }>;
+  return setCached(key, filtered, 8 * 60 * 1000);
+}
+
+function matchRecentEpisodesForMedia(media: AniListMedia, recentEntries: YtRssEntry[]): YtRssEntry[] {
+  const candidateNames = [media.title?.english, media.title?.romaji, media.title?.native]
+    .filter((t): t is string => Boolean(t && t.trim().length >= 3))
+    .map((t) => normalizeTitleForMatch(t))
+    .filter((t) => t.length >= 4);
+
+  if (candidateNames.length === 0) return [];
+
+  return recentEntries.filter((entry) => {
+    const parsedSeries = normalizeTitleForMatch(parseOfficialEpisodeTitle(entry.title).seriesTitle);
+    const fullNorm = normalizeTitleForMatch(entry.title);
+    if (parsedSeries.length < 4) return false;
+    return candidateNames.some((cand) => {
+      if (parsedSeries === cand) return true;
+      if (cand.length >= 6 && (parsedSeries.includes(cand) || fullNorm.includes(cand))) return true;
+      if (parsedSeries.length >= 6 && cand.includes(parsedSeries)) return true;
+      return false;
+    });
+  });
+}
+
+async function handleOfficialFree(): Promise<Response> {
+  const key = "official-free-anilist-unified-v3";
+  const cached = getCached(key);
+  if (cached) return jsonResponse(cached);
+
+  // Single fast AniList batch query for all 25 verified Muse Indonesia Sub Indo titles
+  // Keeps pure portrait AniList catalog presentation while episodes stream directly from Muse/Ani-One
+  const query = `
+    query ($ids: [Int]) {
+      Page(page: 1, perPage: 30) {
+        media(id_in: $ids, type: ANIME, isAdult: false) {
+          ${MEDIA_CARD_FIELDS}
+        }
+      }
     }
-  >();
+  `;
+  const res = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, {
+    ids: FEATURED_MUSE_ANILIST_IDS,
+  });
 
-  for (const entry of allEntries) {
-    const { seriesTitle, episodeNumber } = parseOfficialEpisodeTitle(entry.title);
-    const groupKey = slugify(seriesTitle) || entry.videoId;
-    const epObj = {
-      eps_title: `Episode ${episodeNumber} (${entry.channelName})`,
-      eps_slug: `yt-${entry.videoId}`,
-      number: episodeNumber,
-      stream_url: ytNoCookieEmbed(entry.videoId),
-      stream_type: "official_episode",
-      thumbnail: entry.thumbnail,
-    };
+  const byId = new Map<number, AniListMedia>();
+  for (const m of res.Page.media) byId.set(m.id, m);
 
-    const existing = grouped.get(groupKey);
-    if (!existing) {
-      grouped.set(groupKey, {
-        slug: `ytfree-${groupKey}-${entry.videoId}`,
-        seriesTitle,
-        channelName: entry.channelName,
-        latestThumbnail: entry.thumbnail,
-        latestPublished: entry.published,
-        episodes: [epObj],
-      });
-    } else if (!existing.episodes.some((e) => e.eps_slug === epObj.eps_slug)) {
-      existing.episodes.push(epObj);
-    }
-  }
-
-  const recentCards = Array.from(grouped.values())
-    .slice(0, 14)
-    .map((g, idx) => {
-      const sortedEps = g.episodes.sort((a, b) => a.number - b.number);
-      const latestEp = sortedEps[sortedEps.length - 1];
+  const data = FEATURED_MUSE_ANILIST_IDS.map((id) => byId.get(id))
+    .filter((m): m is AniListMedia => Boolean(m))
+    .map((m) => {
+      const common = mapMediaCommon(m);
+      const pl = MUSE_ID_PLAYLIST_BY_ANILIST_ID[m.id];
       return {
-        title: g.seriesTitle,
-        japanese_title: `${g.channelName} • Gratis Resmi`,
-        slug: g.slug,
-        poster: g.latestThumbnail,
-        banner: g.latestThumbnail,
-        synopsis: `Tonton episode resmi Sub Indo secara gratis dan legal langsung dari kanal resmi ${g.channelName} di dalam AnimWatch.`,
-        genres: ["Sub Indo", "Gratis Resmi", g.channelName],
-        rating: Number((8.7 - idx * 0.04).toFixed(1)),
-        rating_count: "Resmi",
-        views_label: g.channelName,
-        studio: g.channelName,
-        status: "ONGOING",
-        type: "TV Series",
-        year: 2026,
-        season: "Gratis Resmi",
-        duration_minutes: 24,
-        total_episodes: Math.max(latestEp.number, 12),
-        released_episodes: latestEp.number,
-        episode: `Ep ${latestEp.number}`,
-        latest_eps_slug: latestEp.eps_slug,
-        trailer_url: latestEp.stream_url,
+        ...common,
         is_official_free: true,
-        official_channel: g.channelName,
+        official_channel: pl?.channelName ?? "Muse Indonesia",
         stream_type: "official_episode",
-        episodes: sortedEps,
-        external_links: [
-          {
-            site: g.channelName,
-            url: `https://www.youtube.com/watch?v=${latestEp.eps_slug.replace(/^yt-/, "")}`,
-          },
-        ],
+        external_links: pl
+          ? [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }]
+          : [],
       };
     });
 
-  const data = [...featuredCards, ...recentCards];
-
   return jsonResponse(
-    setCached(key, { status: "success", source: "official-youtube-id", data }, 8 * 60 * 1000)
+    setCached(key, { status: "success", source: "anilist+muse-indonesia", data }, 12 * 60 * 1000)
   );
 }
 
@@ -1313,6 +1226,7 @@ function mapMediaCommon(m: AniListMedia) {
   const studio = m.studios?.nodes?.[0]?.name?.trim() || "Studio Anime";
   const schedule = formatWibSchedule(m.nextAiringEpisode?.airingAt);
   const genres = (m.genres ?? []).filter(Boolean);
+  const officialMapping = MUSE_ID_PLAYLIST_BY_ANILIST_ID[m.id];
 
   return {
     id: m.id,
@@ -1341,6 +1255,8 @@ function mapMediaCommon(m: AniListMedia) {
     airing_day: schedule.day,
     airing_time: schedule.time,
     trailer_url: buildTrailerEmbed(m.trailer),
+    is_official_free: Boolean(officialMapping),
+    official_channel: officialMapping?.channelName ?? null,
   };
 }
 
@@ -1526,6 +1442,24 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
         streamingLinks.unshift({
           site: curatedOfficial.channelName,
           url: `https://www.youtube.com/playlist?list=${curatedOfficial.playlistId}`,
+        });
+      }
+    }
+  }
+
+  if (officialPlaylistEpisodes.length === 0) {
+    // Check live Muse Indonesia & Ani-One Indonesia channel RSS for ongoing simulcast episodes
+    const recentChannelEntries = await getRecentChannelOfficialEpisodes();
+    const matchedLive = matchRecentEpisodesForMedia(media, recentChannelEntries);
+    if (matchedLive.length > 0) {
+      officialPlaylistEpisodes = matchedLive.sort(
+        (a, b) => parseOfficialEpisodeTitle(a.title).episodeNumber - parseOfficialEpisodeTitle(b.title).episodeNumber
+      );
+      officialChannelName = matchedLive[0].channelName;
+      if (!streamingLinks.some((l) => l.site.toLowerCase().includes("muse") || l.site.toLowerCase().includes("ani-one"))) {
+        streamingLinks.unshift({
+          site: officialChannelName,
+          url: `https://www.youtube.com/watch?v=${matchedLive[0].videoId}`,
         });
       }
     }
