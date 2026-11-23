@@ -245,6 +245,16 @@ object FranchiseSeasonHelper {
     private val KNOWN_ROOT_PREFIXES = listOf(
         "re:zero",
         "mushoku tensei",
+        "frieren",
+        "spy x family",
+        "spy×family",
+        "dan da dan",
+        "dandadan",
+        "bleach",
+        "blue lock",
+        "bluelock",
+        "attack on titan",
+        "shingeki no kyojin",
         "classroom of the elite",
         "my hero academia",
         "boku no hero academia",
@@ -307,16 +317,16 @@ object FranchiseSeasonHelper {
         "kaiju no. 8",
         "kaijuu 8-gou",
         "bang dream",
-        "spy x family",
         "shangri-la frontier",
         "yuru camp",
         "laid-back camp"
     )
 
     fun extractFranchiseKey(anime: Anime): String {
-        val rawLower = "${anime.title} | ${anime.japaneseTitle}".lowercase()
+        val rawLower = "${anime.title} | ${anime.japaneseTitle} | ${anime.slug}".lowercase()
             .replace("’", "'")
             .replace("‘", "'")
+            .replace("×", "x")
         for (prefix in KNOWN_ROOT_PREFIXES) {
             if (rawLower.contains(prefix)) {
                 return when (prefix) {
@@ -345,6 +355,10 @@ object FranchiseSeasonHelper {
                     "honzuki no gekokujou" -> "ascendance of a bookworm"
                     "kaijuu 8-gou" -> "kaiju no. 8"
                     "laid-back camp" -> "yuru camp"
+                    "spy×family" -> "spy x family"
+                    "dandadan" -> "dan da dan"
+                    "bluelock" -> "blue lock"
+                    "shingeki no kyojin" -> "attack on titan"
                     else -> prefix
                 }
             }
@@ -356,6 +370,51 @@ object FranchiseSeasonHelper {
             .substringBefore(" -")
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
+    }
+
+    /** Returns Pair(seasonNumber, partNumberNullable) cleanly supporting 2-Part / Multi-Cour anime. */
+    fun extractSeasonAndPart(anime: Anime): Pair<Int, Int?> {
+        val cleanTitle = anime.title.trim().lowercase()
+        val cleanSlug = anime.slug.trim().lowercase()
+        val combined = "$cleanTitle $cleanSlug"
+
+        // Explicit Dub split slug marker e.g. dub-PL...--s2p2
+        Regex("--s(\\d+)p(\\d+)").find(cleanSlug)?.let { m ->
+            val s = m.groupValues[1].toIntOrNull() ?: 1
+            val p = m.groupValues[2].toIntOrNull()
+            return s to p
+        }
+
+        val partNum = Regex("\\b(?:part|cour)\\s*([1-9][0-9]?)\\b")
+            .find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("\\b([2-9])(?:nd|rd|th)\\s+(?:part|cour)\\b")
+                .find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: when {
+                combined.contains("thousand-year blood war") && combined.contains("separation") -> 2
+                combined.contains("thousand-year blood war") && combined.contains("conflict") -> 3
+                combined.contains("thousand-year blood war") -> 1
+                Regex("\\bfinal\\s+chapters\\b").containsMatchIn(combined) -> 3
+                else -> null
+            }
+
+        val explicitSeason = Regex("(?:season\\s*|\\bs)([1-9][0-9]?)\\b")
+            .find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            ?: Regex("\\b([1-9][0-9]?)(?:st|nd|rd|th)\\s+season\\b")
+                .find(combined)?.groupValues?.getOrNull(1)?.toIntOrNull()
+
+        val namedSeason = when {
+            explicitSeason != null -> explicitSeason
+            Regex("\\bfinal\\s+season\\b").containsMatchIn(combined) && combined.contains("hero academia") -> 8
+            Regex("\\bfinal\\s+season\\b").containsMatchIn(combined) && combined.contains("attack on titan") -> 4
+            Regex("\\b(second\\s+plate|stone\\s+wars|vs\\.?\\s*u-?20|2nd\\s+season|\\bii\\b)").containsMatchIn(combined) -> 2
+            Regex("\\b(new\\s+world|3rd\\s+season|\\biii\\b)").containsMatchIn(combined) -> 3
+            Regex("\\b(science\\s+future|4th\\s+season|\\biv\\b)").containsMatchIn(combined) -> 4
+            Regex("\\s2$").containsMatchIn(cleanTitle) && partNum == null -> 2
+            Regex("\\s3$").containsMatchIn(cleanTitle) && partNum == null -> 3
+            Regex("\\s4$").containsMatchIn(cleanTitle) && partNum == null -> 4
+            else -> 1
+        }
+        return namedSeason to partNum
     }
 
     fun extractSeasonNumber(anime: Anime): Int? {
@@ -400,26 +459,31 @@ object FranchiseSeasonHelper {
 
         return matches.sortedWith(
             compareBy<Anime> { a ->
-                val sNum = extractSeasonNumber(a)
+                val (sNum, _) = extractSeasonAndPart(a)
                 when {
-                    a.type == AnimeType.TV_SERIES && sNum != null -> sNum
-                    a.type == AnimeType.TV_SERIES -> 1
-                    else -> 50 + (sNum ?: 0)
+                    a.type == AnimeType.TV_SERIES -> sNum
+                    else -> 50 + sNum
                 }
             }
+                .thenBy { a -> extractSeasonAndPart(a).second ?: 1 }
                 .thenBy { it.year }
                 .thenBy { it.id }
         )
     }
 
     fun formatSeasonShortLabel(anime: Anime, index: Int): String {
-        val sNum = extractSeasonNumber(anime)
+        val (sNum, pNum) = extractSeasonAndPart(anime)
         return when {
             anime.type == AnimeType.MOVIE -> "Movie (${anime.year})"
             anime.type == AnimeType.OVA || anime.type == AnimeType.ONA -> {
-                if (sNum != null) "Season $sNum" else "OVA / Spesial (${anime.year})"
+                when {
+                    anime.title.contains("eris", ignoreCase = true) -> "OVA Spesial"
+                    pNum != null -> "OVA S$sNum P$pNum"
+                    else -> "OVA / Spesial (${anime.year})"
+                }
             }
-            sNum != null -> "Season $sNum"
+            pNum != null -> "Season $sNum • Part $pNum"
+            sNum > 1 || anime.title.contains("season", ignoreCase = true) -> "Season $sNum"
             else -> "Season ${index + 1}"
         }
     }

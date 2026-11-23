@@ -180,6 +180,7 @@ fun ProfileScreen(
     onOpenThemeEditor: () -> Unit,
     onClearCache: () -> Unit,
     onRefreshDeviceState: () -> Unit,
+    onOpenAdminPanel: () -> Unit = {},
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -205,10 +206,6 @@ fun ProfileScreen(
     var showSubtitleLangDialog by remember { mutableStateOf(false) }
     var showSubtitleSizeDialog by remember { mutableStateOf(false) }
 
-    val userCommentCount = remember(uiState.comments) {
-        uiState.comments.count { it.isOwn }
-    }
-
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -217,49 +214,20 @@ fun ProfileScreen(
         contentPadding = PaddingValues(
             start = 16.dp,
             end = 16.dp,
-            top = 12.dp,
+            top = 14.dp,
             bottom = bottomInsetPadding
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Profil Saya",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = TextPrimary
-                )
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(GoldTint)
-                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                        .clickable { showEditProfileSheet = true }
-                        .padding(horizontal = 13.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = "Custom Profil",
-                        tint = GoldPrimary,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Custom Profil",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = GoldPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
+            Text(
+                text = "Profil",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextPrimary
+            )
         }
 
-        // 1. Custom Member Profile Card & Stats
+        // 1. Clean Member Summary Card (single Edit button, clear 3-stat strip)
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -280,23 +248,12 @@ fun ProfileScreen(
                         UserAvatarBadge(
                             avatarUrl = profile.avatarUrl,
                             emblem = profile.avatarEmblem,
-                            size = 66.dp,
-                            onClick = { showEditProfileSheet = true }
+                            size = 68.dp
                         )
 
                         Spacer(modifier = Modifier.width(14.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                GoldTagChip(text = profile.memberTier, highlighted = true)
-                                if (profile.favoriteGenre.isNotBlank()) {
-                                    GoldTagChip(text = profile.favoriteGenre)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = profile.displayName,
                                 style = MaterialTheme.typography.titleLarge,
@@ -304,6 +261,7 @@ fun ProfileScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = profile.handle,
                                 style = MaterialTheme.typography.bodySmall,
@@ -311,42 +269,36 @@ fun ProfileScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(GoldTint)
-                                .clickable { showEditProfileSheet = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Edit,
-                                contentDescription = "Custom Profil",
-                                tint = GoldPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                GoldTagChip(text = profile.memberTier, highlighted = true)
+                                if (uiState.isAdmin) {
+                                    GoldTagChip(text = "ADMIN", highlighted = true)
+                                }
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = profile.bio.ifBlank { "Ketuk 'Custom Profil' untuk menambahkan bio, mengganti foto karakter anime, gelar, dan username kamu." },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (profile.bio.isNotBlank()) TextSecondary else TextTertiary,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (profile.bio.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = profile.bio,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-                    HorizontalDivider(
-                        color = DividerSubtle,
-                        modifier = Modifier.padding(vertical = 14.dp)
-                    )
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
                         val totalTrackedEps = uiState.watchedEpisodes.values.sum()
@@ -354,47 +306,62 @@ fun ProfileScreen(
                         val completedCount = uiState.watchlist.entries.count { (id, cat) ->
                             id in animeById && cat == WatchlistCategory.COMPLETED
                         }
-                        ProfileStatItem("$totalTrackedEps", "Ep Ditonton")
-                        ProfileStatItem("$visibleSavedCount", "Disimpan")
-                        ProfileStatItem("$completedCount", "Tamat")
-                        ProfileStatItem("$userCommentCount", "Komentar")
+
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(ObsidianCard.copy(alpha = 0.65f))
+                                .padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            ProfileStatItem("$totalTrackedEps", "Episode")
+                            ProfileStatItem("$visibleSavedCount", "Disimpan")
+                            ProfileStatItem("$completedCount", "Tamat")
+                        }
+
+                        GoldOutlinedButton(
+                            text = "Edit Profil",
+                            onClick = { showEditProfileSheet = true },
+                            height = 46.dp
+                        )
                     }
                 }
             }
         }
 
-        // 2. Clean Settings Menu (Custom Profile + Tema + Pemutar + Penyimpanan Cache + Tentang)
+        // 2. Simple Grouped Settings
         item {
-            SettingsGroupCard(title = "Kustomisasi & Pengaturan") {
-                SettingRowItem(
-                    icon = Icons.Rounded.Person,
-                    title = "Kustomisasi Profil & Avatar",
-                    value = "${profile.avatarEmblem} • ${profile.memberTier}",
-                    onClick = { showEditProfileSheet = true }
-                )
-                SettingDivider()
+            SettingsGroupCard(title = "Pengaturan") {
                 SettingRowItem(
                     icon = Icons.Rounded.Palette,
-                    title = "Tema & Tampilan",
+                    title = "Tema & Warna",
                     value = "${uiState.appearanceMode.label} • ${uiState.accentTheme.displayName}",
                     onClick = onOpenThemeEditor
                 )
                 SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Tune,
-                    title = "Preferensi Pemutar Video",
+                    title = "Pemutar Video",
                     value = "${settings.defaultQuality} • ${settings.defaultSubtitle}",
                     onClick = { showPlaybackSheet = true }
                 )
                 SettingDivider()
                 SettingRowItem(
                     icon = Icons.Rounded.Storage,
-                    title = "Cache & Izin Aplikasi",
+                    title = "Penyimpanan & Izin",
                     value = deviceStorage.cacheLabel,
                     onClick = {
                         onRefreshDeviceState()
                         showStoragePermissionsSheet = true
                     }
+                )
+                SettingDivider()
+                SettingRowItem(
+                    icon = Icons.Rounded.Security,
+                    title = "Panel Admin CMS",
+                    value = if (uiState.isAdmin) "Aktif" else "Kelola",
+                    onClick = onOpenAdminPanel
                 )
                 SettingDivider()
                 SettingRowItem(
@@ -406,7 +373,7 @@ fun ProfileScreen(
             }
         }
 
-        // 3. Google Account Sign Out Action
+        // 3. Account Sign Out Action
         item {
             Row(
                 modifier = Modifier
@@ -427,7 +394,7 @@ fun ProfileScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Keluar dari Akun Google",
+                    text = if (uiState.isGuestSession) "Keluar dari Mode Tamu" else "Keluar dari Akun",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = StatusLive

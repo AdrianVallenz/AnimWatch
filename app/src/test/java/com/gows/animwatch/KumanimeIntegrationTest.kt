@@ -362,6 +362,101 @@ class KumanimeIntegrationTest {
             id: String
         ): Response<SimpleStatusResponseDto> =
             Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun verifyAdmin(
+            authHeader: String?,
+            adminSecret: String?,
+            body: com.gows.animwatch.data.remote.AdminVerifyRequestDto
+        ): Response<com.gows.animwatch.data.remote.AdminVerifyResponseDto> = Response.success(
+            com.gows.animwatch.data.remote.AdminVerifyResponseDto(
+                status = "success",
+                isAdmin = true,
+                user = UserProfileDto(id = 1L, email = "adrian@animwatch.id", displayName = "Adrian", memberTier = "ADMIN", role = "admin")
+            )
+        )
+
+        override suspend fun getAdminOverview(
+            authHeader: String?,
+            adminSecret: String?
+        ): Response<com.gows.animwatch.data.remote.AdminOverviewResponseDto> = Response.success(
+            com.gows.animwatch.data.remote.AdminOverviewResponseDto(
+                status = "success",
+                stats = com.gows.animwatch.data.remote.AdminStatsDto(totalUsers = 1, totalComments = 1, totalPlaylists = 1, totalAdminAnime = 1),
+                adminAnimes = listOf(com.gows.animwatch.data.remote.AdminAnimeDto(slug = "custom-1", title = "Custom Admin Anime"))
+            )
+        )
+
+        override suspend fun adminCreateAnime(
+            authHeader: String?,
+            adminSecret: String?,
+            body: com.gows.animwatch.data.remote.AdminSaveAnimeRequestDto
+        ): Response<com.gows.animwatch.data.remote.AdminSaveAnimeResponseDto> = Response.success(
+            com.gows.animwatch.data.remote.AdminSaveAnimeResponseDto(
+                status = "success",
+                anime = com.gows.animwatch.data.remote.AdminAnimeDto(slug = body.slug ?: "custom-new", title = body.title.orEmpty())
+            )
+        )
+
+        override suspend fun adminUpdateAnime(
+            authHeader: String?,
+            adminSecret: String?,
+            slug: String,
+            body: com.gows.animwatch.data.remote.AdminSaveAnimeRequestDto
+        ): Response<com.gows.animwatch.data.remote.AdminSaveAnimeResponseDto> =
+            adminCreateAnime(authHeader, adminSecret, body.copy(slug = slug))
+
+        override suspend fun adminDeleteAnime(
+            authHeader: String?,
+            adminSecret: String?,
+            slug: String
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun adminCreatePlaylist(
+            authHeader: String?,
+            adminSecret: String?,
+            body: com.gows.animwatch.data.remote.AdminSavePlaylistRequestDto
+        ): Response<com.gows.animwatch.data.remote.AdminSavePlaylistResponseDto> = Response.success(
+            com.gows.animwatch.data.remote.AdminSavePlaylistResponseDto(
+                status = "success",
+                playlist = com.gows.animwatch.data.remote.AdminPlaylistDto(
+                    playlistId = body.playlistId,
+                    title = body.title,
+                    cleanTitle = body.cleanTitle ?: body.title
+                )
+            )
+        )
+
+        override suspend fun adminUpdatePlaylist(
+            authHeader: String?,
+            adminSecret: String?,
+            playlistId: String,
+            body: com.gows.animwatch.data.remote.AdminSavePlaylistRequestDto
+        ): Response<com.gows.animwatch.data.remote.AdminSavePlaylistResponseDto> =
+            adminCreatePlaylist(authHeader, adminSecret, body.copy(playlistId = playlistId))
+
+        override suspend fun adminDeletePlaylist(
+            authHeader: String?,
+            adminSecret: String?,
+            playlistId: String
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun adminDeleteComment(
+            authHeader: String?,
+            adminSecret: String?,
+            id: String
+        ): Response<SimpleStatusResponseDto> = Response.success(SimpleStatusResponseDto("success"))
+
+        override suspend fun adminUpdateUser(
+            authHeader: String?,
+            adminSecret: String?,
+            id: String,
+            body: com.gows.animwatch.data.remote.AdminUpdateUserRequestDto
+        ): Response<com.gows.animwatch.data.remote.AdminUpdateUserResponseDto> = Response.success(
+            com.gows.animwatch.data.remote.AdminUpdateUserResponseDto(
+                status = "success",
+                user = UserProfileDto(id = id.toLongOrNull() ?: 1L, role = body.role, memberTier = body.memberTier)
+            )
+        )
     }
 
     @Test
@@ -463,5 +558,56 @@ class KumanimeIntegrationTest {
         assertTrue(googleRes.isSuccess)
         assertEquals("tok_google_789", googleRes.getOrThrow().token)
         assertEquals("Google Watcher", googleRes.getOrThrow().user?.displayName)
+    }
+
+    @Test
+    fun remoteDataSourceHandlesAdminCrudEndpoints() = runTest {
+        val dataSource = KumanimeRemoteDataSource(serviceProvider = { FakeKumanimeService() })
+        val base = "https://kumanime-api-production.up.railway.app/api/"
+
+        val verify = dataSource.verifyAdmin(base, "tok_login_456", "")
+        assertTrue(verify.isSuccess)
+        assertEquals(true, verify.getOrThrow().isAdmin)
+
+        val overview = dataSource.getAdminOverview(base, "tok_login_456", null)
+        assertTrue(overview.isSuccess)
+        assertEquals(1, overview.getOrThrow().adminAnimes?.size)
+
+        val created = dataSource.adminSaveAnime(
+            base,
+            "tok_login_456",
+            null,
+            null,
+            com.gows.animwatch.data.remote.AdminSaveAnimeRequestDto(
+                title = "Mushoku Tensei Season 3",
+                isOfficialFree = true
+            )
+        )
+        assertTrue(created.isSuccess)
+        assertEquals("Mushoku Tensei Season 3", created.getOrThrow().title)
+
+        val deleted = dataSource.adminDeleteAnime(base, "tok_login_456", null, "custom-new")
+        assertTrue(deleted.isSuccess)
+
+        val savedPl = dataSource.adminSavePlaylist(
+            base,
+            "tok_login_456",
+            null,
+            null,
+            com.gows.animwatch.data.remote.AdminSavePlaylistRequestDto(
+                playlistId = "PLTest123456",
+                title = "Frieren S2",
+                cleanTitle = "Frieren Season 2"
+            )
+        )
+        assertTrue(savedPl.isSuccess)
+        assertEquals("Frieren Season 2", savedPl.getOrThrow().cleanTitle)
+
+        assertTrue(dataSource.adminDeletePlaylist(base, "tok_login_456", null, "PLTest123456").isSuccess)
+        assertTrue(dataSource.adminDeleteComment(base, "tok_login_456", null, "db_cmt_99").isSuccess)
+
+        val updatedUser = dataSource.adminUpdateUser(base, "tok_login_456", null, "2", "admin", "ADMIN")
+        assertTrue(updatedUser.isSuccess)
+        assertEquals("admin", updatedUser.getOrThrow().role)
     }
 }

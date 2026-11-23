@@ -42,10 +42,11 @@ async function initDatabase(): Promise<void> {
     await db`SELECT 1`;
 
     await db.unsafe(`
-CREATE TABLE IF NOT EXISTS users (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT NOT NULL, handle TEXT NOT NULL, bio TEXT NOT NULL DEFAULT '', avatar_emblem TEXT NOT NULL DEFAULT 'AW', member_tier TEXT NOT NULL DEFAULT 'Member', appearance_mode TEXT NOT NULL DEFAULT 'DARK', accent_theme TEXT NOT NULL DEFAULT 'COBALT_SAPPHIRE', preferred_genres JSONB NOT NULL DEFAULT '["Action","Fantasy","Sci-Fi"]'::jsonb, has_completed_theme_setup BOOLEAN NOT NULL DEFAULT FALSE, settings JSONB NOT NULL DEFAULT '{}'::jsonb, google_sub TEXT, auth_provider TEXT NOT NULL DEFAULT 'email', avatar_url TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS users (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, display_name TEXT NOT NULL, handle TEXT NOT NULL, bio TEXT NOT NULL DEFAULT '', avatar_emblem TEXT NOT NULL DEFAULT 'AW', member_tier TEXT NOT NULL DEFAULT 'Member', role TEXT NOT NULL DEFAULT 'user', appearance_mode TEXT NOT NULL DEFAULT 'DARK', accent_theme TEXT NOT NULL DEFAULT 'COBALT_SAPPHIRE', preferred_genres JSONB NOT NULL DEFAULT '["Action","Fantasy","Sci-Fi"]'::jsonb, has_completed_theme_setup BOOLEAN NOT NULL DEFAULT FALSE, settings JSONB NOT NULL DEFAULT '{}'::jsonb, google_sub TEXT, auth_provider TEXT NOT NULL DEFAULT 'email', avatar_url TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_sub TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'email';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
 CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '90 days'));
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
@@ -62,13 +63,14 @@ CREATE TABLE IF NOT EXISTS comment_likes (comment_id BIGINT NOT NULL REFERENCES 
 CREATE INDEX IF NOT EXISTS idx_comment_likes_user_id ON comment_likes(user_id);
 CREATE TABLE IF NOT EXISTS official_playlists (playlist_id TEXT PRIMARY KEY, title TEXT NOT NULL, clean_title TEXT NOT NULL, channel_name TEXT NOT NULL, episode_hint INTEGER NOT NULL DEFAULT 12, sample_video_id TEXT NOT NULL DEFAULT '', audio_lang TEXT NOT NULL DEFAULT 'SUB', anilist_id INTEGER);
 ALTER TABLE official_playlists ADD COLUMN IF NOT EXISTS audio_lang TEXT NOT NULL DEFAULT 'SUB';
-ALTER TABLE official_playlists ADD COLUMN IF NOT EXISTS anilist_id INTEGER;`);
+ALTER TABLE official_playlists ADD COLUMN IF NOT EXISTS anilist_id INTEGER;
+CREATE TABLE IF NOT EXISTS admin_anime (slug TEXT PRIMARY KEY, title TEXT NOT NULL, japanese_title TEXT NOT NULL DEFAULT '', poster TEXT NOT NULL DEFAULT '', banner TEXT NOT NULL DEFAULT '', synopsis TEXT NOT NULL DEFAULT '', genres JSONB NOT NULL DEFAULT '["Anime"]'::jsonb, rating DOUBLE PRECISION NOT NULL DEFAULT 8.5, studio TEXT NOT NULL DEFAULT 'Studio Anime', status TEXT NOT NULL DEFAULT 'ONGOING', type TEXT NOT NULL DEFAULT 'TV Series', year INTEGER NOT NULL DEFAULT 2026, season TEXT NOT NULL DEFAULT '2026', total_episodes INTEGER NOT NULL DEFAULT 12, released_episodes INTEGER NOT NULL DEFAULT 1, duration_minutes INTEGER NOT NULL DEFAULT 24, is_official_free BOOLEAN NOT NULL DEFAULT TRUE, is_dub_indo BOOLEAN NOT NULL DEFAULT FALSE, official_channel TEXT NOT NULL DEFAULT 'AnimWatch Admin', playlist_id TEXT NOT NULL DEFAULT '', anilist_id INTEGER, episodes_json JSONB NOT NULL DEFAULT '[]'::jsonb, is_hidden BOOLEAN NOT NULL DEFAULT FALSE, is_featured BOOLEAN NOT NULL DEFAULT FALSE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());`);
 
     const existingDemo = await db`SELECT id FROM users WHERE email = 'adrian@animwatch.id' LIMIT 1`;
     if (existingDemo.length === 0) {
       const demoHash = await Bun.password.hash("animwatch123");
       await db`
-        INSERT INTO users (email, password_hash, display_name, handle, bio, avatar_emblem, member_tier, has_completed_theme_setup)
+        INSERT INTO users (email, password_hash, display_name, handle, bio, avatar_emblem, member_tier, role, has_completed_theme_setup)
         VALUES (
           'adrian@animwatch.id',
           ${demoHash},
@@ -76,11 +78,14 @@ ALTER TABLE official_playlists ADD COLUMN IF NOT EXISTS anilist_id INTEGER;`);
           '@adrian.vip',
           'Penggemar anime aksi, fantasi gelap, dan sinematografi epik.',
           'AV',
-          'PRO VIP',
+          'ADMIN',
+          'admin',
           FALSE
         )
         ON CONFLICT (email) DO NOTHING
       `;
+    } else {
+      await db`UPDATE users SET role = 'admin' WHERE email = 'adrian@animwatch.id' AND (role IS NULL OR role <> 'admin')`;
     }
 
     dbReady = true;
@@ -124,7 +129,7 @@ function setCached<T>(key: string, data: T, ttlMs = CACHE_TTL_MS): T {
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Secret",
   "Content-Type": "application/json; charset=utf-8",
 };
 
@@ -193,11 +198,25 @@ interface DbUserRow {
   avatar_emblem: string;
   avatar_url?: string;
   member_tier: string;
+  role?: string;
   appearance_mode: string;
   accent_theme: string;
   preferred_genres: unknown;
   has_completed_theme_setup: boolean;
   settings: unknown;
+}
+
+const ADMIN_EMAILS = new Set(
+  ("adrian@animwatch.id," + (Bun.env.ADMIN_EMAILS ?? ""))
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+function resolveUserRole(row: DbUserRow): string {
+  const email = (row.email ?? "").trim().toLowerCase();
+  if (row.role === "admin" || ADMIN_EMAILS.has(email)) return "admin";
+  return row.role ?? "user";
 }
 
 function serializeUser(row: DbUserRow) {
@@ -230,6 +249,7 @@ function serializeUser(row: DbUserRow) {
     avatarEmblem: row.avatar_emblem ?? "AW",
     avatarUrl: row.avatar_url ?? "",
     memberTier: row.member_tier ?? "Member",
+    role: resolveUserRole(row),
     appearanceMode: row.appearance_mode ?? "DARK",
     accentTheme: row.accent_theme ?? "COBALT_SAPPHIRE",
     preferredGenres: genres,
@@ -244,7 +264,7 @@ async function getAuthenticatedUser(req: Request): Promise<DbUserRow | null> {
   if (!token) return null;
 
   const rows = await db`
-    SELECT u.id, u.email, u.display_name, u.handle, u.bio, u.avatar_emblem, u.avatar_url, u.member_tier,
+    SELECT u.id, u.email, u.display_name, u.handle, u.bio, u.avatar_emblem, u.avatar_url, u.member_tier, u.role,
            u.appearance_mode, u.accent_theme, u.preferred_genres, u.has_completed_theme_setup, u.settings
     FROM sessions s
     JOIN users u ON u.id = s.user_id
@@ -252,6 +272,22 @@ async function getAuthenticatedUser(req: Request): Promise<DbUserRow | null> {
     LIMIT 1
   `;
   return (rows[0] as DbUserRow | undefined) ?? null;
+}
+
+async function requireAdmin(req: Request): Promise<{ ok: true; user: DbUserRow | null } | { ok: false; response: Response }> {
+  const adminSecret = (Bun.env.ADMIN_SEED_SECRET ?? "").trim();
+  const headerSecret = (req.headers.get("x-admin-secret") ?? "").trim();
+  if (adminSecret && headerSecret === adminSecret) {
+    return { ok: true, user: await getAuthenticatedUser(req) };
+  }
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    return { ok: false, response: jsonResponse({ status: false, message: "Login admin diperlukan" }, 401) };
+  }
+  if (resolveUserRole(user) !== "admin") {
+    return { ok: false, response: jsonResponse({ status: false, message: "Akses ditolak: khusus Admin" }, 403) };
+  }
+  return { ok: true, user };
 }
 
 async function loadUserSnapshot(userRow: DbUserRow) {
@@ -312,9 +348,9 @@ async function handleRegister(req: Request): Promise<Response> {
   const handle = makeHandle(name, email);
 
   const inserted = await db`
-    INSERT INTO users (email, password_hash, display_name, handle, bio, avatar_emblem, member_tier, has_completed_theme_setup)
-    VALUES (${email}, ${passwordHash}, ${name}, ${handle}, 'Anggota baru AnimWatch.', ${emblem}, 'Member', FALSE)
-    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+    INSERT INTO users (email, password_hash, display_name, handle, bio, avatar_emblem, member_tier, role, has_completed_theme_setup)
+    VALUES (${email}, ${passwordHash}, ${name}, ${handle}, 'Anggota baru AnimWatch.', ${emblem}, 'Member', ${ADMIN_EMAILS.has(email) ? 'admin' : 'user'}, FALSE)
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
   `;
   const userRow = inserted[0] as DbUserRow;
@@ -336,7 +372,7 @@ async function handleLogin(req: Request): Promise<Response> {
   }
 
   const rows = await db`
-    SELECT id, email, password_hash, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+    SELECT id, email, password_hash, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
            appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     FROM users WHERE email = ${email} LIMIT 1
   `;
@@ -385,7 +421,7 @@ async function upsertGoogleUserAndCreateSession(profile: {
   const cleanPicture = (profile.picture ?? "").trim();
 
   const bySub = await db`
-    SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+    SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
            appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings, google_sub
     FROM users
     WHERE google_sub = ${profile.sub}
@@ -394,7 +430,7 @@ async function upsertGoogleUserAndCreateSession(profile: {
   const existing = bySub.length > 0
     ? bySub
     : await db`
-        SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+        SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
                appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings, google_sub
         FROM users
         WHERE email = ${cleanEmail}
@@ -412,7 +448,7 @@ async function upsertGoogleUserAndCreateSession(profile: {
           avatar_url = CASE WHEN ${cleanPicture} <> '' AND (avatar_url = '' OR avatar_url IS NULL) THEN ${cleanPicture} ELSE avatar_url END,
           updated_at = NOW()
       WHERE id = ${Number(found.id)}
-      RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+      RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
                 appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     `;
     userRow = updated[0] as DbUserRow;
@@ -422,15 +458,15 @@ async function upsertGoogleUserAndCreateSession(profile: {
     const handle = makeHandle(cleanName, cleanEmail);
     const inserted = await db`
       INSERT INTO users (
-        email, password_hash, display_name, handle, bio, avatar_emblem, member_tier,
+        email, password_hash, display_name, handle, bio, avatar_emblem, member_tier, role,
         has_completed_theme_setup, google_sub, auth_provider, avatar_url
       )
       VALUES (
         ${cleanEmail}, ${randomPass}, ${cleanName}, ${handle},
-        'Terhubung melalui akun Google.', ${emblem}, 'Google Member',
+        'Terhubung melalui akun Google.', ${emblem}, 'Google Member', ${ADMIN_EMAILS.has(cleanEmail) ? 'admin' : 'user'},
         FALSE, ${profile.sub}, 'google', ${cleanPicture}
       )
-      RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+      RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
                 appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
     `;
     userRow = inserted[0] as DbUserRow;
@@ -723,7 +759,7 @@ async function handleUpdateProfile(req: Request): Promise<Response> {
         preferred_genres = ${JSON.stringify(updatedGenres)}::jsonb,
         updated_at = NOW()
     WHERE id = ${Number(user.id)}
-    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
   `;
   const updatedRow = updated[0] as DbUserRow;
@@ -768,7 +804,7 @@ async function handleUpdatePreferences(req: Request): Promise<Response> {
         settings = ${JSON.stringify(mergedSettings)}::jsonb,
         updated_at = NOW()
     WHERE id = ${Number(user.id)}
-    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier,
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
               appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
   `;
   return jsonResponse({ status: "success", user: serializeUser(updated[0] as DbUserRow) });
@@ -1078,6 +1114,148 @@ async function fetchYouTubeAtomFeed(feedUrl: string, channelName: string): Promi
   }
 }
 
+function extractBalancedJsonObject(text: string, marker: string): string | null {
+  const idx = text.indexOf(marker);
+  if (idx < 0) return null;
+  const start = text.indexOf("{", idx + marker.length);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === "\\" && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
+async function fetchFullYouTubePlaylistEntries(playlistId: string, channelName: string): Promise<YtRssEntry[]> {
+  const cleanPlId = playlistId.trim();
+  if (!cleanPlId) return [];
+  const cacheKey = `yt-pl-full-v2:${cleanPlId}`;
+  const cached = getCached<YtRssEntry[]>(cacheKey);
+  if (cached) return cached;
+
+  const headers: Record<string, string> = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+    Cookie: "SOCS=CAESEwgDEgk2ODE4Mzg2NDQaAmVuIAEaBgiA_LyaBg",
+  };
+
+  try {
+    const res = await fetch(`https://www.youtube.com/playlist?list=${encodeURIComponent(cleanPlId)}`, {
+      headers,
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const rawJson = extractBalancedJsonObject(html, "var ytInitialData =");
+      const apiKey = (html.match(/"INNERTUBE_API_KEY":"([^"]+)"/) || [])[1];
+      const clientVersion = (html.match(/"INNERTUBE_CLIENT_VERSION":"([^"]+)"/) || [])[1] || "2.20250101.00.00";
+      if (rawJson) {
+        const parsed = JSON.parse(rawJson);
+        const entries: YtRssEntry[] = [];
+        const seen = new Set<string>();
+
+        const collectNode = (node: any, tokensOut: string[]) => {
+          if (!node || typeof node !== "object") return;
+          if (node.playlistVideoRenderer) {
+            const v = node.playlistVideoRenderer;
+            const vid = String(v.videoId ?? "").trim();
+            const title = (v.title?.runs ?? []).map((r: any) => String(r?.text ?? "")).join("").trim()
+              || String(v.title?.simpleText ?? "").trim();
+            if (vid && title && !seen.has(vid)) {
+              seen.add(vid);
+              entries.push({
+                videoId: vid,
+                title,
+                published: "",
+                thumbnail: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+                channelName,
+              });
+            }
+            return;
+          }
+          if (node.lockupViewModel) {
+            const lvm = node.lockupViewModel;
+            const vid = String(lvm.contentId ?? "").trim();
+            const title = String(lvm.metadata?.lockupMetadataViewModel?.title?.content ?? "").trim();
+            if (vid && /^[A-Za-z0-9_-]{8,16}$/.test(vid) && title && !seen.has(vid)) {
+              seen.add(vid);
+              entries.push({
+                videoId: vid,
+                title,
+                published: "",
+                thumbnail: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+                channelName,
+              });
+            }
+            return;
+          }
+          const tok = node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
+          if (typeof tok === "string" && tok.length > 8) tokensOut.push(tok);
+          for (const val of Object.values(node)) collectNode(val, tokensOut);
+        };
+
+        const initTokens: string[] = [];
+        collectNode(parsed, initTokens);
+        let nextToken: string | null = initTokens[initTokens.length - 1] ?? null;
+        let page = 1;
+
+        while (nextToken && apiKey && page < 4) {
+          page++;
+          const contRes = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${apiKey}`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              context: { client: { clientName: "WEB", clientVersion, hl: "id", gl: "ID" } },
+              continuation: nextToken,
+            }),
+            signal: AbortSignal.timeout(7000),
+          }).catch(() => null);
+          if (!contRes || !contRes.ok) break;
+          const contJson = await contRes.json();
+          const newTokens: string[] = [];
+          const before = entries.length;
+          collectNode(contJson, newTokens);
+          nextToken = newTokens[newTokens.length - 1] ?? null;
+          if (entries.length === before) break;
+        }
+
+        if (entries.length > 0) {
+          return setCached(cacheKey, entries, 20 * 60 * 1000);
+        }
+      }
+    }
+  } catch {
+    // Fallback to Atom RSS below
+  }
+
+  const rss = await fetchYouTubeAtomFeed(
+    `https://www.youtube.com/feeds/videos.xml?playlist_id=${encodeURIComponent(cleanPlId)}`,
+    channelName
+  );
+  return rss.length > 0 ? setCached(cacheKey, rss, 10 * 60 * 1000) : rss;
+}
+
 function isOfficialFullEpisodeTitle(title: string): boolean {
   const lower = title.toLowerCase();
   if (
@@ -1085,6 +1263,8 @@ function isOfficialFullEpisodeTitle(title: string): boolean {
     lower.includes("#highlight") ||
     lower.includes("highlight") ||
     lower.includes("cuplikan") ||
+    lower.includes("semua episode") ||
+    lower.includes("full marathon") ||
     lower.includes("trailer") ||
     lower.includes("teaser") ||
     lower.includes("pv ") ||
@@ -1095,106 +1275,246 @@ function isOfficialFullEpisodeTitle(title: string): boolean {
   ) {
     return false;
   }
-  return /\b(episode|ep\.?\s*\d+|eps\.?\s*\d+|s\d+e\d+|movie|ova)\b/i.test(title);
+  return /\b(episode|ep\.?\s*\d+|eps\.?\s*\d+|misi\s*\d+|s\d+e\d+|movie|ova)\b|#\d+/i.test(title);
 }
 
-function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; episodeNumber: number } {
+function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; episodeNumber: number; sortKey: number } {
   let clean = rawTitle
     .replace(/\[[^\]]*(bahasa indonesia|takarir|sub indo|english sub|dub)[^\]]*\]/gi, "")
     .replace(/【[^】]*】/g, "")
-    .replace(/\|\s*(dub\s*jp|sub\s*indo|muse indonesia|ani-one).*$/i, "")
+    .replace(/《([^》]*)》/g, "$1 ")
+    .replace(/\|\s*(dub\s*jp|sub\s*indo|id\s*sub|muse indonesia|ani-one).*$/i, "")
     .replace(/^dub\s*id\s*[-–:]\s*/i, "")
     .trim();
 
+  const decimalMatch = clean.match(/(?:episode|eps?\.?|misi|#)\s*0*(\d+)\.(\d+)/i);
   const epMatch =
     clean.match(/(?:episode|eps?\.?|misi)\s*0*(\d+)/i) ||
-    clean.match(/s\d+e0*(\d+)/i) ||
-    clean.match(/[#\-–:]\s*0*(\d+)\b/);
+    clean.match(/\bs\d+\s*e0*(\d+)\b/i) ||
+    clean.match(/[#]\s*0*(\d+)\b/) ||
+    clean.match(/[-–:]\s*0*(\d+)\b/);
+
   const episodeNumber = epMatch ? Number(epMatch[1]) : 1;
+  const sortKey = decimalMatch
+    ? Number(`${decimalMatch[1]}.${decimalMatch[2]}`)
+    : episodeNumber;
 
   const seriesTitle = clean
     .replace(/[-–:|]*\s*(?:episode|eps?\.?|misi)\s*\d+.*$/i, "")
-    .replace(/[-–:|]*\s*s\d+e\d+.*$/i, "")
-    .replace(/[-–:\s#]+\d+\s*$/, "")
+    .replace(/[-–:|]*\s*s\d+\s*e\d+.*$/i, "")
+    .replace(/[-–:\s#]+\d+(?:\.\d+)?\s*$/, "")
     .replace(/[-–:\s]+$/, "")
     .trim() || rawTitle.slice(0, 48);
 
-  return { seriesTitle, episodeNumber };
+  return { seriesTitle, episodeNumber, sortKey };
 }
 
-// Verified 100% free & embeddable Muse Indonesia SUB (Audio Jepang) playlists mapped to exact AniList IDs
+interface CuratedPlaylistRule {
+  playlistId: string;
+  channelName: "Muse Indonesia" | "Ani-One Indonesia";
+  epMin?: number;
+  epMax?: number;
+  requireTitleRegex?: RegExp;
+  excludeTitleRegex?: RegExp;
+  allowDecimalRecaps?: boolean;
+}
+
+// Verified 100% free & embeddable Muse Indonesia + Ani-One Indonesia playlists mapped to exact AniList IDs (including split 2-Part / Multi-Cour seasons!)
 const M = "PLPanbgyTozt";
-const MUSE_PL: Record<number, string> = {
-  146065: `${M}ZA6kgADtbTIR4-G-EXDeih`, 166873: `${M}ZA6kgADtbTIR4-G-EXDeih`,
-  154587: `${M}Z7OBDPkXwBuhPvgd5OBZ70`, 140960: `${M}bu7tZq6L49MPhra92n2ixf`,
-  142838: `${M}bu7tZq6L49MPhra92n2ixf`, 158927: `${M}bu7tZq6L49MPhra92n2ixf`,
-  171018: `${M}aeQFokLfCgkmP_C3szkxCR`, 16498: `${M}ZJLy-bGH_tD6rA1ObhW7iz`,
-  101280: `${M}bl5IdZxm_aC5G7U5QYHjTG`, 108511: `${M}bl5IdZxm_aC5G7U5QYHjTG`,
-  11061: `${M}YQo4C8qRLt4cN_MEjp-lRp`, 108632: `${M}YThySIw-tvX8O3J-NHhMAT`,
-  119661: `${M}YThySIw-tvX8O3J-NHhMAT`, 163134: `${M}ZpP3zanOqFo20ky85-q1Yp`,
-  189046: `${M}b0iW-DI48ODtCrlyl42Qoa`, 151970: `${M}YlSxKLf7qFl6VpLYn2T_i1`,
-  176508: `${M}YlSxKLf7qFl6VpLYn2T_i1`, 98659: `${M}ZBmp90FrnrDGXDDu5J6-LR`,
-  145545: `${M}YszfRvXrP_w8-DPbVpr8wy`, 146066: `${M}YYjVy4KU5BXp3b-MmCMGwE`,
-  180745: `${M}YgSdFfzM-MO6vXGcQn-FbR`, 12189: `${M}Yq6eXRxJCx8wxaQ0Yc2NHz`,
-  159831: `${M}ZN2SaJWB2i_pKwtsdGv2p7`, 156067: `${M}ZmsgNPEL9XHwb0ilTs5ljv`,
-  6702: `${M}btJMcDT57RXRIiQDjyIFx8`, 99749: `${M}aDhNmS0krUvUkYmylqD7Mi`,
-  139095: `${M}Ylvpi2MvbIYlZ1_8xUDf4o`, 105156: `${M}YOhY1JG0xIvTkGdHNyCRlU`,
-  163292: `${M}Yx8pk4_Sy3R94Eg18zACf0`, 187663: `${M}Y5d8qXvBR5s3s5L4QMy3jU`,
-  132474: `${M}Y9q0XKsNpDu8hjS3Njnomb`, 98503: `${M}Yx6oMEi7jzfsxbkusruG2N`,
-  152682: "PLF-Ab5Bnb45U", 176314: "PLZqRcDDhscWc", 177634: "PLGWnhssZ3bgE",
-  162694: "PLWExLiCEALJw", 184492: `${M}bsmc1HPxlCK3oQIafoNBgv`,
-  108478: `${M}YeEbbQUautfzW7zz-5cgmS`, 156039: `${M}YH0PU5B62ONgeTZXoE-EOj`,
-  196144: `${M}Zac25sNFH7tE7Ud07JCUnL`, 199547: `${M}ZEvP1IiB5U3TcIB1zP4OxG`,
-  21855: `${M}Y-KiGHbZLR1BSl90fFAVNp`, 102926: `${M}ZIT_IzLXTzpUBf0DFsoy1A`,
-  1604: `${M}Z4hEoVgz3UmqVhX11WF79B`, 18767: `${M}Z63N8VunmCGGc5_axMSK3l`,
-  21290: `${M}ZsiNojl0AvsR5IB9AbIs9G`, 194447: `${M}ZubEuygztnx_4W4PY6twVj`,
-  20457: `${M}ZOEvzidlYlJ7X1UP3F9Lf5`, 143337: `${M}YXtCdCOgDDhfNlIWt2w5_L`,
-  10800: `${M}aNIqyXWPUl-NQp97qUSeM3`, 14397: `${M}bsrJNq7sR7rtSE2aTLD1Lb`,
-  101215: `${M}ZeiNlVq54ptLfHTGzBDR25`, 21873: "PLKteuQzwzADU", 187538: "PLO43emqzsDpQ",
-  174576: `${M}ZL03NxAn1aHQxDsnCu_-xl`, 20789: `${M}YAzNKcsCBkn_53lih7V2LH`,
-  99539: `${M}Y4YGogr-NvM2erIuzCSF8b`, 108928: `${M}YUBC8M6GqnlF6YbT7HlBDo`,
-  100977: `${M}a4TKRkbiiU8A5-KBUfj5KO`, 117533: `${M}YhN4tev6-PlmBThyvtD2xv`,
-  170695: `${M}acfueJyf4OFLQziViFKQ50`, 156415: `${M}ZVZgaofBHOgWb624juQTQ8`,
-  169417: `${M}YbZZNJq7Gf0-gOIPHcNJKi`, 137908: `${M}ZK2bfGabT5IjqCctvNkYlY`,
-  168374: `${M}bS2nnLNoUmLmAACitarsAv`, 166794: `${M}bRLkbFAYI_MewzYcgyzfLk`,
-  141821: `${M}Z3CmrVllbkncpqEsQwbh-6`, 9513: `${M}bSpT6je9oRWaqe4_3AxeGb`,
-  147642: `${M}bx1r01Ub9Ps9Imaohto8up`, 158028: `${M}aF7MtQR-ZWL9SmG5WzKZ91`,
-  163078: `${M}YfKRDSnwzzxsLiE35fSbBo`, 170130: `${M}armJZfU9GyRSCBCnIiJONX`,
-  114124: `${M}aehPnu02ArgIJcP4DFJ2bO`, 116006: `${M}aC8yJC3SVMP3NSxN0cb4Wh`,
-  116005: `${M}aCN6AS9cPj_ydTWj2btL9N`, 117343: `${M}b2-Qf_38TnxtRbjv6iM_Qz`,
+const CURATED_PLAYLIST_RULES: Record<number, CuratedPlaylistRule> = {
+  // === Mushoku Tensei COMPLETE (Season 1 Part 1, Cour 2, Eris Special, Season 2 Part 1 & Part 2, Season 3) ===
+  108465: { playlistId: `${M}YFBI_bkaDF21nfP_c--FPv`, channelName: "Muse Indonesia", epMin: 1, epMax: 11, excludeTitleRegex: /season\s*[23]/i },
+  127720: { playlistId: `${M}YFBI_bkaDF21nfP_c--FPv`, channelName: "Muse Indonesia", epMin: 12, epMax: 23, excludeTitleRegex: /season\s*[23]/i },
+  141534: { playlistId: `${M}YFBI_bkaDF21nfP_c--FPv`, channelName: "Muse Indonesia", epMin: 24, epMax: 24, excludeTitleRegex: /season\s*[23]/i },
+  146065: { playlistId: `${M}YFBI_bkaDF21nfP_c--FPv`, channelName: "Muse Indonesia", epMin: 0, epMax: 12, requireTitleRegex: /season\s*2\b/i, excludeTitleRegex: /(?:cour|part)\s*2|season\s*3/i },
+  166873: { playlistId: `${M}YFBI_bkaDF21nfP_c--FPv`, channelName: "Muse Indonesia", epMin: 13, epMax: 24, requireTitleRegex: /season\s*2\s*(?:cour|part)\s*2/i },
+  178789: { playlistId: `${M}YFBI_bkaDF21nfP_c--FPv`, channelName: "Muse Indonesia", epMin: 1, epMax: 14, requireTitleRegex: /season\s*3\b/i },
+
+  // === Frieren: Beyond Journey's End (Season 1 & Season 2) ===
+  154587: { playlistId: `${M}Z7OBDPkXwBuhPvgd5OBZ70`, channelName: "Muse Indonesia", epMin: 1, epMax: 28 },
+  182255: { playlistId: `${M}Z7OBDPkXwBuhPvgd5OBZ70`, channelName: "Muse Indonesia", epMin: 29, epMax: 42 },
+
+  // === SPY x FAMILY (Season 1 Part 1, Cour 2, Season 2, Season 3) ===
+  140960: { playlistId: `${M}bu7tZq6L49MPhra92n2ixf`, channelName: "Muse Indonesia", epMin: 1, epMax: 12 },
+  142838: { playlistId: `${M}bu7tZq6L49MPhra92n2ixf`, channelName: "Muse Indonesia", epMin: 13, epMax: 25 },
+  158927: { playlistId: `${M}bu7tZq6L49MPhra92n2ixf`, channelName: "Muse Indonesia", epMin: 26, epMax: 37 },
+  177937: { playlistId: `${M}bu7tZq6L49MPhra92n2ixf`, channelName: "Muse Indonesia", epMin: 38, epMax: 50 },
+
+  // === DAN DA DAN (Season 1 & Season 2) ===
+  171018: { playlistId: `${M}aeQFokLfCgkmP_C3szkxCR`, channelName: "Muse Indonesia", epMin: 1, epMax: 12 },
+  185660: { playlistId: `${M}aeQFokLfCgkmP_C3szkxCR`, channelName: "Muse Indonesia", epMin: 13, epMax: 24 },
+
+  // === Attack on Titan (Season 1 .. Final Chapters) ===
+  16498: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 1, epMax: 25 },
+  20958: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 26, epMax: 37 },
+  99147: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 38, epMax: 49 },
+  104578: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 50, epMax: 59 },
+  110277: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 60, epMax: 75 },
+  131681: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 76, epMax: 87 },
+  146984: { playlistId: `${M}ZJLy-bGH_tD6rA1ObhW7iz`, channelName: "Muse Indonesia", epMin: 88, epMax: 94 },
+
+  // === That Time I Got Reincarnated as a Slime (S1, S2 Part 1, S2 Part 2, S3) ===
+  101280: { playlistId: `${M}bl5IdZxm_aC5G7U5QYHjTG`, channelName: "Muse Indonesia", epMin: 1, epMax: 24 },
+  108511: { playlistId: `${M}bl5IdZxm_aC5G7U5QYHjTG`, channelName: "Muse Indonesia", epMin: 25, epMax: 36 },
+  116742: { playlistId: `${M}bl5IdZxm_aC5G7U5QYHjTG`, channelName: "Muse Indonesia", epMin: 37, epMax: 48 },
+  156822: { playlistId: `${M}bl5IdZxm_aC5G7U5QYHjTG`, channelName: "Muse Indonesia", epMin: 49, epMax: 72 },
+
+  // === Re:ZERO (Season 1, Season 2 Part 1, Season 2 Part 2, Season 3, Season 4) ===
+  21355: { playlistId: "PLc5IarJmS5Mk", channelName: "Muse Indonesia" },
+  108632: { playlistId: `${M}YThySIw-tvX8O3J-NHhMAT`, channelName: "Muse Indonesia", epMin: 26, epMax: 38 },
+  119661: { playlistId: `${M}YThySIw-tvX8O3J-NHhMAT`, channelName: "Muse Indonesia", epMin: 39, epMax: 50 },
+  163134: { playlistId: `${M}ZpP3zanOqFo20ky85-q1Yp`, channelName: "Muse Indonesia" },
+  189046: { playlistId: `${M}b0iW-DI48ODtCrlyl42Qoa`, channelName: "Muse Indonesia" },
+
+  // === Shangri-La Frontier (Season 1 & Season 2) ===
+  151970: { playlistId: `${M}YlSxKLf7qFl6VpLYn2T_i1`, channelName: "Muse Indonesia", epMin: 1, epMax: 25 },
+  176508: { playlistId: `${M}YlSxKLf7qFl6VpLYn2T_i1`, channelName: "Muse Indonesia", epMin: 26, epMax: 50 },
+
+  // === Muse Indonesia Single-Season & Other Curated Playlists ===
+  11061: { playlistId: `${M}YQo4C8qRLt4cN_MEjp-lRp`, channelName: "Muse Indonesia" },
+  98659: { playlistId: `${M}ZBmp90FrnrDGXDDu5J6-LR`, channelName: "Muse Indonesia" },
+  145545: { playlistId: `${M}YszfRvXrP_w8-DPbVpr8wy`, channelName: "Muse Indonesia" },
+  146066: { playlistId: `${M}YYjVy4KU5BXp3b-MmCMGwE`, channelName: "Muse Indonesia" },
+  180745: { playlistId: `${M}YgSdFfzM-MO6vXGcQn-FbR`, channelName: "Muse Indonesia" },
+  12189: { playlistId: `${M}Yq6eXRxJCx8wxaQ0Yc2NHz`, channelName: "Muse Indonesia" },
+  159831: { playlistId: `${M}ZN2SaJWB2i_pKwtsdGv2p7`, channelName: "Muse Indonesia" },
+  156067: { playlistId: `${M}ZmsgNPEL9XHwb0ilTs5ljv`, channelName: "Muse Indonesia" },
+  6702: { playlistId: `${M}btJMcDT57RXRIiQDjyIFx8`, channelName: "Muse Indonesia" },
+  99749: { playlistId: `${M}aDhNmS0krUvUkYmylqD7Mi`, channelName: "Muse Indonesia" },
+  139095: { playlistId: `${M}Ylvpi2MvbIYlZ1_8xUDf4o`, channelName: "Muse Indonesia" },
+  105156: { playlistId: `${M}YOhY1JG0xIvTkGdHNyCRlU`, channelName: "Muse Indonesia" },
+  163292: { playlistId: `${M}Yx8pk4_Sy3R94Eg18zACf0`, channelName: "Muse Indonesia" },
+  187663: { playlistId: `${M}Y5d8qXvBR5s3s5L4QMy3jU`, channelName: "Muse Indonesia" },
+  132474: { playlistId: `${M}Y9q0XKsNpDu8hjS3Njnomb`, channelName: "Muse Indonesia" },
+  98503: { playlistId: `${M}Yx6oMEi7jzfsxbkusruG2N`, channelName: "Muse Indonesia" },
+  152682: { playlistId: "PLF-Ab5Bnb45U", channelName: "Muse Indonesia" },
+  176314: { playlistId: "PLZqRcDDhscWc", channelName: "Muse Indonesia" },
+  177634: { playlistId: "PLGWnhssZ3bgE", channelName: "Muse Indonesia" },
+  162694: { playlistId: "PLWExLiCEALJw", channelName: "Muse Indonesia" },
+  184492: { playlistId: `${M}bsmc1HPxlCK3oQIafoNBgv`, channelName: "Muse Indonesia" },
+  108478: { playlistId: `${M}YeEbbQUautfzW7zz-5cgmS`, channelName: "Muse Indonesia" },
+  156039: { playlistId: `${M}YH0PU5B62ONgeTZXoE-EOj`, channelName: "Muse Indonesia" },
+  196144: { playlistId: `${M}Zac25sNFH7tE7Ud07JCUnL`, channelName: "Muse Indonesia" },
+  199547: { playlistId: `${M}ZEvP1IiB5U3TcIB1zP4OxG`, channelName: "Muse Indonesia" },
+  21855: { playlistId: `${M}Y-KiGHbZLR1BSl90fFAVNp`, channelName: "Muse Indonesia" },
+  102926: { playlistId: `${M}ZIT_IzLXTzpUBf0DFsoy1A`, channelName: "Muse Indonesia" },
+  1604: { playlistId: `${M}Z4hEoVgz3UmqVhX11WF79B`, channelName: "Muse Indonesia" },
+  18767: { playlistId: `${M}Z63N8VunmCGGc5_axMSK3l`, channelName: "Muse Indonesia" },
+  21290: { playlistId: `${M}ZsiNojl0AvsR5IB9AbIs9G`, channelName: "Muse Indonesia" },
+  194447: { playlistId: `${M}ZubEuygztnx_4W4PY6twVj`, channelName: "Muse Indonesia" },
+  20457: { playlistId: `${M}ZOEvzidlYlJ7X1UP3F9Lf5`, channelName: "Muse Indonesia" },
+  143337: { playlistId: `${M}YXtCdCOgDDhfNlIWt2w5_L`, channelName: "Muse Indonesia" },
+  10800: { playlistId: `${M}aNIqyXWPUl-NQp97qUSeM3`, channelName: "Muse Indonesia" },
+  14397: { playlistId: `${M}bsrJNq7sR7rtSE2aTLD1Lb`, channelName: "Muse Indonesia" },
+  101215: { playlistId: `${M}ZeiNlVq54ptLfHTGzBDR25`, channelName: "Muse Indonesia" },
+  21873: { playlistId: "PLKteuQzwzADU", channelName: "Muse Indonesia" },
+  187538: { playlistId: "PLO43emqzsDpQ", channelName: "Muse Indonesia" },
+  174576: { playlistId: `${M}ZL03NxAn1aHQxDsnCu_-xl`, channelName: "Muse Indonesia" },
+  20789: { playlistId: `${M}YAzNKcsCBkn_53lih7V2LH`, channelName: "Muse Indonesia" },
+  99539: { playlistId: `${M}Y4YGogr-NvM2erIuzCSF8b`, channelName: "Muse Indonesia" },
+  108928: { playlistId: `${M}YUBC8M6GqnlF6YbT7HlBDo`, channelName: "Muse Indonesia" },
+  100977: { playlistId: `${M}a4TKRkbiiU8A5-KBUfj5KO`, channelName: "Muse Indonesia" },
+  117533: { playlistId: `${M}YhN4tev6-PlmBThyvtD2xv`, channelName: "Muse Indonesia" },
+  170695: { playlistId: `${M}acfueJyf4OFLQziViFKQ50`, channelName: "Muse Indonesia" },
+  156415: { playlistId: `${M}ZVZgaofBHOgWb624juQTQ8`, channelName: "Muse Indonesia" },
+  169417: { playlistId: `${M}YbZZNJq7Gf0-gOIPHcNJKi`, channelName: "Muse Indonesia" },
+  137908: { playlistId: `${M}ZK2bfGabT5IjqCctvNkYlY`, channelName: "Muse Indonesia" },
+  168374: { playlistId: `${M}bS2nnLNoUmLmAACitarsAv`, channelName: "Muse Indonesia" },
+  166794: { playlistId: `${M}bRLkbFAYI_MewzYcgyzfLk`, channelName: "Muse Indonesia" },
+  141821: { playlistId: `${M}Z3CmrVllbkncpqEsQwbh-6`, channelName: "Muse Indonesia" },
+  9513: { playlistId: `${M}bSpT6je9oRWaqe4_3AxeGb`, channelName: "Muse Indonesia" },
+  147642: { playlistId: `${M}bx1r01Ub9Ps9Imaohto8up`, channelName: "Muse Indonesia" },
+  158028: { playlistId: `${M}aF7MtQR-ZWL9SmG5WzKZ91`, channelName: "Muse Indonesia" },
+  163078: { playlistId: `${M}YfKRDSnwzzxsLiE35fSbBo`, channelName: "Muse Indonesia" },
+  170130: { playlistId: `${M}armJZfU9GyRSCBCnIiJONX`, channelName: "Muse Indonesia" },
+  114124: { playlistId: `${M}aehPnu02ArgIJcP4DFJ2bO`, channelName: "Muse Indonesia" },
+  116006: { playlistId: `${M}aC8yJC3SVMP3NSxN0cb4Wh`, channelName: "Muse Indonesia" },
+  116005: { playlistId: `${M}aCN6AS9cPj_ydTWj2btL9N`, channelName: "Muse Indonesia" },
+  117343: { playlistId: `${M}b2-Qf_38TnxtRbjv6iM_Qz`, channelName: "Muse Indonesia" },
+
+  // === Ani-One Indonesia (with full multi-season / 2-part splits!) ===
+  113415: { playlistId: "PLNAQymMf9eaYxBDom48OG_F4aLhnBZcui", channelName: "Ani-One Indonesia", epMin: 1, epMax: 24, excludeTitleRegex: /season\s*2/i },
+  145064: { playlistId: "PLNAQymMf9eaYxBDom48OG_F4aLhnBZcui", channelName: "Ani-One Indonesia", epMin: 25, epMax: 47, requireTitleRegex: /season\s*2/i },
+  116674: { playlistId: "PLNAQymMf9eaZqHO36VokI45TwtvUJFbfk", channelName: "Ani-One Indonesia", epMin: 1, epMax: 13 },
+  159322: { playlistId: "PLNAQymMf9eaZqHO36VokI45TwtvUJFbfk", channelName: "Ani-One Indonesia", epMin: 14, epMax: 26 },
+  169755: { playlistId: "PLNAQymMf9eaZqHO36VokI45TwtvUJFbfk", channelName: "Ani-One Indonesia", epMin: 27, epMax: 40 },
+  137822: { playlistId: "PLQz4WGeaorjA", channelName: "Ani-One Indonesia", epMin: 1, epMax: 24 },
+  163146: { playlistId: "PLQz4WGeaorjA", channelName: "Ani-One Indonesia", epMin: 25, epMax: 38 },
+  105333: { playlistId: "PLQL6iBDZsabo", channelName: "Ani-One Indonesia", epMin: 1, epMax: 24, excludeTitleRegex: /season\s*[234]/i },
+  113936: { playlistId: "PLQL6iBDZsabo", channelName: "Ani-One Indonesia", epMin: 1, epMax: 11, requireTitleRegex: /season\s*2\b/i },
+  131518: { playlistId: "PLQL6iBDZsabo", channelName: "Ani-One Indonesia", epMin: 1, epMax: 11, requireTitleRegex: /season\s*3\b/i },
+  162670: { playlistId: "PLQL6iBDZsabo", channelName: "Ani-One Indonesia", epMin: 12, epMax: 22, requireTitleRegex: /season\s*3\b/i },
+  172019: { playlistId: "PLODWQCZoYSHM", channelName: "Ani-One Indonesia", epMin: 1, epMax: 12 },
+  189117: { playlistId: "PLODWQCZoYSHM", channelName: "Ani-One Indonesia", epMin: 13, epMax: 24 },
+  199221: { playlistId: "PLODWQCZoYSHM", channelName: "Ani-One Indonesia", epMin: 25, epMax: 37 },
+  20832: { playlistId: "PLOXBvOkrpC_s", channelName: "Ani-One Indonesia" },
+  21459: { playlistId: "PLRIKUnMprNvI", channelName: "Ani-One Indonesia" },
+  21856: { playlistId: "PLA6LI1cj8LDk", channelName: "Ani-One Indonesia" },
+  100166: { playlistId: "PLDoNd3kTAiyk", channelName: "Ani-One Indonesia" },
+  104276: { playlistId: "PLXd7zGqfH3ZI", channelName: "Ani-One Indonesia" },
+  117193: { playlistId: "PLRnE9XnIC1T4", channelName: "Ani-One Indonesia" },
+  139630: { playlistId: "PLNgw6VnFxawE", channelName: "Ani-One Indonesia" },
+  163139: { playlistId: "PLLKM3uH6S8OA", channelName: "Ani-One Indonesia" },
+  162804: { playlistId: "PLNAQymMf9eaa139ptcijlI0JizvpFXFDc", channelName: "Ani-One Indonesia" },
+  143338: { playlistId: "PLSnQpJo_dujc", channelName: "Ani-One Indonesia" },
+  19815: { playlistId: "PLWyzUoEg2tlo", channelName: "Ani-One Indonesia" },
+  20464: { playlistId: "PLEHiHtsaULg4", channelName: "Ani-One Indonesia" },
+  918: { playlistId: "PLSz4xtUGSzEA", channelName: "Ani-One Indonesia" },
+  11771: { playlistId: "PLSzQ99-K5DYo", channelName: "Ani-One Indonesia" },
+  16894: { playlistId: "PLX7mM0yTy0Bk", channelName: "Ani-One Indonesia" },
+  20725: { playlistId: "PLNB4urP2esgU", channelName: "Ani-One Indonesia" },
+  20923: { playlistId: "PLdYbu6KhtdUU", channelName: "Ani-One Indonesia" },
+  21518: { playlistId: "PLImbXtgn5ZUM", channelName: "Ani-One Indonesia" },
+  136804: { playlistId: "PLexFyslfo_78", channelName: "Ani-One Indonesia" },
+  150075: { playlistId: "PLDQ7JF2opq5k", channelName: "Ani-One Indonesia" },
+  105228: { playlistId: "PLcDBBq1D3wOY", channelName: "Ani-One Indonesia" },
+  173172: { playlistId: "PLFDsIfMtIv44", channelName: "Ani-One Indonesia" },
+  21613: { playlistId: "PLcKfVhnYS2Nk", channelName: "Ani-One Indonesia" },
+  125206: { playlistId: "PLbBhmk2Bw-jA", channelName: "Ani-One Indonesia" },
+  139518: { playlistId: "PLIfTSfpnDLec", channelName: "Ani-One Indonesia" },
+  103632: { playlistId: "PLA6VgIPypTSE", channelName: "Ani-One Indonesia" },
+  139587: { playlistId: "PLeyB-SZ7G05M", channelName: "Ani-One Indonesia" },
+  159042: { playlistId: "PLDv-inCJtX5A", channelName: "Ani-One Indonesia" },
+  160900: { playlistId: "PLScAfDnCDpRU", channelName: "Ani-One Indonesia" },
+  167419: { playlistId: "PLNAQymMf9eab5ejKPqDXIdFEaJEuxSrAW", channelName: "Ani-One Indonesia" },
+  14813: { playlistId: "PLRYt0oMV87fU", channelName: "Ani-One Indonesia" },
+  185: { playlistId: "PLTcut_BhoIa4", channelName: "Ani-One Indonesia" },
+  20987: { playlistId: "PLGKjS1fjrROc", channelName: "Ani-One Indonesia" },
+  147864: { playlistId: "PLNAQymMf9eaYJZdl3_y3WAY9wufqB8eTn", channelName: "Ani-One Indonesia" },
 };
 
-// Verified 100% free & embeddable Ani-One Indonesia SUB (Audio Jepang) playlists mapped to exact AniList IDs
-const ANIONE_PL: Record<number, string> = {
-  113415: "PLNAQymMf9eaYxBDom48OG_F4aLhnBZcui", 116674: "PLNAQymMf9eaZqHO36VokI45TwtvUJFbfk",
-  137822: "PLQz4WGeaorjA", 20832: "PLOXBvOkrpC_s", 105333: "PLQL6iBDZsabo",
-  172019: "PLODWQCZoYSHM", 21459: "PLRIKUnMprNvI", 21856: "PLA6LI1cj8LDk",
-  100166: "PLDoNd3kTAiyk", 104276: "PLXd7zGqfH3ZI", 117193: "PLRnE9XnIC1T4",
-  139630: "PLNgw6VnFxawE", 163139: "PLLKM3uH6S8OA", 162804: "PLNAQymMf9eaa139ptcijlI0JizvpFXFDc",
-  143338: "PLSnQpJo_dujc", 19815: "PLWyzUoEg2tlo", 20464: "PLEHiHtsaULg4",
-  918: "PLSz4xtUGSzEA", 11771: "PLSzQ99-K5DYo", 16894: "PLX7mM0yTy0Bk",
-  20725: "PLNB4urP2esgU", 20923: "PLdYbu6KhtdUU", 21518: "PLImbXtgn5ZUM",
-  136804: "PLexFyslfo_78", 150075: "PLDQ7JF2opq5k", 105228: "PLcDBBq1D3wOY",
-  173172: "PLFDsIfMtIv44", 21613: "PLcKfVhnYS2Nk", 125206: "PLbBhmk2Bw-jA",
-  139518: "PLIfTSfpnDLec", 103632: "PLA6VgIPypTSE", 139587: "PLeyB-SZ7G05M",
-  159042: "PLDv-inCJtX5A", 160900: "PLScAfDnCDpRU",
-  167419: "PLNAQymMf9eab5ejKPqDXIdFEaJEuxSrAW", 14813: "PLRYt0oMV87fU",
-  185: "PLTcut_BhoIa4", 20987: "PLGKjS1fjrROc", 147864: "PLNAQymMf9eaYJZdl3_y3WAY9wufqB8eTn",
-};
+const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, CuratedPlaylistRule> = CURATED_PLAYLIST_RULES;
 
-const MUSE_ID_PLAYLIST_BY_ANILIST_ID: Record<number, { playlistId: string; channelName: string }> = {};
-for (const [id, pl] of Object.entries(MUSE_PL)) {
-  MUSE_ID_PLAYLIST_BY_ANILIST_ID[Number(id)] = { playlistId: pl, channelName: "Muse Indonesia" };
-}
-for (const [id, pl] of Object.entries(ANIONE_PL)) {
-  MUSE_ID_PLAYLIST_BY_ANILIST_ID[Number(id)] = { playlistId: pl, channelName: "Ani-One Indonesia" };
+interface DubSplitRule extends CuratedPlaylistRule {
+  partKey: string;
+  anilistId: number;
+  titleOverride?: string;
+  epCountHint: number;
 }
 
-const DUPLICATE_SEASON_ALIASES = new Set([166873, 142838, 158927, 108511, 119661, 176508, 18767, 21873]);
+const DUB_SPLIT_RULES: DubSplitRule[] = [
+  { partKey: "s1p1", anilistId: 108465, playlistId: `${M}ZQCUAX0zVQe4HtNDvNtRTw`, channelName: "Muse Indonesia", epMin: 1, epMax: 11, excludeTitleRegex: /season\s*[23]/i, epCountHint: 11 },
+  { partKey: "s1p2", anilistId: 127720, playlistId: `${M}ZQCUAX0zVQe4HtNDvNtRTw`, channelName: "Muse Indonesia", epMin: 12, epMax: 24, excludeTitleRegex: /season\s*[23]/i, epCountHint: 13 },
+  { partKey: "s2p1", anilistId: 146065, playlistId: `${M}ZQCUAX0zVQe4HtNDvNtRTw`, channelName: "Muse Indonesia", epMin: 0, epMax: 12, requireTitleRegex: /season\s*2\b/i, excludeTitleRegex: /(?:cour|part)\s*2/i, epCountHint: 13 },
+  { partKey: "s2p2", anilistId: 166873, playlistId: `${M}ZQCUAX0zVQe4HtNDvNtRTw`, channelName: "Muse Indonesia", epMin: 13, epMax: 24, requireTitleRegex: /season\s*2\s*(?:cour|part)\s*2/i, epCountHint: 12 },
+];
+
 const FEATURED_MUSE_ANILIST_IDS: number[] = [
-  154587, 140960, 171018, 16498, 113415, 116674, 137822, 101280, 11061, 146065,
-  108632, 163134, 189046, 151970, 20832, 105333, 172019, 21459, 20464, 156067,
-  ...Object.keys(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map(Number).filter((id) => !DUPLICATE_SEASON_ALIASES.has(id)),
+  // Prioritize Mushoku Tensei complete S1 P1 -> P2 -> S2 P1 -> S2 P2 -> S3, Frieren S1-S2, SPY x FAMILY P1-S3, Re:ZERO S1-S4, JJK S1-S2, Bleach P1-P3
+  108465, 127720, 146065, 166873, 178789, 141534,
+  154587, 182255,
+  140960, 142838, 158927, 177937,
+  21355, 108632, 119661, 163134, 189046,
+  171018, 185660,
+  16498, 20958, 99147, 104578, 110277, 131681,
+  113415, 145064,
+  116674, 159322, 169755,
+  137822, 163146,
+  101280, 108511, 116742, 156822,
+  151970, 176508,
+  105333, 113936, 131518, 162670, 172019, 189117, 199221,
+  11061, 20832, 21459, 20464, 156067,
+  ...Object.keys(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map(Number),
 ];
 
 interface CrawledPlaylistSummary {
@@ -1413,22 +1733,38 @@ function matchLivePlaylistForMedia(
 
   if (candidateNames.length === 0) return null;
 
-  const extractSeasonNum = (s: string): string => {
-    const m = s.match(/\b([2-9]|ii|iii|iv|v)\b$/i);
-    if (!m) return "1";
-    const v = m[1].toLowerCase();
-    return v === "ii" ? "2" : v === "iii" ? "3" : v === "iv" ? "4" : v === "v" ? "5" : v;
+  const extractSeasonAndPart = (raw: string): { season: number; part: number } => {
+    const lower = raw.toLowerCase();
+    const sMatch =
+      lower.match(/\b(?:season|s)\s*([1-9])\b/) ||
+      lower.match(/\b(ii|iii|iv|v)\b/) ||
+      lower.match(/\b([2-9])\s*(?:nd|rd|th)\s*season\b/) ||
+      lower.match(/\b([2-9])\b\s*$/);
+    let season = 1;
+    if (sMatch) {
+      const v = sMatch[1];
+      season = v === "ii" ? 2 : v === "iii" ? 3 : v === "iv" ? 4 : v === "v" ? 5 : Number(v) || 1;
+    }
+    const pMatch = lower.match(/\b(?:part|cour)\s*([1-4])\b/);
+    const part = pMatch ? Number(pMatch[1]) : 1;
+    return { season, part };
   };
+
+  const candMeta = [media.title?.english, media.title?.romaji, media.title?.native]
+    .filter((t): t is string => Boolean(t && t.trim().length >= 3))
+    .map((raw) => ({ norm: normalizeTitleForMatch(raw), ...extractSeasonAndPart(raw) }))
+    .filter((c) => c.norm.length >= 4);
 
   for (const pl of allPlaylists) {
     const normPl = normalizeTitleForMatch(pl.cleanTitle);
     if (normPl.length < 4) continue;
-    const plSeason = extractSeasonNum(normPl);
-    for (const cand of candidateNames) {
-      if (normPl === cand) return pl;
-      if (extractSeasonNum(cand) !== plSeason) continue;
-      if (cand.length >= 9 && normPl.includes(cand)) return pl;
-      if (normPl.length >= 9 && cand.includes(normPl)) return pl;
+    const plMeta = extractSeasonAndPart(pl.cleanTitle);
+    for (const cand of candMeta) {
+      if (cand.season !== plMeta.season) continue;
+      if (cand.part !== plMeta.part && /\b(?:part|cour)\s*[1-4]\b/i.test(pl.cleanTitle)) continue;
+      if (normPl === cand.norm) return pl;
+      if (cand.norm.length >= 9 && normPl.includes(cand.norm)) return pl;
+      if (normPl.length >= 9 && cand.norm.includes(normPl)) return pl;
     }
   }
   return null;
@@ -1453,21 +1789,60 @@ async function isVideoEmbeddable(videoId: string): Promise<boolean> {
   }
 }
 
-async function filterEmbeddableEpisodes(entries: YtRssEntry[]): Promise<YtRssEntry[]> {
-  const cleanCandidates = entries.filter(
-    (e) => !/\b(preview|trailer|teaser|pv|semua episode|full marathon|kompilasi)\b/i.test(e.title)
-  );
+function applyCuratedPlaylistRule(entries: YtRssEntry[], rule?: CuratedPlaylistRule): YtRssEntry[] {
+  const noiseRegex = /\b(preview|trailer|teaser|pv|semua episode|full marathon|kompilasi|cuplikan|highlight|opening|ending|karaoke|promo|interview|talkshow|nonton bareng)\b|#short/i;
+  return entries.filter((entry) => {
+    const t = entry.title ?? "";
+    if (!t || noiseRegex.test(t)) return false;
+    if (!rule) return true;
+    if (rule.requireTitleRegex && !rule.requireTitleRegex.test(t)) return false;
+    if (rule.excludeTitleRegex && rule.excludeTitleRegex.test(t)) return false;
+    const parsed = parseOfficialEpisodeTitle(t);
+    if (!rule.allowDecimalRecaps && parsed.sortKey !== Math.floor(parsed.sortKey)) {
+      return false;
+    }
+    if (rule.epMin !== undefined && parsed.episodeNumber < rule.epMin) return false;
+    if (rule.epMax !== undefined && parsed.episodeNumber > rule.epMax) return false;
+    return true;
+  });
+}
+
+async function filterEmbeddableEpisodes(entries: YtRssEntry[], rule?: CuratedPlaylistRule): Promise<YtRssEntry[]> {
+  const cleanCandidates = applyCuratedPlaylistRule(entries, rule);
   if (cleanCandidates.length === 0) return [];
-  const checks = await Promise.all(
-    cleanCandidates.map(async (entry) => ({
-      entry,
-      ok: await isVideoEmbeddable(entry.videoId),
-    }))
-  );
-  return checks
-    .filter((item) => item.ok)
-    .map((item) => item.entry)
-    .sort((a, b) => parseOfficialEpisodeTitle(a.title).episodeNumber - parseOfficialEpisodeTitle(b.title).episodeNumber);
+
+  const playable: YtRssEntry[] = [];
+  const batchSize = 12;
+  for (let i = 0; i < cleanCandidates.length; i += batchSize) {
+    const chunk = cleanCandidates.slice(i, i + batchSize);
+    const checks = await Promise.all(
+      chunk.map(async (entry) => ({
+        entry,
+        ok: await isVideoEmbeddable(entry.videoId),
+      }))
+    );
+    for (const item of checks) {
+      if (item.ok) playable.push(item.entry);
+    }
+  }
+
+  const sorted = playable.sort((a, b) => {
+    const pa = parseOfficialEpisodeTitle(a.title);
+    const pb = parseOfficialEpisodeTitle(b.title);
+    if (pa.sortKey !== pb.sortKey) return pa.sortKey - pb.sortKey;
+    return a.videoId.localeCompare(b.videoId);
+  });
+
+  // Deduplicate re-uploads that share the exact same episode sortKey (keep first embeddable)
+  const deduped: YtRssEntry[] = [];
+  const seenKeys = new Set<number>();
+  for (const ep of sorted) {
+    const sk = parseOfficialEpisodeTitle(ep.title).sortKey;
+    if (seenKeys.has(sk)) continue;
+    seenKeys.add(sk);
+    deduped.push(ep);
+  }
+  return deduped;
 }
 
 function normalizeTitleForMatch(text: string): string {
@@ -1573,16 +1948,245 @@ async function fetchAniListMediaByIds(ids: number[]): Promise<Map<number, AniLis
   return out;
 }
 
+interface AdminEpisodeInput {
+  eps_title: string;
+  eps_slug: string;
+  number: number;
+  stream_url: string;
+  stream_type: string;
+  thumbnail: string;
+}
+
+interface AdminAnimeRow {
+  slug: string;
+  title: string;
+  japanese_title: string;
+  poster: string;
+  banner: string;
+  synopsis: string;
+  genres: string[];
+  rating: number;
+  studio: string;
+  status: string;
+  type: string;
+  year: number;
+  season: string;
+  total_episodes: number;
+  released_episodes: number;
+  duration_minutes: number;
+  is_official_free: boolean;
+  is_dub_indo: boolean;
+  official_channel: string;
+  playlist_id: string;
+  anilist_id: number | null;
+  episodes: AdminEpisodeInput[];
+  is_hidden: boolean;
+  is_featured: boolean;
+  updated_at?: string;
+}
+
+function parseJsonArray<T>(raw: unknown, fallback: T[]): T[] {
+  if (Array.isArray(raw)) return raw as T[];
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p)) return p as T[];
+    } catch {}
+  }
+  return fallback;
+}
+
+function extractYouTubeVideoId(raw: string): string | null {
+  const s = raw.trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  const m =
+    s.match(/[?&]v=([A-Za-z0-9_-]{11})/) ||
+    s.match(/youtu\.be\/([A-Za-z0-9_-]{11})/) ||
+    s.match(/youtube(?:-nocookie)?\.com\/(?:embed|shorts)\/([A-Za-z0-9_-]{11})/);
+  return m?.[1] ?? null;
+}
+
+function normalizeAdminEpisodes(rawList: unknown, fallbackPoster: string, slugPrefix: string): AdminEpisodeInput[] {
+  const arr = parseJsonArray<Record<string, unknown>>(rawList, []);
+  return arr
+    .map((ep, idx) => {
+      const num = Math.max(1, Number(ep.number) || idx + 1);
+      const rawUrl = String(ep.stream_url ?? ep.streamUrl ?? "").trim();
+      const ytId = rawUrl ? extractYouTubeVideoId(rawUrl) : null;
+      const streamUrl = ytId ? ytNoCookieEmbed(ytId) : rawUrl;
+      const streamType = ytId
+        ? "official_episode"
+        : streamUrl
+          ? String(ep.stream_type ?? ep.streamType ?? "direct_video").trim() || "direct_video"
+          : "info_only";
+      const thumb = String(ep.thumbnail ?? "").trim() || (ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : fallbackPoster);
+      const epsSlug = String(ep.eps_slug ?? ep.epsSlug ?? "").trim() || (ytId ? `yt-${ytId}` : `${slugPrefix}-ep-${num}`);
+      const title = String(ep.eps_title ?? ep.epsTitle ?? ep.title ?? `Episode ${num}`).trim() || `Episode ${num}`;
+      return {
+        eps_title: title,
+        eps_slug: epsSlug,
+        number: num,
+        stream_url: streamUrl,
+        stream_type: streamType,
+        thumbnail: thumb,
+      };
+    })
+    .sort((a, b) => a.number - b.number);
+}
+
+function normalizeAdminAnimeDbRow(r: Record<string, unknown>): AdminAnimeRow {
+  const poster = String(r.poster ?? "").trim();
+  const slug = String(r.slug ?? "").trim();
+  return {
+    slug,
+    title: String(r.title ?? "").trim(),
+    japanese_title: String(r.japanese_title ?? "").trim(),
+    poster,
+    banner: String(r.banner ?? "").trim() || poster,
+    synopsis: String(r.synopsis ?? "").trim(),
+    genres: parseJsonArray<string>(r.genres, ["Anime"]).map(String),
+    rating: Number(r.rating ?? 8.5) || 8.5,
+    studio: String(r.studio ?? "AnimWatch Admin").trim() || "AnimWatch Admin",
+    status: String(r.status ?? "ONGOING").trim() || "ONGOING",
+    type: String(r.type ?? "TV Series").trim() || "TV Series",
+    year: Number(r.year ?? 2026) || 2026,
+    season: String(r.season ?? "2026").trim() || "2026",
+    total_episodes: Math.max(1, Number(r.total_episodes ?? 12) || 12),
+    released_episodes: Math.max(1, Number(r.released_episodes ?? 1) || 1),
+    duration_minutes: Math.max(1, Number(r.duration_minutes ?? 24) || 24),
+    is_official_free: Boolean(r.is_official_free),
+    is_dub_indo: Boolean(r.is_dub_indo),
+    official_channel: String(r.official_channel ?? "").trim() || "AnimWatch Admin",
+    playlist_id: String(r.playlist_id ?? "").trim(),
+    anilist_id: r.anilist_id !== null && r.anilist_id !== undefined && Number(r.anilist_id) > 0 ? Number(r.anilist_id) : null,
+    episodes: normalizeAdminEpisodes(r.episodes_json, poster, slug),
+    is_hidden: Boolean(r.is_hidden),
+    is_featured: Boolean(r.is_featured),
+    updated_at: r.updated_at ? String(r.updated_at) : undefined,
+  };
+}
+
+async function loadAdminAnimeList(): Promise<AdminAnimeRow[]> {
+  const key = "admin-anime-all-v1";
+  const cached = getCached<AdminAnimeRow[]>(key);
+  if (cached) return cached;
+  if (!db || !dbReady) return [];
+  try {
+    const rows = await db`SELECT * FROM admin_anime ORDER BY is_featured DESC, updated_at DESC`;
+    const list = (rows as Array<Record<string, unknown>>).map(normalizeAdminAnimeDbRow);
+    return setCached(key, list, 60 * 1000);
+  } catch {
+    return [];
+  }
+}
+
+function stableNumericIdFromSlug(slug: string): number {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i++) {
+    hash = (hash * 31 + slug.charCodeAt(i)) | 0;
+  }
+  return 800000 + (Math.abs(hash) % 190000);
+}
+
+function mapAdminRowToCard(row: AdminAnimeRow) {
+  const idNum = row.anilist_id ?? stableNumericIdFromSlug(row.slug);
+  const rel = Math.max(row.released_episodes, row.episodes.length, 1);
+  const tot = Math.max(row.total_episodes, rel, 1);
+  return {
+    id: idNum,
+    title: row.title,
+    japanese_title: row.japanese_title || row.official_channel,
+    slug: row.slug,
+    poster: row.poster,
+    banner: row.banner || row.poster,
+    synopsis: row.synopsis || `${row.title} tersedia di AnimWatch.`,
+    genres: row.is_dub_indo && !row.genres.includes("Dub Indo") ? [...row.genres, "Dub Indo"] : row.genres,
+    rating: row.rating,
+    rating_count: row.official_channel || "Admin",
+    views_label: `${rel} Ep`,
+    studio: row.studio,
+    status: row.status,
+    type: row.type,
+    release: String(row.year),
+    year: row.year,
+    season: row.season,
+    duration: `${row.duration_minutes} menit`,
+    duration_minutes: row.duration_minutes,
+    total_episodes: tot,
+    released_episodes: rel,
+    episode: `Ep ${rel}`,
+    latest_eps_slug: row.episodes[row.episodes.length - 1]?.eps_slug ?? row.slug,
+    airing_day: null,
+    airing_time: null,
+    trailer_url: "",
+    is_official_free: row.is_official_free || row.episodes.some((e) => Boolean(e.stream_url)) || Boolean(row.playlist_id),
+    is_dub_indo: row.is_dub_indo,
+    audio_lang: row.is_dub_indo ? "DUB_ID" : "SUB",
+    official_channel: row.official_channel,
+    stream_type: row.is_official_free || row.playlist_id ? "official_episode" : "info_only",
+    external_links: row.playlist_id
+      ? [{ site: row.official_channel || "YouTube", url: `https://www.youtube.com/playlist?list=${row.playlist_id}` }]
+      : [],
+  };
+}
+
+async function applyAdminCatalogTransform<T extends { slug: string; id?: number }>(
+  items: T[],
+  options: { includeCustom?: boolean; dubOnly?: boolean; featuredOnly?: boolean; searchQuery?: string } = {}
+): Promise<T[]> {
+  const adminRows = await loadAdminAnimeList();
+  if (adminRows.length === 0) return items;
+
+  const bySlug = new Map(adminRows.map((r) => [r.slug, r]));
+  const hiddenSlugs = new Set(adminRows.filter((r) => r.is_hidden).map((r) => r.slug));
+  const hiddenIds = new Set(adminRows.filter((r) => r.is_hidden && r.anilist_id).map((r) => r.anilist_id!));
+
+  const transformed: T[] = [];
+  const presentSlugs = new Set<string>();
+
+  for (const item of items) {
+    if (hiddenSlugs.has(item.slug) || (item.id && hiddenIds.has(item.id))) continue;
+    const override = bySlug.get(item.slug);
+    if (override) {
+      transformed.push({
+        ...item,
+        ...mapAdminRowToCard(override),
+        id: (item.id && item.id > 0) ? item.id : (override.anilist_id ?? stableNumericIdFromSlug(override.slug)),
+      } as unknown as T);
+    } else {
+      transformed.push(item);
+    }
+    presentSlugs.add(item.slug);
+  }
+
+  if (options.includeCustom) {
+    const qLower = options.searchQuery?.toLowerCase().trim() ?? "";
+    const extras = adminRows.filter((r) => {
+      if (r.is_hidden || presentSlugs.has(r.slug)) return false;
+      if (options.dubOnly === true && !r.is_dub_indo) return false;
+      if (options.dubOnly === false && r.is_dub_indo) return false;
+      if (options.featuredOnly && !r.is_featured) return false;
+      if (qLower && !r.title.toLowerCase().includes(qLower) && !r.slug.toLowerCase().includes(qLower) && !r.genres.some((g) => g.toLowerCase().includes(qLower))) {
+        return false;
+      }
+      return true;
+    });
+    return [...extras.map((r) => mapAdminRowToCard(r) as unknown as T), ...transformed];
+  }
+
+  return transformed;
+}
+
 async function handleOfficialFree(page = 1): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `official-free-unified-v6:p${safePage}`;
+  const key = `official-free-unified-v7:p${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   if (safePage === 1) {
     const uniqueIds = [...new Set(FEATURED_MUSE_ANILIST_IDS)];
     const byId = await fetchAniListMediaByIds(uniqueIds);
-    const data = uniqueIds
+    const rawData = uniqueIds
       .map((id) => byId.get(id))
       .filter((m): m is AniListMedia => Boolean(m))
       .map((m) => {
@@ -1598,7 +2202,8 @@ async function handleOfficialFree(page = 1): Promise<Response> {
           external_links: pl ? [{ site: pl.channelName, url: `https://www.youtube.com/playlist?list=${pl.playlistId}` }] : [],
         };
       });
-    return jsonResponse(setCached(key, { status: "success", source: "anilist+muse+anione", page: 1, totalCurated: data.length, data }, 20 * 60 * 1000));
+    const data = await applyAdminCatalogTransform(rawData, { includeCustom: true, dubOnly: false });
+    return jsonResponse(setCached(key, { status: "success", source: "anilist+muse+anione", page: 1, totalCurated: data.length, data }, 10 * 60 * 1000));
   }
 
   // Page 2+: Remaining verified Muse & Ani-One SUB playlists enriched with official AniList covers, titles & synopses
@@ -1614,7 +2219,7 @@ async function handleOfficialFree(page = 1): Promise<Response> {
   const byAniListId = await fetchAniListMediaByIds(slice.map((p) => p.anilistId ?? 0));
 
   const emittedSlugs = new Set<string>();
-  const data = slice.map((pl, idx) => {
+  const rawData = slice.map((pl, idx) => {
     const media = pl.anilistId ? byAniListId.get(pl.anilistId) : undefined;
     if (media) {
       const common = mapMediaCommon(media);
@@ -1633,26 +2238,76 @@ async function handleOfficialFree(page = 1): Promise<Response> {
     }
     return buildPlaylistCard(pl, 900000 + start + idx, false);
   });
+  const data = await applyAdminCatalogTransform(rawData, { includeCustom: false });
 
   return jsonResponse(
-    setCached(key, { status: "success", source: "anilist+youtube-channels-sub", page: safePage, hasMore: start + pageSize < remaining.length, data }, 20 * 60 * 1000)
+    setCached(key, { status: "success", source: "anilist+youtube-channels-sub", page: safePage, hasMore: start + pageSize < remaining.length, data }, 10 * 60 * 1000)
   );
 }
 
 async function handleDubIndo(page = 1): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `dub-indo-v2:p${safePage}`;
+  const key = `dub-indo-v3:p${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   const allLive = await getAllLiveChannelPlaylists();
-  const dubPlaylists = allLive.filter((pl) => pl.audioLang === "DUB_ID");
+  const splitPlaylistIds = new Set(DUB_SPLIT_RULES.map((r) => r.playlistId));
+  const dubPlaylists = allLive.filter((pl) => pl.audioLang === "DUB_ID" && !splitPlaylistIds.has(pl.playlistId));
+
+  const allIdsNeeded = [
+    ...(safePage === 1 ? DUB_SPLIT_RULES.map((r) => r.anilistId) : []),
+    ...dubPlaylists.map((p) => p.anilistId ?? 0),
+  ];
+  const byAniListId = await fetchAniListMediaByIds(allIdsNeeded);
+
+  const splitCards = safePage === 1
+    ? DUB_SPLIT_RULES.map((rule, idx) => {
+        const media = byAniListId.get(rule.anilistId);
+        const dubSlug = `dub-${rule.playlistId}--${rule.partKey}`;
+        if (media) {
+          const common = mapMediaCommon(media);
+          const epCount = Math.max(rule.epCountHint, common.total_episodes, 1);
+          return {
+            ...common,
+            id: 960000 + idx,
+            slug: dubSlug,
+            title: rule.titleOverride ?? `${common.title} (Dub Indo)`,
+            released_episodes: epCount,
+            total_episodes: epCount,
+            episode: `Ep ${epCount}`,
+            latest_eps_slug: dubSlug,
+            genres: common.genres.includes("Dub Indo") ? common.genres : [...common.genres, "Dub Indo"],
+            is_official_free: true,
+            is_dub_indo: true,
+            audio_lang: "DUB_ID",
+            official_channel: rule.channelName,
+            stream_type: "official_episode",
+            external_links: [{ site: rule.channelName, url: `https://www.youtube.com/playlist?list=${rule.playlistId}` }],
+          };
+        }
+        return buildPlaylistCard(
+          {
+            playlistId: `${rule.playlistId}--${rule.partKey}`,
+            title: rule.titleOverride ?? `Dub Indo ${rule.partKey.toUpperCase()}`,
+            cleanTitle: rule.titleOverride ?? `Dub Indo ${rule.partKey.toUpperCase()}`,
+            channelName: rule.channelName,
+            thumbnail: "",
+            episodeHint: rule.epCountHint,
+            audioLang: "DUB_ID",
+            anilistId: rule.anilistId,
+          },
+          960000 + idx,
+          true
+        );
+      })
+    : [];
+
   const pageSize = 70;
   const start = (safePage - 1) * pageSize;
   const slice = dubPlaylists.slice(start, start + pageSize);
-  const byAniListId = await fetchAniListMediaByIds(slice.map((p) => p.anilistId ?? 0));
 
-  const data = slice.map((pl, idx) => {
+  const regularCards = slice.map((pl, idx) => {
     const media = pl.anilistId ? byAniListId.get(pl.anilistId) : undefined;
     if (media) {
       const common = mapMediaCommon(media);
@@ -1677,8 +2332,17 @@ async function handleDubIndo(page = 1): Promise<Response> {
     return buildPlaylistCard(pl, 980000 + start + idx, true);
   });
 
+  const data = await applyAdminCatalogTransform([...splitCards, ...regularCards], {
+    includeCustom: safePage === 1,
+    dubOnly: true,
+  });
+
   return jsonResponse(
-    setCached(key, { status: "success", source: "dub-indo-live", page: safePage, hasMore: start + pageSize < dubPlaylists.length, total: dubPlaylists.length, data }, 20 * 60 * 1000)
+    setCached(
+      key,
+      { status: "success", source: "dub-indo-live", page: safePage, hasMore: start + pageSize < dubPlaylists.length, total: splitCards.length + dubPlaylists.length, data },
+      10 * 60 * 1000
+    )
   );
 }
 
@@ -1861,12 +2525,16 @@ function mapMediaCommon(m: AniListMedia) {
 
 async function handleAniListList(keyPrefix: string, perPage: number, mediaArgs: string, page = 1): Promise<Response> {
   const safePage = Number.isFinite(page) && page >= 1 ? page : 1;
-  const key = `${keyPrefix}:v2:${safePage}`;
+  const key = `${keyPrefix}:v3:${safePage}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
   const query = `query ($page: Int) { Page(page: $page, perPage: ${perPage}) { media(type: ANIME, ${mediaArgs}, isAdult: false) { ${MEDIA_CARD_FIELDS} } } }`;
   const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { page: safePage });
-  const data = result.Page.media.map(mapMediaCommon);
+  const rawData = result.Page.media.map(mapMediaCommon);
+  const data = await applyAdminCatalogTransform(rawData, {
+    includeCustom: safePage === 1 && (keyPrefix === "popular" || keyPrefix === "latest"),
+    featuredOnly: keyPrefix === "popular",
+  });
   return jsonResponse(setCached(key, { status: "success", source: "anilist-live", page: safePage, data }));
 }
 
@@ -1878,7 +2546,7 @@ const handleCompleted = (page: number) => handleAniListList("completed", 45, "st
 async function handleSearch(rawQuery: string): Promise<Response> {
   const q = decodeURIComponent(rawQuery).trim();
   if (!q) return jsonResponse({ status: "success", query: "", data: [] });
-  const key = `search:${q.toLowerCase()}`;
+  const key = `search:v2:${q.toLowerCase()}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
@@ -1929,7 +2597,10 @@ async function handleSearch(rawQuery: string): Promise<Response> {
     return buildPlaylistCard(pl, (isDub ? 970000 : 950000) + idx, isDub);
   });
 
-  const data = [...anilistItems, ...ytMatches];
+  const data = await applyAdminCatalogTransform([...anilistItems, ...ytMatches], {
+    includeCustom: true,
+    searchQuery: q,
+  });
   return jsonResponse(setCached(key, { status: "success", source: "anilist-live", query: q, data }, 3 * 60 * 1000));
 }
 
@@ -1970,11 +2641,17 @@ async function fetchAniListMediaDetail(slugOrId: string): Promise<AniListMedia |
   return res.Media;
 }
 
-  const mapYtEpisodes = (list: YtRssEntry[]) => {
+  const mapYtEpisodes = (list: YtRssEntry[], rule?: CuratedPlaylistRule) => {
     const usedNumbers = new Set<number>();
-    return list.slice(0, 48).map((ytEp, idx) => {
-      let parsedNum = parseOfficialEpisodeTitle(ytEp.title).episodeNumber;
-      if (!Number.isFinite(parsedNum) || parsedNum <= 0) parsedNum = idx + 1;
+    const hasSplitRange = rule?.epMin !== undefined;
+    return list.slice(0, 120).map((ytEp, idx) => {
+      const parsed = parseOfficialEpisodeTitle(ytEp.title);
+      let parsedNum = parsed.episodeNumber;
+      if (hasSplitRange && rule?.epMin !== undefined) {
+        parsedNum = rule.epMin === 0 ? parsedNum + 1 : parsedNum >= rule.epMin ? parsedNum - rule.epMin + 1 : idx + 1;
+      } else if (!Number.isFinite(parsedNum) || parsedNum <= 0) {
+        parsedNum = idx + 1;
+      }
       while (usedNumbers.has(parsedNum)) parsedNum++;
       usedNumbers.add(parsedNum);
       return {
@@ -1996,53 +2673,100 @@ const mapMediaCharacters = (media: AniListMedia | null | undefined, fallbackVa =
 
 async function handleAnimeDetail(rawSlug: string): Promise<Response> {
   const slug = decodeURIComponent(rawSlug).trim();
-  const key = `anime:${slug}`;
+  const key = `anime:v2:${slug}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
+  const adminRows = await loadAdminAnimeList();
+  const adminRow = adminRows.find((r) => r.slug === slug);
+  if (adminRow?.is_hidden) {
+    return jsonResponse({ status: "error", message: `Anime sedang disembunyikan oleh Admin: ${slug}` }, 404);
+  }
+
+  const mergeAdminDetail = async (baseData: Record<string, any>) => {
+    if (!adminRow) return baseData;
+    let adminEpisodes = adminRow.episodes;
+    if (adminEpisodes.length === 0 && adminRow.playlist_id) {
+      const ytEntries = await fetchFullYouTubePlaylistEntries(adminRow.playlist_id, adminRow.official_channel || "Muse Indonesia");
+      const playable = await filterEmbeddableEpisodes(ytEntries);
+      if (playable.length > 0) adminEpisodes = mapYtEpisodes(playable);
+    }
+    const finalEpisodes = adminEpisodes.length > 0 ? adminEpisodes : (baseData.episodes ?? []);
+    const relCount = Math.max(adminRow.released_episodes, finalEpisodes.length, Number(baseData.released_episodes ?? 1));
+    const totCount = Math.max(adminRow.total_episodes, relCount, Number(baseData.total_episodes ?? 12));
+    return {
+      ...baseData,
+      title: adminRow.title || baseData.title,
+      japanese_title: adminRow.japanese_title || baseData.japanese_title,
+      poster: adminRow.poster || baseData.poster,
+      banner: adminRow.banner || adminRow.poster || baseData.banner,
+      synopsis: adminRow.synopsis || baseData.synopsis,
+      genres: adminRow.genres.length > 0 ? adminRow.genres : baseData.genres,
+      rating: adminRow.rating || baseData.rating,
+      studio: adminRow.studio || baseData.studio,
+      status: adminRow.status || baseData.status,
+      year: adminRow.year || baseData.year,
+      season: adminRow.season || baseData.season,
+      duration_minutes: adminRow.duration_minutes || baseData.duration_minutes,
+      total_episodes: totCount,
+      released_episodes: relCount,
+      is_official_free: adminRow.is_official_free || finalEpisodes.some((e: any) => Boolean(e.stream_url)),
+      is_dub_indo: adminRow.is_dub_indo,
+      audio_lang: adminRow.is_dub_indo ? "DUB_ID" : "SUB",
+      official_channel: adminRow.official_channel || baseData.official_channel,
+      episodes: finalEpisodes,
+    };
+  };
+
   if (slug.startsWith("ytpl-") || slug.startsWith("dub-")) {
     const isDub = slug.startsWith("dub-");
-    const playlistId = slug.slice(isDub ? 4 : 5).trim();
+    const rawIdPart = slug.slice(isDub ? 4 : 5).trim();
+    const [playlistId, partKey] = rawIdPart.split("--");
+    const dubSplitRule = isDub && partKey
+      ? DUB_SPLIT_RULES.find((r) => r.playlistId === playlistId && r.partKey === partKey)
+      : undefined;
     const meta = (await getAllLiveChannelPlaylists()).find((p) => p.playlistId === playlistId);
-    const channelName = meta?.channelName ?? "Muse Indonesia";
+    const channelName = dubSplitRule?.channelName ?? meta?.channelName ?? "Muse Indonesia";
+    const targetAnilistId = dubSplitRule?.anilistId ?? meta?.anilistId ?? null;
     const [rawEntries, linkedMedia] = await Promise.all([
-      fetchYouTubeAtomFeed(`https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`, channelName),
-      meta?.anilistId ? fetchAniListMediaDetail(String(meta.anilistId)).catch(() => null) : Promise.resolve(null),
+      fetchFullYouTubePlaylistEntries(playlistId, channelName),
+      targetAnilistId ? fetchAniListMediaDetail(String(targetAnilistId)).catch(() => null) : Promise.resolve(null),
     ]);
-    const playable = await filterEmbeddableEpisodes(rawEntries);
+    const playable = await filterEmbeddableEpisodes(rawEntries, dubSplitRule);
     const lc = linkedMedia ? mapMediaCommon(linkedMedia) : null;
-    const displayTitle = lc?.title || meta?.cleanTitle || (rawEntries[0] ? parseOfficialEpisodeTitle(rawEntries[0].title).seriesTitle : "Anime Muse Indonesia");
+    const displayTitle = dubSplitRule?.titleOverride ?? (isDub && lc?.title ? `${lc.title} (Dub Indo)` : lc?.title) ?? meta?.cleanTitle ?? (rawEntries[0] ? parseOfficialEpisodeTitle(rawEntries[0].title).seriesTitle : "Anime Muse Indonesia");
     const poster = lc?.poster || meta?.thumbnail || playable[0]?.thumbnail || rawEntries[0]?.thumbnail || "";
-    const episodes = mapYtEpisodes(playable);
+    const episodes = mapYtEpisodes(playable, dubSplitRule);
     const baseGenres = lc?.genres ?? ["Anime", "Action", "Fantasy"];
+    const baseData = {
+      title: displayTitle,
+      japanese_title: isDub ? `Dub Indo • ${channelName}` : lc?.japanese_title || channelName,
+      poster,
+      banner: lc?.banner || poster,
+      synopsis: lc?.synopsis || `Tonton episode ${displayTitle} (${isDub ? "Dub Indo" : "Sub Indo"}) langsung dari ${channelName} di dalam AnimWatch.`,
+      genres: isDub && !baseGenres.includes("Dub Indo") ? [...baseGenres, "Dub Indo"] : baseGenres,
+      rating: lc?.rating ?? 8.3,
+      rating_count: lc?.rating_count ?? channelName,
+      studio: lc?.studio ?? channelName,
+      status: lc?.status ?? "ONGOING",
+      year: lc?.year ?? 2025,
+      season: lc?.season ?? (isDub ? "Dub Indo" : channelName),
+      duration_minutes: lc?.duration_minutes ?? 24,
+      total_episodes: Math.max(episodes.length, dubSplitRule?.epCountHint ?? lc?.total_episodes ?? meta?.episodeHint ?? 12),
+      released_episodes: Math.max(episodes.length, 1),
+      is_official_free: episodes.length > 0,
+      is_dub_indo: isDub,
+      audio_lang: isDub ? "DUB_ID" : "SUB",
+      official_channel: channelName,
+      episodes,
+      characters: mapMediaCharacters(linkedMedia, "Seiyuu"),
+      related_slugs: [],
+      external_links: [{ site: channelName, url: `https://www.youtube.com/playlist?list=${playlistId}` }],
+    };
     return jsonResponse(setCached(key, {
       status: "success",
       source: isDub ? "dub-indo-playlist" : "youtube-playlist-live",
-      animeData: {
-        title: displayTitle,
-        japanese_title: isDub ? `Dub Indo • ${channelName}` : lc?.japanese_title || channelName,
-        poster,
-        banner: lc?.banner || poster,
-        synopsis: lc?.synopsis || `Tonton episode ${displayTitle} (${isDub ? "Dub Indo" : "Sub Indo"}) langsung dari ${channelName} di dalam AnimWatch.`,
-        genres: isDub && !baseGenres.includes("Dub Indo") ? [...baseGenres, "Dub Indo"] : baseGenres,
-        rating: lc?.rating ?? 8.3,
-        rating_count: lc?.rating_count ?? channelName,
-        studio: lc?.studio ?? channelName,
-        status: lc?.status ?? "ONGOING",
-        year: lc?.year ?? 2025,
-        season: isDub ? "Dub Indo" : lc?.season ?? channelName,
-        duration_minutes: lc?.duration_minutes ?? 24,
-        total_episodes: Math.max(episodes.length, meta?.episodeHint ?? lc?.total_episodes ?? 12),
-        released_episodes: Math.max(episodes.length, 1),
-        is_official_free: episodes.length > 0,
-        is_dub_indo: isDub,
-        audio_lang: isDub ? "DUB_ID" : "SUB",
-        official_channel: channelName,
-        episodes,
-        characters: mapMediaCharacters(linkedMedia, "Seiyuu"),
-        related_slugs: [],
-        external_links: [],
-      },
+      animeData: await mergeAdminDetail(baseData),
     }));
   }
 
@@ -2052,22 +2776,37 @@ async function handleAnimeDetail(rawSlug: string): Promise<Response> {
     if (matched) return jsonResponse({ status: "success", source: "official-youtube-id", animeData: matched });
   }
 
-  const media = await fetchAniListMediaDetail(slug);
-  if (!media) return jsonResponse({ status: "error", message: `Anime tidak ditemukan: ${slug}` }, 404);
+  const media = await fetchAniListMediaDetail(slug).catch(() => null);
+  if (!media) {
+    if (adminRow) {
+      const card = mapAdminRowToCard(adminRow);
+      const merged = await mergeAdminDetail({ ...card, episodes: adminRow.episodes, characters: [], related_slugs: [] });
+      return jsonResponse(setCached(key, { status: "success", source: "admin-custom", animeData: merged }));
+    }
+    return jsonResponse({ status: "error", message: `Anime tidak ditemukan: ${slug}` }, 404);
+  }
 
   const common = mapMediaCommon(media);
   const streamingLinks = (media.externalLinks ?? []).filter((l) => l.type === "STREAMING" && l.site && l.url).map((l) => ({ site: l.site!.trim(), url: l.url!.trim() }));
-  const curatedOfficial = MUSE_ID_PLAYLIST_BY_ANILIST_ID[media.id];
+  const curatedOfficial = adminRow?.playlist_id
+    ? { playlistId: adminRow.playlist_id, channelName: (adminRow.official_channel as "Muse Indonesia" | "Ani-One Indonesia") || "Muse Indonesia" }
+    : MUSE_ID_PLAYLIST_BY_ANILIST_ID[media.id];
   const ytPlaylistLink = streamingLinks.find((l) => l.url.includes("youtube.com/playlist") && l.url.includes("list="));
   let officialPlaylistEpisodes: YtRssEntry[] = [];
   let officialChannelName: string | null = null;
+  let activeRule: CuratedPlaylistRule | undefined = undefined;
 
-  const tryPlaylist = async (plId: string, ch: string) => {
-    const eps = await filterEmbeddableEpisodes(await fetchYouTubeAtomFeed(`https://www.youtube.com/feeds/videos.xml?playlist_id=${plId}`, ch));
-    if (eps.length > 0) { officialPlaylistEpisodes = eps; officialChannelName = ch; }
+  const tryPlaylist = async (plId: string, ch: string, rule?: CuratedPlaylistRule) => {
+    const rawList = await fetchFullYouTubePlaylistEntries(plId, ch);
+    const eps = await filterEmbeddableEpisodes(rawList, rule);
+    if (eps.length > 0) {
+      officialPlaylistEpisodes = eps;
+      officialChannelName = ch;
+      activeRule = rule;
+    }
   };
 
-  if (curatedOfficial) await tryPlaylist(curatedOfficial.playlistId, curatedOfficial.channelName);
+  if (curatedOfficial) await tryPlaylist(curatedOfficial.playlistId, curatedOfficial.channelName, curatedOfficial);
   if (officialPlaylistEpisodes.length === 0) {
     const subLive = (await getAllLiveChannelPlaylists()).filter((p) => p.audioLang === "SUB");
     const matchedPl = subLive.find((p) => p.anilistId === media.id) ?? matchLivePlaylistForMedia(media, subLive);
@@ -2085,7 +2824,7 @@ async function handleAnimeDetail(rawSlug: string): Promise<Response> {
 
   const streamEps = (media.streamingEpisodes ?? []).filter((e) => e?.title);
   const episodes = officialPlaylistEpisodes.length > 0
-    ? mapYtEpisodes(officialPlaylistEpisodes)
+    ? mapYtEpisodes(officialPlaylistEpisodes, activeRule)
     : Array.from({ length: Math.min(Math.max(common.released_episodes, Math.min(streamEps.length, 48), 1), 48) }, (_, i) => {
         const epNum = i + 1;
         const m = streamEps.find((se) => parseOfficialEpisodeTitle(se.title ?? "").episodeNumber === epNum) ?? streamEps[i];
@@ -2096,18 +2835,22 @@ async function handleAnimeDetail(rawSlug: string): Promise<Response> {
   const relatedSlugs = (media.relations?.edges ?? []).filter((e) => e.node?.type === "ANIME" && e.node.id).slice(0, 6)
     .map((e) => makeAnimeSlug(e.node?.title?.romaji || e.node?.title?.english || `anime-${e.node?.id}`, e.node!.id));
 
+  const baseData = {
+    ...common,
+    total_episodes: Math.max(episodes.length, common.total_episodes),
+    released_episodes: officialPlaylistEpisodes.length > 0 ? Math.max(episodes.length, 1) : common.released_episodes,
+    is_official_free: officialPlaylistEpisodes.length > 0,
+    official_channel: officialChannelName,
+    episodes,
+    characters: mapMediaCharacters(media),
+    related_slugs: relatedSlugs,
+    external_links: streamingLinks,
+  };
+
   return jsonResponse(setCached(key, {
     status: "success",
     source: officialPlaylistEpisodes.length > 0 ? "anilist+youtube-official" : "anilist-live",
-    animeData: {
-      ...common,
-      is_official_free: officialPlaylistEpisodes.length > 0,
-      official_channel: officialChannelName,
-      episodes,
-      characters: mapMediaCharacters(media),
-      related_slugs: relatedSlugs,
-      external_links: streamingLinks,
-    },
+    animeData: await mergeAdminDetail(baseData),
   }));
 }
 
@@ -2171,6 +2914,386 @@ async function handleEpisodeDetail(rawSlug: string): Promise<Response> {
   return jsonResponse(setCached(key, payload));
 }
 
+// ======================================================
+// Admin CRUD APIs (PostgreSQL-backed Live CMS)
+// ======================================================
+
+async function handleAdminVerify(req: Request): Promise<Response> {
+  const body = await parseJsonBody<{ secret?: string }>(req);
+  const providedSecret = (body?.secret ?? req.headers.get("x-admin-secret") ?? "").trim();
+  const user = await getAuthenticatedUser(req);
+
+  if (user && resolveUserRole(user) === "admin") {
+    return jsonResponse({ status: "success", isAdmin: true, user: serializeUser(user) });
+  }
+
+  const adminSecret = (Bun.env.ADMIN_SEED_SECRET ?? "").trim();
+  if (adminSecret && providedSecret === adminSecret) {
+    if (user && db && dbReady) {
+      const updated = await db`
+        UPDATE users SET role = 'admin', member_tier = 'ADMIN', updated_at = NOW()
+        WHERE id = ${Number(user.id)}
+        RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
+                  appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
+      `;
+      if (updated[0]) {
+        return jsonResponse({ status: "success", isAdmin: true, user: serializeUser(updated[0] as DbUserRow) });
+      }
+    }
+    return jsonResponse({ status: "success", isAdmin: true, user: user ? serializeUser(user) : null });
+  }
+
+  return jsonResponse({ status: false, isAdmin: false, message: "Akses ditolak: akun bukan Admin atau kunci verifikasi salah" }, 403);
+}
+
+async function handleAdminOverview(req: Request): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum terhubung" }, 503);
+
+  const [userStats, commentStats, playlistStats, adminStats, adminAnimes, playlists, recentComments, recentUsers] = await Promise.all([
+    db`SELECT COUNT(*)::int AS c FROM users`,
+    db`SELECT COUNT(*)::int AS c FROM comments`,
+    db`SELECT COUNT(*)::int AS c FROM official_playlists`,
+    db`SELECT COUNT(*)::int AS c, COUNT(*) FILTER (WHERE is_hidden)::int AS hidden_c FROM admin_anime`,
+    loadAdminAnimeList(),
+    db`SELECT playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id, audio_lang, anilist_id
+       FROM official_playlists ORDER BY anilist_id IS NULL, channel_name DESC, title ASC LIMIT 200`,
+    db`SELECT id, user_id, anime_id, episode_number, author_name, author_badge, content, is_spoiler, created_at
+       FROM comments ORDER BY created_at DESC LIMIT 60`,
+    db`SELECT id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
+              appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings, created_at
+       FROM users ORDER BY created_at DESC LIMIT 50`,
+  ]);
+
+  const uRow = userStats[0] as { c?: number } | undefined;
+  const cRow = commentStats[0] as { c?: number } | undefined;
+  const pRow = playlistStats[0] as { c?: number } | undefined;
+  const aRow = adminStats[0] as { c?: number; hidden_c?: number } | undefined;
+
+  return jsonResponse({
+    status: "success",
+    stats: {
+      totalUsers: Number(uRow?.c ?? 0),
+      totalComments: Number(cRow?.c ?? 0),
+      totalPlaylists: Number(pRow?.c ?? 0),
+      totalAdminAnime: Number(aRow?.c ?? 0),
+      hiddenAnimeCount: Number(aRow?.hidden_c ?? 0),
+      curatedRulesCount: Object.keys(CURATED_PLAYLIST_RULES).length,
+      splitPartRulesCount:
+        DUB_SPLIT_RULES.length +
+        Object.values(CURATED_PLAYLIST_RULES).filter((r) => r.epMin !== undefined).length,
+    },
+    adminAnimes,
+    playlists: (playlists as Array<Record<string, unknown>>).map((p) => ({
+      playlistId: String(p.playlist_id ?? ""),
+      title: String(p.title ?? ""),
+      cleanTitle: String(p.clean_title ?? ""),
+      channelName: String(p.channel_name ?? "Muse Indonesia"),
+      episodeHint: Number(p.episode_hint ?? 12),
+      sampleVideoId: String(p.sample_video_id ?? ""),
+      audioLang: String(p.audio_lang ?? "SUB"),
+      anilistId: p.anilist_id ? Number(p.anilist_id) : null,
+    })),
+    recentComments: (recentComments as Array<Record<string, unknown>>).map((c) => ({
+      id: String(c.id),
+      animeId: String(c.anime_id ?? ""),
+      episodeNumber: c.episode_number ? Number(c.episode_number) : null,
+      authorName: String(c.author_name ?? "User"),
+      authorBadge: String(c.author_badge ?? "Member"),
+      content: String(c.content ?? ""),
+      isSpoiler: Boolean(c.is_spoiler),
+      timeLabel: formatRelativeTime(c.created_at),
+    })),
+    recentUsers: (recentUsers as Array<DbUserRow>).map((u) => serializeUser(u)),
+  });
+}
+
+async function handleAdminListAnime(req: Request): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  const rows = await loadAdminAnimeList();
+  return jsonResponse({ status: "success", data: rows });
+}
+
+interface AdminSaveAnimeBody {
+  slug?: string;
+  title?: string;
+  japanese_title?: string;
+  poster?: string;
+  banner?: string;
+  synopsis?: string;
+  genres?: string[] | string;
+  rating?: number;
+  studio?: string;
+  status?: string;
+  type?: string;
+  year?: number;
+  season?: string;
+  total_episodes?: number;
+  released_episodes?: number;
+  duration_minutes?: number;
+  is_official_free?: boolean;
+  is_dub_indo?: boolean;
+  official_channel?: string;
+  playlist_id?: string;
+  anilist_id?: number | null;
+  episodes?: Array<Record<string, unknown>>;
+  is_hidden?: boolean;
+  is_featured?: boolean;
+}
+
+async function handleAdminSaveAnime(req: Request, rawPathSlug?: string): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+
+  const body = await parseJsonBody<AdminSaveAnimeBody>(req);
+  if (!body) return jsonResponse({ status: false, message: "Payload JSON tidak valid" }, 400);
+
+  const existingSlug = rawPathSlug ? decodeURIComponent(rawPathSlug).trim() : "";
+  const titleInput = (body.title ?? "").trim();
+  const slug = existingSlug || (body.slug ?? "").trim() || `${slugify(titleInput || "custom-anime")}-${Date.now().toString().slice(-4)}`;
+  if (!slug) return jsonResponse({ status: false, message: "Slug atau judul anime wajib diisi" }, 400);
+
+  const existingRows = await db`SELECT * FROM admin_anime WHERE slug = ${slug} LIMIT 1`;
+  const prev = existingRows[0] ? normalizeAdminAnimeDbRow(existingRows[0] as Record<string, unknown>) : null;
+
+  const title = titleInput || prev?.title || "";
+  if (!title) return jsonResponse({ status: false, message: "Judul anime tidak boleh kosong" }, 400);
+
+  const japaneseTitle = body.japanese_title !== undefined ? body.japanese_title.trim() : (prev?.japanese_title ?? "");
+  const poster = body.poster !== undefined ? body.poster.trim() : (prev?.poster ?? "");
+  const banner = body.banner !== undefined ? body.banner.trim() : (prev?.banner || poster);
+  const synopsis = body.synopsis !== undefined ? body.synopsis.trim() : (prev?.synopsis ?? "");
+  const genres = body.genres !== undefined
+    ? (Array.isArray(body.genres) ? body.genres.map((g) => String(g).trim()).filter(Boolean) : String(body.genres).split(",").map((g) => g.trim()).filter(Boolean))
+    : (prev?.genres ?? ["Anime"]);
+  const finalGenres = genres.length > 0 ? genres : ["Anime"];
+  const rating = body.rating !== undefined && Number.isFinite(Number(body.rating)) ? Math.min(10, Math.max(0, Number(body.rating))) : (prev?.rating ?? 8.5);
+  const studio = body.studio !== undefined ? body.studio.trim() : (prev?.studio ?? "AnimWatch Admin");
+  const status = body.status !== undefined ? body.status.trim().toUpperCase() : (prev?.status ?? "ONGOING");
+  const type = body.type !== undefined ? body.type.trim() : (prev?.type ?? "TV Series");
+  const year = body.year !== undefined && Number.isFinite(Number(body.year)) ? Number(body.year) : (prev?.year ?? 2026);
+  const season = body.season !== undefined ? body.season.trim() : (prev?.season ?? String(year));
+  const durationMinutes = body.duration_minutes !== undefined && Number.isFinite(Number(body.duration_minutes)) ? Math.max(1, Number(body.duration_minutes)) : (prev?.duration_minutes ?? 24);
+  const episodes = body.episodes !== undefined ? normalizeAdminEpisodes(body.episodes, poster, slug) : (prev?.episodes ?? []);
+  const releasedEpisodes = body.released_episodes !== undefined && Number.isFinite(Number(body.released_episodes))
+    ? Math.max(0, Number(body.released_episodes))
+    : Math.max(prev?.released_episodes ?? 0, episodes.length, 1);
+  const totalEpisodes = body.total_episodes !== undefined && Number.isFinite(Number(body.total_episodes))
+    ? Math.max(releasedEpisodes, Number(body.total_episodes), 1)
+    : Math.max(prev?.total_episodes ?? 12, releasedEpisodes, 1);
+  const playlistId = body.playlist_id !== undefined ? body.playlist_id.trim() : (prev?.playlist_id ?? "");
+  const isOfficialFree = body.is_official_free !== undefined ? Boolean(body.is_official_free) : (prev?.is_official_free ?? (Boolean(playlistId) || episodes.some((e) => Boolean(e.stream_url))));
+  const isDubIndo = body.is_dub_indo !== undefined ? Boolean(body.is_dub_indo) : (prev?.is_dub_indo ?? false);
+  const officialChannel = body.official_channel !== undefined ? body.official_channel.trim() : (prev?.official_channel ?? "AnimWatch Admin");
+  const anilistId = body.anilist_id !== undefined ? (body.anilist_id && Number(body.anilist_id) > 0 ? Number(body.anilist_id) : null) : (prev?.anilist_id ?? extractIdFromSlug(slug));
+  const isHidden = body.is_hidden !== undefined ? Boolean(body.is_hidden) : (prev?.is_hidden ?? false);
+  const isFeatured = body.is_featured !== undefined ? Boolean(body.is_featured) : (prev?.is_featured ?? true);
+
+  const saved = await db`
+    INSERT INTO admin_anime (
+      slug, title, japanese_title, poster, banner, synopsis, genres, rating, studio,
+      status, type, year, season, total_episodes, released_episodes, duration_minutes,
+      is_official_free, is_dub_indo, official_channel, playlist_id, anilist_id,
+      episodes_json, is_hidden, is_featured, updated_at
+    )
+    VALUES (
+      ${slug}, ${title}, ${japaneseTitle}, ${poster}, ${banner}, ${synopsis},
+      ${JSON.stringify(finalGenres)}::jsonb, ${rating}, ${studio},
+      ${status}, ${type}, ${year}, ${season}, ${totalEpisodes}, ${releasedEpisodes}, ${durationMinutes},
+      ${isOfficialFree}, ${isDubIndo}, ${officialChannel}, ${playlistId}, ${anilistId},
+      ${JSON.stringify(episodes)}::jsonb, ${isHidden}, ${isFeatured}, NOW()
+    )
+    ON CONFLICT (slug) DO UPDATE SET
+      title = EXCLUDED.title,
+      japanese_title = EXCLUDED.japanese_title,
+      poster = EXCLUDED.poster,
+      banner = EXCLUDED.banner,
+      synopsis = EXCLUDED.synopsis,
+      genres = EXCLUDED.genres,
+      rating = EXCLUDED.rating,
+      studio = EXCLUDED.studio,
+      status = EXCLUDED.status,
+      type = EXCLUDED.type,
+      year = EXCLUDED.year,
+      season = EXCLUDED.season,
+      total_episodes = EXCLUDED.total_episodes,
+      released_episodes = EXCLUDED.released_episodes,
+      duration_minutes = EXCLUDED.duration_minutes,
+      is_official_free = EXCLUDED.is_official_free,
+      is_dub_indo = EXCLUDED.is_dub_indo,
+      official_channel = EXCLUDED.official_channel,
+      playlist_id = EXCLUDED.playlist_id,
+      anilist_id = EXCLUDED.anilist_id,
+      episodes_json = EXCLUDED.episodes_json,
+      is_hidden = EXCLUDED.is_hidden,
+      is_featured = EXCLUDED.is_featured,
+      updated_at = NOW()
+    RETURNING *
+  `;
+
+  cache.clear();
+  return jsonResponse({ status: "success", anime: normalizeAdminAnimeDbRow(saved[0] as Record<string, unknown>) });
+}
+
+async function handleAdminDeleteAnime(req: Request, rawSlug: string): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const slug = decodeURIComponent(rawSlug).trim();
+  await db`DELETE FROM admin_anime WHERE slug = ${slug}`;
+  cache.clear();
+  return jsonResponse({ status: "success", deleted: slug });
+}
+
+async function handleAdminListPlaylists(req: Request): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  const rows = db && dbReady
+    ? await db`SELECT playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id, audio_lang, anilist_id
+                FROM official_playlists ORDER BY anilist_id IS NULL, channel_name DESC, title ASC LIMIT 250`
+    : [];
+  return jsonResponse({
+    status: "success",
+    playlists: (rows as Array<Record<string, unknown>>).map((p) => ({
+      playlistId: String(p.playlist_id ?? ""),
+      title: String(p.title ?? ""),
+      cleanTitle: String(p.clean_title ?? ""),
+      channelName: String(p.channel_name ?? "Muse Indonesia"),
+      episodeHint: Number(p.episode_hint ?? 12),
+      sampleVideoId: String(p.sample_video_id ?? ""),
+      audioLang: String(p.audio_lang ?? "SUB"),
+      anilistId: p.anilist_id ? Number(p.anilist_id) : null,
+    })),
+    splitParts: [
+      ...DUB_SPLIT_RULES.map((r) => ({
+        key: `${r.playlistId}:${r.partKey}`,
+        playlistId: r.playlistId,
+        anilistId: r.anilistId,
+        channelName: r.channelName,
+        audioLang: "DUB_ID",
+        epMin: r.epMin ?? null,
+        epMax: r.epMax ?? null,
+      })),
+      ...Object.entries(CURATED_PLAYLIST_RULES)
+        .filter(([, r]) => r.epMin !== undefined)
+        .map(([aid, r]) => ({
+          key: `${r.playlistId}:${aid}`,
+          playlistId: r.playlistId,
+          anilistId: Number(aid),
+          channelName: r.channelName,
+          audioLang: "SUB",
+          epMin: r.epMin ?? null,
+          epMax: r.epMax ?? null,
+        })),
+    ],
+  });
+}
+
+async function handleAdminSavePlaylist(req: Request, rawPlaylistId?: string): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+
+  const body = await parseJsonBody<{
+    playlistId?: string;
+    title?: string;
+    cleanTitle?: string;
+    channelName?: string;
+    episodeHint?: number;
+    sampleVideoId?: string;
+    audioLang?: string;
+    anilistId?: number | null;
+  }>(req);
+  const playlistId = (rawPlaylistId ? decodeURIComponent(rawPlaylistId) : body?.playlistId ?? "").trim();
+  const title = (body?.title ?? body?.cleanTitle ?? "").trim();
+  if (!playlistId || !title) {
+    return jsonResponse({ status: false, message: "Playlist ID dan judul wajib diisi" }, 400);
+  }
+  const cleanTitle = (body?.cleanTitle || cleanPlaylistDisplayTitle(title) || title).trim().slice(0, 180);
+  const channelName = (body?.channelName ?? "Muse Indonesia").trim() || "Muse Indonesia";
+  const episodeHint = Math.max(1, Number(body?.episodeHint) || 12);
+  const sampleVideoId = (body?.sampleVideoId ?? "").trim();
+  const audioLang = body?.audioLang === "DUB_ID" || isDubIndoTitle(title) ? "DUB_ID" : "SUB";
+  const anilistId = body?.anilistId && Number(body.anilistId) > 0 ? Number(body.anilistId) : null;
+
+  const saved = await db`
+    INSERT INTO official_playlists (playlist_id, title, clean_title, channel_name, episode_hint, sample_video_id, audio_lang, anilist_id)
+    VALUES (${playlistId}, ${title.slice(0, 220)}, ${cleanTitle}, ${channelName}, ${episodeHint}, ${sampleVideoId}, ${audioLang}, ${anilistId})
+    ON CONFLICT (playlist_id) DO UPDATE SET
+      title = EXCLUDED.title,
+      clean_title = EXCLUDED.clean_title,
+      channel_name = EXCLUDED.channel_name,
+      episode_hint = EXCLUDED.episode_hint,
+      audio_lang = EXCLUDED.audio_lang,
+      anilist_id = EXCLUDED.anilist_id,
+      sample_video_id = CASE WHEN EXCLUDED.sample_video_id <> '' THEN EXCLUDED.sample_video_id ELSE official_playlists.sample_video_id END
+    RETURNING *
+  `;
+  cache.clear();
+  const p = saved[0] as Record<string, unknown>;
+  return jsonResponse({
+    status: "success",
+    playlist: {
+      playlistId: String(p.playlist_id),
+      title: String(p.title),
+      cleanTitle: String(p.clean_title),
+      channelName: String(p.channel_name),
+      episodeHint: Number(p.episode_hint),
+      sampleVideoId: String(p.sample_video_id ?? ""),
+      audioLang: String(p.audio_lang),
+      anilistId: p.anilist_id ? Number(p.anilist_id) : null,
+    },
+  });
+}
+
+async function handleAdminDeletePlaylist(req: Request, rawPlaylistId: string): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const playlistId = decodeURIComponent(rawPlaylistId).trim();
+  await db`DELETE FROM official_playlists WHERE playlist_id = ${playlistId}`;
+  cache.clear();
+  return jsonResponse({ status: "success", deleted: playlistId });
+}
+
+async function handleAdminDeleteComment(req: Request, rawCommentId: string): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const cid = Number(rawCommentId);
+  if (!Number.isFinite(cid) || cid <= 0) return jsonResponse({ status: false, message: "ID komentar tidak valid" }, 400);
+  await db`DELETE FROM comments WHERE id = ${cid}`;
+  cache.clear();
+  return jsonResponse({ status: "success", deleted: cid });
+}
+
+async function handleAdminUpdateUser(req: Request, rawUserId: string): Promise<Response> {
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  if (!db || !dbReady) return jsonResponse({ status: false, message: "Database belum siap" }, 503);
+  const uid = Number(rawUserId);
+  if (!Number.isFinite(uid) || uid <= 0) return jsonResponse({ status: false, message: "ID user tidak valid" }, 400);
+  const body = await parseJsonBody<{ role?: string; memberTier?: string }>(req);
+  const role = body?.role === "admin" ? "admin" : body?.role === "user" ? "user" : null;
+  const tier = body?.memberTier?.trim() || null;
+
+  const updated = await db`
+    UPDATE users
+    SET
+      role = COALESCE(${role}, role),
+      member_tier = COALESCE(${tier}, member_tier),
+      updated_at = NOW()
+    WHERE id = ${uid}
+    RETURNING id, email, display_name, handle, bio, avatar_emblem, avatar_url, member_tier, role,
+              appearance_mode, accent_theme, preferred_genres, has_completed_theme_setup, settings
+  `;
+  if (!updated[0]) return jsonResponse({ status: false, message: "User tidak ditemukan" }, 404);
+  return jsonResponse({ status: "success", user: serializeUser(updated[0] as DbUserRow) });
+}
+
 const port = Number(Bun.env.PORT ?? 3000);
 
 Bun.serve({
@@ -2196,6 +3319,7 @@ Bun.serve({
             auth: ["GET /api/auth/config", "POST /api/auth/register", "POST /api/auth/login", "POST /api/auth/google", "GET /api/auth/google/start", "GET /api/auth/google/callback", "POST /api/auth/logout"],
             user: ["GET /api/user/me", "PATCH /api/user/profile", "PATCH /api/user/preferences", "PUT /api/user/watchlist", "PUT /api/user/history", "DELETE /api/user/history", "PUT /api/user/ratings"],
             comments: ["GET /api/comments/:animeId", "POST /api/comments", "POST /api/comments/:id/like"],
+            admin: ["POST /api/admin/verify", "GET /api/admin/overview", "GET/POST /api/admin/anime", "PUT/DELETE /api/admin/anime/:slug", "GET/POST /api/admin/playlists", "PUT/DELETE /api/admin/playlists/:playlistId", "DELETE /api/admin/comments/:id", "PATCH /api/admin/users/:id"],
           },
         });
       }
@@ -2236,6 +3360,24 @@ Bun.serve({
       const delHistMatch = path.match(/^\/api\/user\/history\/(.+)$/);
       if (method === "DELETE" && delHistMatch) return await handleDeleteHistory(req, delHistMatch[1]);
       if (method === "PUT" && path === "/api/user/ratings") return await handleUpsertRating(req);
+
+      // Admin CRUD Routes
+      if (method === "POST" && path === "/api/admin/verify") return await handleAdminVerify(req);
+      if (method === "GET" && path === "/api/admin/overview") return await handleAdminOverview(req);
+      if (method === "GET" && path === "/api/admin/anime") return await handleAdminListAnime(req);
+      if (method === "POST" && path === "/api/admin/anime") return await handleAdminSaveAnime(req);
+      const adminAnimeMatch = path.match(/^\/api\/admin\/anime\/(.+)$/);
+      if (method === "PUT" && adminAnimeMatch) return await handleAdminSaveAnime(req, adminAnimeMatch[1]);
+      if (method === "DELETE" && adminAnimeMatch) return await handleAdminDeleteAnime(req, adminAnimeMatch[1]);
+      if (method === "GET" && path === "/api/admin/playlists") return await handleAdminListPlaylists(req);
+      if (method === "POST" && path === "/api/admin/playlists") return await handleAdminSavePlaylist(req);
+      const adminPlMatch = path.match(/^\/api\/admin\/playlists\/(.+)$/);
+      if (method === "PUT" && adminPlMatch) return await handleAdminSavePlaylist(req, adminPlMatch[1]);
+      if (method === "DELETE" && adminPlMatch) return await handleAdminDeletePlaylist(req, adminPlMatch[1]);
+      const adminCommentMatch = path.match(/^\/api\/admin\/comments\/([^/]+)$/);
+      if (method === "DELETE" && adminCommentMatch) return await handleAdminDeleteComment(req, adminCommentMatch[1]);
+      const adminUserMatch = path.match(/^\/api\/admin\/users\/([^/]+)$/);
+      if (method === "PATCH" && adminUserMatch) return await handleAdminUpdateUser(req, adminUserMatch[1]);
 
       // Comments Routes
       if (method === "POST" && path === "/api/comments") return await handlePostComment(req);

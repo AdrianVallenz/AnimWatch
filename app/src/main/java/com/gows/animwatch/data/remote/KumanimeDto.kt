@@ -243,6 +243,7 @@ data class UserProfileDto(
     @SerializedName("avatarEmblem") val avatarEmblem: String? = null,
     @SerializedName("avatarUrl") val avatarUrl: String? = null,
     @SerializedName("memberTier") val memberTier: String? = null,
+    @SerializedName("role") val role: String? = null,
     @SerializedName("appearanceMode") val appearanceMode: String? = null,
     @SerializedName("accentTheme") val accentTheme: String? = null,
     @SerializedName("preferredGenres") val preferredGenres: List<String>? = null,
@@ -350,4 +351,158 @@ data class ToggleCommentLikeResponseDto(
     @SerializedName("status") val status: Any? = null,
     @SerializedName("liked") val liked: Boolean? = null,
     @SerializedName("likes") val likes: Int? = null
+)
+
+// ======================================================
+// Admin CRUD DTOs
+// ======================================================
+
+data class AdminEpisodeDto(
+    @SerializedName("eps_title") val epsTitle: String? = null,
+    @SerializedName("eps_slug") val epsSlug: String? = null,
+    @SerializedName("number") val number: Int? = null,
+    @SerializedName("stream_url") val streamUrl: String? = null,
+    @SerializedName("stream_type") val streamType: String? = null,
+    @SerializedName("thumbnail") val thumbnail: String? = null
+)
+
+data class AdminAnimeDto(
+    @SerializedName("slug") val slug: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("japanese_title") val japaneseTitle: String = "",
+    @SerializedName("poster") val poster: String = "",
+    @SerializedName("banner") val banner: String = "",
+    @SerializedName("synopsis") val synopsis: String = "",
+    @SerializedName("genres") val genres: List<String> = emptyList(),
+    @SerializedName("rating") val rating: Double = 8.5,
+    @SerializedName("studio") val studio: String = "AnimWatch Admin",
+    @SerializedName("status") val status: String = "ONGOING",
+    @SerializedName("type") val type: String = "TV Series",
+    @SerializedName("year") val year: Int = 2026,
+    @SerializedName("season") val season: String = "2026",
+    @SerializedName("total_episodes") val totalEpisodes: Int = 12,
+    @SerializedName("released_episodes") val releasedEpisodes: Int = 1,
+    @SerializedName("duration_minutes") val durationMinutes: Int = 24,
+    @SerializedName("is_official_free") val isOfficialFree: Boolean = true,
+    @SerializedName("is_dub_indo") val isDubIndo: Boolean = false,
+    @SerializedName("official_channel") val officialChannel: String = "AnimWatch Admin",
+    @SerializedName("playlist_id") val playlistId: String = "",
+    @SerializedName("anilist_id") val anilistId: Int? = null,
+    @SerializedName("episodes") val episodes: List<AdminEpisodeDto> = emptyList(),
+    @SerializedName("is_hidden") val isHidden: Boolean = false,
+    @SerializedName("is_featured") val isFeatured: Boolean = true
+)
+
+data class AdminSaveAnimeRequestDto(
+    @SerializedName("slug") val slug: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("japanese_title") val japaneseTitle: String? = null,
+    @SerializedName("poster") val poster: String? = null,
+    @SerializedName("banner") val banner: String? = null,
+    @SerializedName("synopsis") val synopsis: String? = null,
+    @SerializedName("genres") val genres: List<String>? = null,
+    @SerializedName("rating") val rating: Double? = null,
+    @SerializedName("studio") val studio: String? = null,
+    @SerializedName("status") val status: String? = null,
+    @SerializedName("type") val type: String? = null,
+    @SerializedName("year") val year: Int? = null,
+    @SerializedName("season") val season: String? = null,
+    @SerializedName("total_episodes") val totalEpisodes: Int? = null,
+    @SerializedName("released_episodes") val releasedEpisodes: Int? = null,
+    @SerializedName("duration_minutes") val durationMinutes: Int? = null,
+    @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("official_channel") val officialChannel: String? = null,
+    @SerializedName("playlist_id") val playlistId: String? = null,
+    @SerializedName("anilist_id") val anilistId: Int? = null,
+    @SerializedName("episodes") val episodes: List<AdminEpisodeDto>? = null,
+    @SerializedName("is_hidden") val isHidden: Boolean? = null,
+    @SerializedName("is_featured") val isFeatured: Boolean? = null
+)
+
+data class AdminSaveAnimeResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("anime") val anime: AdminAnimeDto? = null
+)
+
+data class AdminPlaylistDto(
+    @SerializedName("playlistId") val playlistId: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("cleanTitle") val cleanTitle: String = "",
+    @SerializedName("channelName") val channelName: String = "Muse Indonesia",
+    @SerializedName("episodeHint") val episodeHint: Int = 12,
+    @SerializedName("sampleVideoId") val sampleVideoId: String = "",
+    @SerializedName("audioLang") val audioLang: String = "SUB",
+    @SerializedName("anilistId") val anilistId: Int? = null
+)
+
+data class AdminSavePlaylistRequestDto(
+    @SerializedName("playlistId") val playlistId: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("cleanTitle") val cleanTitle: String? = null,
+    @SerializedName("channelName") val channelName: String = "Muse Indonesia",
+    @SerializedName("episodeHint") val episodeHint: Int = 12,
+    @SerializedName("sampleVideoId") val sampleVideoId: String = "",
+    @SerializedName("audioLang") val audioLang: String = "SUB",
+    @SerializedName("anilistId") val anilistId: Int? = null
+)
+
+data class AdminSavePlaylistResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("playlist") val playlist: AdminPlaylistDto? = null
+)
+
+data class AdminCommentDto(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("animeId") val animeId: String = "",
+    @SerializedName("episodeNumber") val episodeNumber: Int? = null,
+    @SerializedName("authorName") val authorName: String = "",
+    @SerializedName("authorBadge") val authorBadge: String = "Member",
+    @SerializedName("content") val content: String = "",
+    @SerializedName("isSpoiler") val isSpoiler: Boolean = false,
+    @SerializedName("timeLabel") val timeLabel: String = ""
+)
+
+data class AdminStatsDto(
+    @SerializedName("totalUsers") val totalUsers: Int = 0,
+    @SerializedName("totalComments") val totalComments: Int = 0,
+    @SerializedName("totalPlaylists") val totalPlaylists: Int = 0,
+    @SerializedName("totalAdminAnime") val totalAdminAnime: Int = 0,
+    @SerializedName("hiddenAnimeCount") val hiddenAnimeCount: Int = 0,
+    @SerializedName("curatedRulesCount") val curatedRulesCount: Int = 0,
+    @SerializedName("splitPartRulesCount") val splitPartRulesCount: Int = 0
+)
+
+data class AdminVerifyRequestDto(
+    @SerializedName("secret") val secret: String = ""
+)
+
+data class AdminVerifyResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("isAdmin") val isAdmin: Boolean? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("user") val user: UserProfileDto? = null
+)
+
+data class AdminOverviewResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("stats") val stats: AdminStatsDto? = null,
+    @SerializedName("adminAnimes") val adminAnimes: List<AdminAnimeDto>? = null,
+    @SerializedName("playlists") val playlists: List<AdminPlaylistDto>? = null,
+    @SerializedName("recentComments") val recentComments: List<AdminCommentDto>? = null,
+    @SerializedName("recentUsers") val recentUsers: List<UserProfileDto>? = null
+)
+
+data class AdminUpdateUserRequestDto(
+    @SerializedName("role") val role: String? = null,
+    @SerializedName("memberTier") val memberTier: String? = null
+)
+
+data class AdminUpdateUserResponseDto(
+    @SerializedName("status") val status: Any? = null,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("user") val user: UserProfileDto? = null
 )

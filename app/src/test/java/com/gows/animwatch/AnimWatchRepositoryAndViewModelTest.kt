@@ -269,4 +269,39 @@ class AnimWatchRepositoryAndViewModelTest {
         val movieSession = vm.uiState.value.playerSession!!
         assertNull(vm.getCurrentSubtitleText(movieSession.copy(positionSeconds = 5000)))
     }
+
+    @Test
+    fun multiPartSeasonSplittingAndAdminStateWorkProperly() {
+        val vm = AnimWatchViewModel()
+        val template = vm.uiState.value.allAnime.first()
+
+        // 1. Mushoku Tensei 2-Part / Multi-Cour seasons sort chronologically & format cleanly
+        val ms1p1 = template.copy(id = "ms-s1p1", slug = "mushoku-108465", title = "Mushoku Tensei: Jobless Reincarnation", year = 2021)
+        val ms1p2 = template.copy(id = "ms-s1p2", slug = "mushoku-part-2-127720", title = "Mushoku Tensei: Jobless Reincarnation Part 2", year = 2021)
+        val ms2p1 = template.copy(id = "ms-s2p1", slug = "mushoku-s2-146065", title = "Mushoku Tensei: Jobless Reincarnation Season 2", year = 2023)
+        val ms2p2 = template.copy(id = "ms-s2p2", slug = "mushoku-s2p2-166873", title = "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2", year = 2024)
+        val ms3 = template.copy(id = "ms-s3", slug = "mushoku-s3-178789", title = "Mushoku Tensei: Jobless Reincarnation Season 3", year = 2026)
+
+        val ordered = FranchiseSeasonHelper.findFranchiseSeasons(ms2p2, listOf(ms3, ms2p1, ms1p2, ms2p2, ms1p1))
+        assertEquals(listOf("ms-s1p1", "ms-s1p2", "ms-s2p1", "ms-s2p2", "ms-s3"), ordered.map { it.id })
+        assertEquals("Season 1 • Part 2", FranchiseSeasonHelper.formatSeasonShortLabel(ms1p2, 1))
+        assertEquals("Season 2 • Part 2", FranchiseSeasonHelper.formatSeasonShortLabel(ms2p2, 3))
+        assertEquals("Season 3", FranchiseSeasonHelper.formatSeasonShortLabel(ms3, 4))
+        assertEquals("ms-s2p2", FranchiseSeasonHelper.findNextSeason(ms2p1, ordered)?.id)
+
+        // 2. Dub Indo split slug marker orders S1 P1 -> S1 P2 -> S2 P1 -> S2 P2
+        val dubS2P1 = template.copy(id = "dub-pl--s2p1", slug = "dub-PL123--s2p1", title = "Mushoku Tensei S2 (Dub Indo)", isDubIndo = true, year = 2023)
+        val dubS2P2 = template.copy(id = "dub-pl--s2p2", slug = "dub-PL123--s2p2", title = "Mushoku Tensei S2 Cour 2 (Dub Indo)", isDubIndo = true, year = 2024)
+        assertEquals("Season 2 • Part 1", FranchiseSeasonHelper.formatSeasonShortLabel(dubS2P1, 0))
+        assertEquals("Season 2 • Part 2", FranchiseSeasonHelper.formatSeasonShortLabel(dubS2P2, 1))
+        assertEquals("dub-pl--s2p2", FranchiseSeasonHelper.findNextSeason(dubS2P1, listOf(dubS2P2, dubS2P1))?.id)
+
+        // 3. Admin route navigation and logout reset
+        vm.openAdminPanel()
+        assertTrue(vm.uiState.value.currentRoute is AppRoute.AdminPanel)
+        assertTrue(vm.navigateBack())
+        assertTrue(vm.uiState.value.currentRoute is AppRoute.TabsRoot)
+        vm.logout()
+        assertFalse(vm.uiState.value.isAdmin)
+    }
 }

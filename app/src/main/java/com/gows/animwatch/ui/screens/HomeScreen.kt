@@ -211,16 +211,12 @@ fun HomeScreen(
             .background(ObsidianVoid),
         contentPadding = PaddingValues(bottom = bottomInsetPadding)
     ) {
-        // 1. Anime Streaming Portal Header Bar
+        // 1. Anime Streaming Portal Header Bar (Hanya logo & lonceng notifikasi — tanpa tombol navigasi ganda)
         item(key = "home_top_bar") {
             HomeTopBar(
                 totalAnimeCount = uiState.allAnime.size,
                 unreadNotifications = uiState.unreadNotificationCount,
-                avatarEmblem = uiState.userProfile.avatarEmblem,
-                avatarUrl = uiState.userProfile.avatarUrl,
-                onSearchClick = onOpenSearch,
-                onNotificationClick = onOpenNotifications,
-                onProfileClick = onOpenProfile
+                onNotificationClick = onOpenNotifications
             )
         }
 
@@ -262,9 +258,7 @@ fun HomeScreen(
                     statusText = "${uiState.allAnime.size} judul",
                     ledColor = if (apiStatus == ApiConnectionStatus.SYNCING) GoldBright else StatusAmber,
                     pulsing = apiStatus == ApiConnectionStatus.SYNCING,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .clickable(onClick = onOpenProfile)
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
 
@@ -642,13 +636,14 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                GoldGradientButton(
-                    text = "Jelajah Semua",
-                    onClick = onOpenSearch,
-                    modifier = Modifier.fillMaxWidth(),
-                    height = 42.dp
-                )
+                if (uiState.catalogLoadError) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    GoldOutlinedButton(
+                        text = "Muat Ulang Katalog",
+                        onClick = onLoadMoreCatalog,
+                        height = 38.dp
+                    )
+                }
             }
         }
     }
@@ -688,11 +683,7 @@ private fun HomeGenreChip(
 private fun HomeTopBar(
     totalAnimeCount: Int,
     unreadNotifications: Int,
-    avatarEmblem: String,
-    avatarUrl: String,
-    onSearchClick: () -> Unit,
-    onNotificationClick: () -> Unit,
-    onProfileClick: () -> Unit
+    onNotificationClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -726,12 +717,9 @@ private fun HomeTopBar(
             }
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        Box {
             IconButton(
-                onClick = onSearchClick,
+                onClick = onNotificationClick,
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
@@ -739,54 +727,29 @@ private fun HomeTopBar(
                     .border(0.75.dp, GoldSubtleBorder, CircleShape)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = "Cari Anime",
-                    tint = TextPrimary,
+                    imageVector = Icons.Rounded.Notifications,
+                    contentDescription = "Notifikasi",
+                    tint = if (unreadNotifications > 0) GoldPrimary else TextPrimary,
                     modifier = Modifier.size(19.dp)
                 )
             }
-
-            Box {
-                IconButton(
-                    onClick = onNotificationClick,
+            if (unreadNotifications > 0) {
+                Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .align(Alignment.TopEnd)
+                        .size(17.dp)
                         .clip(CircleShape)
-                        .background(ObsidianCard)
-                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                        .background(StatusLive),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Notifications,
-                        contentDescription = "Notifikasi",
-                        tint = if (unreadNotifications > 0) GoldPrimary else TextPrimary,
-                        modifier = Modifier.size(19.dp)
+                    Text(
+                        text = "$unreadNotifications",
+                        color = MediaTextLight,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
-                if (unreadNotifications > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(17.dp)
-                            .clip(CircleShape)
-                            .background(StatusLive),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "$unreadNotifications",
-                            color = MediaTextLight,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
             }
-
-            UserAvatarBadge(
-                avatarUrl = avatarUrl,
-                emblem = avatarEmblem,
-                size = 40.dp,
-                onClick = onProfileClick
-            )
         }
     }
 }

@@ -74,6 +74,7 @@ import com.gows.animwatch.ui.components.FloatingGoldBottomNav
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.MiniPlayerBar
 import com.gows.animwatch.ui.components.NotificationsBottomSheet
+import com.gows.animwatch.ui.screens.AdminPanelScreen
 import com.gows.animwatch.ui.screens.AnimeDetailScreen
 import com.gows.animwatch.ui.screens.AuthScreen
 import com.gows.animwatch.ui.screens.CatalogListScreen
@@ -443,6 +444,7 @@ fun AnimWatchApp(
                                 onOpenThemeEditor = viewModel::openThemeEditorFromProfile,
                                 onClearCache = viewModel::clearAppCache,
                                 onRefreshDeviceState = viewModel::refreshDeviceStorageAndPermissions,
+                                onOpenAdminPanel = viewModel::openAdminPanel,
                                 onLogout = viewModel::logout
                             )
                         }
@@ -561,6 +563,24 @@ fun AnimWatchApp(
                             route.preset != CatalogPreset.TOP_RATED,
                         onLoadMore = { viewModel.loadMoreCatalog(silent = true) },
                         onRetryLoadMore = viewModel::retryLoadMoreCatalog
+                    )
+                }
+
+                is AppRoute.AdminPanel -> {
+                    AdminPanelScreen(
+                        uiState = uiState,
+                        bottomInsetPadding = bottomContentPadding,
+                        onBack = { viewModel.navigateBack() },
+                        onVerifyAdmin = viewModel::verifyAdminAccess,
+                        onRefreshOverview = { viewModel.loadAdminOverview(silent = false) },
+                        onSaveAnime = viewModel::saveAdminAnime,
+                        onQuickToggleHide = viewModel::quickToggleCatalogAnimeHidden,
+                        onDeleteAnime = viewModel::deleteAdminAnime,
+                        onSavePlaylist = viewModel::saveAdminPlaylist,
+                        onDeletePlaylist = viewModel::deleteAdminPlaylist,
+                        onDeleteComment = viewModel::adminDeleteComment,
+                        onUpdateUserRole = viewModel::adminUpdateUserRole,
+                        onUpdateServerUrl = viewModel::updateApiBaseUrl
                     )
                 }
             }

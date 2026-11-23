@@ -311,7 +311,7 @@ private fun CatalogExploreContent(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp)
+                    .height(46.dp)
                     .clip(CircleShape)
                     .background(ObsidianCard)
                     .border(
@@ -319,20 +319,20 @@ private fun CatalogExploreContent(
                         color = searchBorderColor,
                         shape = CircleShape
                     )
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 15.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Search,
                     contentDescription = null,
                     tint = if (searchFocused) GoldPrimary else TextTertiary,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (filter.query.isEmpty()) {
                         Text(
-                            text = "Cari judul, studio, atau genre...",
+                            text = "Cari judul anime...",
                             color = TextTertiary,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
@@ -376,7 +376,7 @@ private fun CatalogExploreContent(
                 IconButton(
                     onClick = onOpenFilterSheet,
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
                         .background(if (filter.activeFilterCount > 0) GoldTintStrong else ObsidianCard)
                         .border(
@@ -387,7 +387,7 @@ private fun CatalogExploreContent(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Tune,
-                        contentDescription = "Filter",
+                        contentDescription = "Filter & Tampilan",
                         tint = if (filter.activeFilterCount > 0) GoldPrimary else TextPrimary
                     )
                 }
@@ -395,7 +395,7 @@ private fun CatalogExploreContent(
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .size(18.dp)
+                            .size(17.dp)
                             .clip(CircleShape)
                             .background(GoldPrimary),
                         contentAlignment = Alignment.Center
@@ -403,111 +403,60 @@ private fun CatalogExploreContent(
                         Text(
                             text = "${filter.activeFilterCount}",
                             color = TextOnGold,
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
-
-            IconButton(
-                onClick = onToggleGridView,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(ObsidianCard)
-                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (filter.isGridView) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
-                    contentDescription = "Ubah Tampilan",
-                    tint = GoldPrimary
-                )
-            }
         }
 
-        // Audio Category Switcher (Semua / Sub Indo / Dub Indo)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            AudioFilter.entries.forEach { audioOpt ->
-                val selected = filter.audioFilter == audioOpt
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(CircleShape)
-                        .background(
-                            if (selected) GoldGradientBrush
-                            else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
-                        )
-                        .border(
-                            width = if (selected) 0.dp else 0.75.dp,
-                            color = if (selected) Color.Transparent else GoldSubtleBorder,
-                            shape = CircleShape
-                        )
-                        .clickable { onSelectAudioFilter(audioOpt) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = audioOpt.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (selected) TextOnGold else TextSecondary,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-                    )
-                }
-            }
-        }
-
-        // Quick Genre Chips Row + Ready-to-Play toggle
+        // Single calm quick-filter strip (Semua, Sub Indo, Dub Indo, Siap Putar, + top genres)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                val allSelected = filter.selectedGenres.isEmpty() && !filter.onlyPlayable
+                val allSelected = filter.selectedGenres.isEmpty() && !filter.onlyPlayable && filter.audioFilter == AudioFilter.ALL
                 GenrePillChip(
                     label = "Semua",
                     selected = allSelected,
-                    onClick = { if (!allSelected) onResetGenreFilters() }
+                    onClick = { onResetFilters() }
                 )
             }
             item {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(
-                            if (filter.onlyPlayable) GoldGradientBrush
-                            else Brush.linearGradient(listOf(GoldTint, GoldTint))
+                GenrePillChip(
+                    label = "Sub Indo",
+                    selected = filter.audioFilter == AudioFilter.SUB_INDO,
+                    onClick = {
+                        onSelectAudioFilter(
+                            if (filter.audioFilter == AudioFilter.SUB_INDO) AudioFilter.ALL else AudioFilter.SUB_INDO
                         )
-                        .border(
-                            width = if (filter.onlyPlayable) 0.dp else 0.75.dp,
-                            color = if (filter.onlyPlayable) Color.Transparent else GoldPrimary.copy(alpha = 0.45f),
-                            shape = CircleShape
-                        )
-                        .clickable(onClick = onToggleOnlyPlayable)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        tint = if (filter.onlyPlayable) TextOnGold else GoldPrimary,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "Siap Putar",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (filter.onlyPlayable) TextOnGold else GoldPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                    }
+                )
             }
-            items(uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }) { genre ->
+            item {
+                GenrePillChip(
+                    label = "Dub Indo",
+                    selected = filter.audioFilter == AudioFilter.DUB_INDO,
+                    onClick = {
+                        onSelectAudioFilter(
+                            if (filter.audioFilter == AudioFilter.DUB_INDO) AudioFilter.ALL else AudioFilter.DUB_INDO
+                        )
+                    }
+                )
+            }
+            item {
+                GenrePillChip(
+                    label = "Siap Putar",
+                    selected = filter.onlyPlayable,
+                    onClick = onToggleOnlyPlayable
+                )
+            }
+            val topGenres = listOf("Action", "Fantasy", "Adventure", "Comedy", "Romance", "Sci-Fi")
+                .filter { g -> uiState.genres.any { it.equals(g, ignoreCase = true) } }
+                .ifEmpty { uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }.take(6) }
+            items(topGenres) { genre ->
                 GenrePillChip(
                     label = genre,
                     selected = genre in filter.selectedGenres,
@@ -516,7 +465,8 @@ private fun CatalogExploreContent(
             }
         }
 
-        if (filter.query.isEmpty() && filter.activeFilterCount == 0 && uiState.searchHistory.isNotEmpty()) {
+        // Show recent searches ONLY while user focuses the search box so browsing stays clean
+        if (searchFocused && filter.query.isEmpty() && uiState.searchHistory.isNotEmpty()) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -528,12 +478,12 @@ private fun CatalogExploreContent(
                             imageVector = Icons.Rounded.History,
                             contentDescription = null,
                             tint = GoldPrimary,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Pencarian terakhir",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
                     }
@@ -544,7 +494,7 @@ private fun CatalogExploreContent(
                         modifier = Modifier
                             .clip(CircleShape)
                             .clickable(onClick = onClearSearchHistory)
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
                 Spacer(modifier = Modifier.height(6.dp))
@@ -558,13 +508,16 @@ private fun CatalogExploreContent(
                                 .clip(CircleShape)
                                 .background(ObsidianCard)
                                 .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                                .clickable { onQueryChange(term) }
-                                .padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                                .clickable {
+                                    onQueryChange(term)
+                                    focusManager.clearFocus()
+                                }
+                                .padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = term,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelSmall,
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.width(5.dp))
@@ -573,38 +526,51 @@ private fun CatalogExploreContent(
                                 contentDescription = "Hapus",
                                 tint = TextTertiary,
                                 modifier = Modifier
-                                    .size(14.dp)
+                                    .size(13.dp)
                                     .clickable { onRemoveSearchHistory(term) }
                             )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
             }
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 3.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${filteredAnime.size} judul • ${filter.sortOption.label}",
+                text = "${filteredAnime.size} anime • ${filter.sortOption.label}",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextTertiary
             )
-            if (filter.activeFilterCount > 0 || filter.query.isNotEmpty()) {
-                Text(
-                    text = "Reset filter",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = GoldPrimary,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (filter.activeFilterCount > 0 || filter.query.isNotEmpty()) {
+                    Text(
+                        text = "Reset",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = GoldPrimary,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable(onClick = onResetFilters)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+                Icon(
+                    imageVector = if (filter.isGridView) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
+                    contentDescription = "Ubah Tampilan",
+                    tint = GoldPrimary,
                     modifier = Modifier
+                        .size(20.dp)
                         .clip(CircleShape)
-                        .clickable(onClick = onResetFilters)
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .clickable(onClick = onToggleGridView)
                 )
             }
         }
@@ -632,7 +598,7 @@ private fun CatalogExploreContent(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         modifier = Modifier
-                            .size(68.dp)
+                            .size(64.dp)
                             .clip(CircleShape)
                             .background(GoldTint),
                         contentAlignment = Alignment.Center
@@ -641,7 +607,7 @@ private fun CatalogExploreContent(
                             imageVector = Icons.Rounded.Search,
                             contentDescription = null,
                             tint = GoldPrimary,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(14.dp))
@@ -652,7 +618,7 @@ private fun CatalogExploreContent(
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Coba ubah kata kunci pencarian atau reset filter genre yang aktif.",
+                        text = "Coba kata kunci lain atau tekan Reset filter.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         textAlign = TextAlign.Center
@@ -679,29 +645,15 @@ private fun CatalogExploreContent(
             ) {
                 itemsIndexed(
                     items = filteredAnime,
-                    key = { _, anime -> anime.id },
-                    span = { index, _ ->
-                        GridItemSpan(if (index % 5 == 0) 2 else 1)
-                    }
-                ) { index, anime ->
-                    if (index % 5 == 0) {
-                        CompactAnimeRowCard(
-                            anime = anime,
-                            isBookmarked = anime.id in uiState.watchlist,
-                            onClick = { onAnimeClick(anime.id) },
-                            onPlayClick = { onPlayAnime(anime.id) },
-                            onBookmarkClick = { onBookmarkClick(anime.id) },
-                            trailingBadge = "Sorotan"
-                        )
-                    } else {
-                        AnimePosterCard(
-                            anime = anime,
-                            isBookmarked = anime.id in uiState.watchlist,
-                            onClick = { onAnimeClick(anime.id) },
-                            onBookmarkClick = { onBookmarkClick(anime.id) },
-                            cardWidth = null
-                        )
-                    }
+                    key = { _, anime -> anime.id }
+                ) { _, anime ->
+                    AnimePosterCard(
+                        anime = anime,
+                        isBookmarked = anime.id in uiState.watchlist,
+                        onClick = { onAnimeClick(anime.id) },
+                        onBookmarkClick = { onBookmarkClick(anime.id) },
+                        cardWidth = null
+                    )
                 }
                 if ((uiState.hasMoreCatalog || uiState.catalogLoadError) && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
                     item(span = { GridItemSpan(2) }) {
