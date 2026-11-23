@@ -122,7 +122,7 @@ data class PlayerSession(
     val durationSeconds: Int = 1440,
     val bufferedSeconds: Int = 180,
     val selectedQuality: String = "1080p",
-    val selectedServerId: String = "sanka",
+    val selectedServerId: String = "kumanime",
     val selectedSubtitleId: String = "id",
     val playbackSpeed: Float = 1.0f,
     val aspectMode: VideoAspectMode = VideoAspectMode.FIT,
@@ -161,7 +161,7 @@ data class AnimWatchUiState(
     val comments: List<CommentItem> = emptyList(),
     val notifications: List<NotificationItem> = emptyList(),
     val reminders: Set<String> = emptySet(),
-    val searchHistory: List<String> = listOf("Kage no Ou", "Cyber", "Isekai", "Movie 4K"),
+    val searchHistory: List<String> = listOf("Mushoku Tensei", "Frieren", "Jujutsu Kaisen", "Attack on Titan"),
     val exploreMode: ExploreMode = ExploreMode.CATALOG,
     val exploreFilter: ExploreFilterState = ExploreFilterState(),
     val selectedScheduleDay: ReleaseDay = currentReleaseDay(),
@@ -237,7 +237,7 @@ class AnimWatchViewModel(
         "adrian@animwatch.id" to LocalAccount(
             displayName = "Adrian Vallenz",
             email = "adrian@animwatch.id",
-            password = "123456",
+            password = "animwatch123",
             handle = "@adrianvallenz",
             emblem = "AV",
             tier = "PRO STREAM PASS"
@@ -481,7 +481,7 @@ class AnimWatchViewModel(
                 baseUrl = KumanimeApiClient.DEFAULT_BASE_URL,
                 useLiveApi = true,
                 status = ApiConnectionStatus.DEMO_LOCAL,
-                lastSyncMessage = "Menunggu sinkronisasi ke kumanime-api"
+                lastSyncMessage = "Menunggu sinkronisasi katalog..."
             )
         )
     }
@@ -919,9 +919,12 @@ class AnimWatchViewModel(
                     .ifEmpty { repository.getAllGenres() }
 
                 _uiState.update { state ->
+                    val downloadedIds = state.downloads.map { it.animeId }.toSet()
                     val preservedSavedRemote = state.allAnime.filter { existing ->
                         existing.isRemote && existing.id !in remoteIdSet &&
-                            (existing.id in state.watchlist || state.watchHistory.any { h -> h.animeId == existing.id })
+                            (existing.id in state.watchlist ||
+                                existing.id in downloadedIds ||
+                                state.watchHistory.any { h -> h.animeId == existing.id })
                     }
                     val finalCatalog = remoteItems + preservedSavedRemote
                     state.copy(
@@ -943,6 +946,7 @@ class AnimWatchViewModel(
                 if (!silentIfOffline) {
                     emitMessage("Katalog dimuat (${remoteItems.size} judul)")
                 }
+                hydrateMissingSavedAnime(config.baseUrl)
                 // Silently prefetch page 2 (remaining Muse/Ani-One playlists + AniList page 2) right after initial render
                 loadMoreCatalog(silent = true)
             }.onFailure { err ->
@@ -1048,13 +1052,70 @@ class AnimWatchViewModel(
         }
         val anime = _uiState.value.allAnime.find { it.id == animeId }
         val isYtFreeReady = anime?.slug?.startsWith("ytfree-") == true && anime.episodes.isNotEmpty()
-        if (anime != null && anime.isRemote && !isYtFreeReady &&
+        if (anime == null) {
+            if (_uiState.value.apiConfig.useLiveApi) {
+                fetchRemoteDetailBySlug(animeId)
+            }
+        } else if (anime.isRemote && !isYtFreeReady &&
             (anime.episodes.isEmpty() || anime.isEpisodeEntry || (anime.characters.isEmpty() && anime.episodes.size <= 1))
         ) {
             fetchRemoteDetailFor(anime)
         }
         if (cloudSyncEnabled) {
             fetchRemoteCommentsFor(animeId)
+        }
+    }
+
+    private fun hydrateMissingSavedAnime(baseUrl: String) {
+        val state = _uiState.value
+        val existingIds = state.allAnime.map { it.id }.toSet()
+        val mockIds = repository.getAllAnime().map { it.id }.toSet()
+        val missingIds = buildList {
+            state.watchHistory.forEach { add(it.animeId) }
+            state.watchlist.keys.forEach { add(it) }
+            state.downloads.forEach { add(it.animeId) }
+        }.distinct().filter { it.isNotBlank() && it !in existingIds && it !in mockIds }.take(8)
+        if (missingIds.isEmpty()) return
+
+        viewModelScope.launch {
+            val fetched = missingIds.mapNotNull { slug ->
+                remoteDataSource.fetchAnimeDetailBySlug(baseUrl, slug).getOrNull()
+            }
+            if (fetched.isNotEmpty()) {
+                _uiState.update { cur ->
+                    val merged = LinkedHashMap<String, Anime>()
+                    cur.allAnime.forEach { merged[it.id] = it }
+                    fetched.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                    cur.copy(allAnime = merged.values.toList())
+                }
+            }
+        }
+    }
+
+    private fun fetchRemoteDetailBySlug(slug: String) {
+        val baseUrl = _uiState.value.apiConfig.baseUrl
+        detailFetchJob?.cancel()
+        detailFetchJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingDetail = true) }
+            val res = remoteDataSource.fetchAnimeDetailBySlug(baseUrl, slug)
+            res.onSuccess { detailed ->
+                _uiState.update { state ->
+                    val merged = (state.allAnime.filterNot { it.id == detailed.id } + detailed)
+                    val updatedBackStack = state.backStack.map { route ->
+                        if (route is AppRoute.AnimeDetail && route.animeId == slug) {
+                            AppRoute.AnimeDetail(detailed.id)
+                        } else route
+                    }
+                    state.copy(
+                        allAnime = merged,
+                        backStack = updatedBackStack,
+                        isLoadingDetail = false
+                    )
+                }
+            }.onFailure {
+                _uiState.update { it.copy(isLoadingDetail = false) }
+                emitMessage("Detail anime tidak dapat dimuat dari server")
+            }
         }
     }
 
@@ -1096,7 +1157,7 @@ class AnimWatchViewModel(
                 }
             }.onFailure {
                 _uiState.update { it.copy(isLoadingDetail = false) }
-                emitMessage("Gagal memuat detail dari Kumanime API")
+                emitMessage("Gagal memuat detail anime dari server")
             }
         }
     }
@@ -1134,11 +1195,22 @@ class AnimWatchViewModel(
     }
 
     fun openExploreWithGenre(genre: String) {
+        val isDubGenre = genre.equals("Dub Indo", ignoreCase = true)
         _uiState.update { state ->
             state.copy(
                 currentTab = MainTab.EXPLORE,
                 exploreMode = ExploreMode.CATALOG,
-                exploreFilter = ExploreFilterState(selectedGenres = setOf(genre)),
+                exploreFilter = if (isDubGenre) {
+                    ExploreFilterState(
+                        audioFilter = AudioFilter.DUB_INDO,
+                        isGridView = state.exploreFilter.isGridView
+                    )
+                } else {
+                    ExploreFilterState(
+                        selectedGenres = setOf(genre),
+                        isGridView = state.exploreFilter.isGridView
+                    )
+                },
                 backStack = listOf(AppRoute.TabsRoot)
             )
         }
@@ -1180,11 +1252,52 @@ class AnimWatchViewModel(
     // Player & Playback
     // ====================
 
+    private fun resolveTargetEpisode(
+        anime: Anime,
+        requestedEpisodeId: String?,
+        historyForAnime: WatchProgress?
+    ): Episode? {
+        if (anime.episodes.isEmpty()) return null
+        if (requestedEpisodeId != null) {
+            anime.episodes.find { it.id == requestedEpisodeId }?.let { return it }
+        }
+        if (historyForAnime != null) {
+            anime.episodes.find { it.id == historyForAnime.episodeId }?.let { return it }
+            anime.episodes.find { it.number == historyForAnime.episodeNumber }?.let { return it }
+        }
+        return anime.episodes.firstOrNull()
+    }
+
     fun playAnime(animeId: String, episodeId: String? = null, startFromZero: Boolean = false) {
         val state = _uiState.value
-        val anime = state.allAnime.find { it.id == animeId } ?: return
+        val anime = state.allAnime.find { it.id == animeId }
+        val historyForAnime = state.watchHistory.find { it.animeId == animeId }
 
-        // Jika anime dari AniList belum memuat episode penuh Muse/Ani-One, ambil detailnya terlebih dahulu
+        if (anime == null) {
+            if (!state.apiConfig.useLiveApi) return
+            val baseUrl = state.apiConfig.baseUrl
+            emitMessage("Memuat episode anime...")
+            detailFetchJob?.cancel()
+            detailFetchJob = viewModelScope.launch {
+                val detailRes = remoteDataSource.fetchAnimeDetailBySlug(baseUrl, animeId)
+                detailRes.onSuccess { detailed ->
+                    _uiState.update { cur ->
+                        cur.copy(allAnime = cur.allAnime.filterNot { it.id == detailed.id } + detailed)
+                    }
+                    val target = resolveTargetEpisode(detailed, episodeId, historyForAnime)
+                    if (target != null) {
+                        startPlayerWithEpisode(detailed, target, startFromZero)
+                    } else {
+                        emitMessage("Belum ada episode tersedia untuk ${detailed.title}")
+                    }
+                }.onFailure {
+                    emitMessage("Gagal mengambil daftar episode dari server")
+                }
+            }
+            return
+        }
+
+        // Jika anime belum memuat episode penuh Muse/Ani-One, ambil detailnya terlebih dahulu
         val needsOfficialEpisodeResolve = anime.isRemote && (
             anime.episodes.isEmpty() ||
                 (anime.episodes.size == 1 && anime.episodes.first().streamType != "official_episode" && anime.characters.isEmpty())
@@ -1201,8 +1314,9 @@ class AnimWatchViewModel(
                             allAnime = cur.allAnime.map { if (it.id == anime.id) detailed else it }.distinctBy { it.id }
                         )
                     }
-                    if (detailed.episodes.isNotEmpty()) {
-                        startPlayerWithEpisode(detailed, detailed.episodes.first(), startFromZero)
+                    val target = resolveTargetEpisode(detailed, episodeId, historyForAnime)
+                    if (target != null) {
+                        startPlayerWithEpisode(detailed, target, startFromZero)
                     } else {
                         emitMessage("Belum ada episode tersedia untuk ${detailed.title}")
                     }
@@ -1213,13 +1327,7 @@ class AnimWatchViewModel(
             return
         }
 
-        val historyForAnime = state.watchHistory.find { it.animeId == animeId }
-        val targetEpisode: Episode = when {
-            episodeId != null -> anime.episodes.find { it.id == episodeId }
-            historyForAnime != null -> anime.episodes.find { it.id == historyForAnime.episodeId }
-            else -> anime.episodes.firstOrNull()
-        } ?: anime.episodes.firstOrNull() ?: return
-
+        val targetEpisode = resolveTargetEpisode(anime, episodeId, historyForAnime) ?: return
         startPlayerWithEpisode(anime, targetEpisode, startFromZero)
     }
 
@@ -1241,7 +1349,7 @@ class AnimWatchViewModel(
         }
         val serverId = targetEpisode.servers.find {
             it.name.equals(state.settings.defaultServer, ignoreCase = true)
-        }?.id ?: targetEpisode.servers.firstOrNull()?.id ?: "sanka"
+        }?.id ?: targetEpisode.servers.firstOrNull()?.id ?: "kumanime"
 
         val needsRemoteStream = anime.isRemote && targetEpisode.slug.isNotBlank() && targetEpisode.streamUrl.isBlank()
 
@@ -2033,6 +2141,10 @@ class AnimWatchViewModel(
         val task = _uiState.value.downloads.find { it.episodeId == episodeId } ?: return
         val anime = _uiState.value.allAnime.find { it.id == task.animeId }
         val ep = anime?.episodes?.find { it.id == episodeId }
+        if (anime == null || ep == null) {
+            emitMessage("Buka halaman detail ${task.animeTitle} untuk memuat ulang episode ini")
+            return
+        }
         _uiState.update { state ->
             state.copy(
                 downloads = state.downloads.map {
@@ -2042,9 +2154,7 @@ class AnimWatchViewModel(
                 }
             )
         }
-        if (anime != null && ep != null) {
-            launchRealOfflineDownload(anime, ep, task.qualityLabel)
-        }
+        launchRealOfflineDownload(anime, ep, task.qualityLabel)
     }
 
     fun removeDownload(episodeId: String) {

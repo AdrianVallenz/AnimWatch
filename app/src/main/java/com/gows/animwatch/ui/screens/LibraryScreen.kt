@@ -389,7 +389,11 @@ private fun HistoryContent(
     onAnimeClick: (String) -> Unit,
     onResumeClick: (WatchProgress) -> Unit
 ) {
-    if (history.isEmpty()) {
+    val animeById = remember(allAnime) { allAnime.associateBy { it.id } }
+    val visibleHistory = remember(history, animeById) {
+        history.filter { it.animeId in animeById }
+    }
+    if (visibleHistory.isEmpty()) {
         EmptyLibraryState(
             icon = Icons.Rounded.History,
             title = "Belum ada riwayat tonton",
@@ -412,7 +416,7 @@ private fun HistoryContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${history.size} anime terakhir ditonton",
+                        text = "${visibleHistory.size} anime terakhir ditonton",
                         style = MaterialTheme.typography.labelMedium,
                         color = TextSecondary
                     )
@@ -426,8 +430,8 @@ private fun HistoryContent(
                     }
                 }
             }
-            items(history, key = { it.animeId }) { progress ->
-                val anime = allAnime.find { it.id == progress.animeId } ?: return@items
+            items(visibleHistory, key = { it.animeId }) { progress ->
+                val anime = animeById[progress.animeId] ?: return@items
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

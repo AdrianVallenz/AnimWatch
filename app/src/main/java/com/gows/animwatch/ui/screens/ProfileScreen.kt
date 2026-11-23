@@ -556,7 +556,6 @@ fun ProfileScreen(
                             onClick = {
                                 showAboutDialog = false
                                 onSetUseLiveApi(true)
-                                onSyncApi()
                             },
                             modifier = Modifier.weight(1f),
                             height = 40.dp

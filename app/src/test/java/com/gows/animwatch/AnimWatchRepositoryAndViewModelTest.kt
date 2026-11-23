@@ -9,6 +9,7 @@ import com.gows.animwatch.data.model.WatchlistCategory
 import com.gows.animwatch.data.repository.MockAnimeRepository
 import com.gows.animwatch.ui.state.AnimWatchViewModel
 import com.gows.animwatch.ui.state.AppRoute
+import com.gows.animwatch.ui.state.AudioFilter
 import com.gows.animwatch.ui.state.MainTab
 import com.gows.animwatch.ui.theme.AppAccentTheme
 import com.gows.animwatch.ui.theme.AppAppearanceMode
@@ -156,5 +157,10 @@ class AnimWatchRepositoryAndViewModelTest {
         vm.markAnimeCompleted(sampleAnime.id)
         assertEquals(WatchlistCategory.COMPLETED, vm.uiState.value.watchlist[sampleAnime.id])
         assertTrue((vm.uiState.value.watchedEpisodes[sampleAnime.id] ?: 0) >= sampleAnime.totalEpisodes)
+
+        // Opening "Dub Indo" genre routes cleanly to AudioFilter.DUB_INDO instead of genre tag
+        vm.openExploreWithGenre("Dub Indo")
+        assertEquals(AudioFilter.DUB_INDO, vm.uiState.value.exploreFilter.audioFilter)
+        assertTrue(vm.uiState.value.exploreFilter.selectedGenres.isEmpty())
     }
 }

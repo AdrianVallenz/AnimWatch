@@ -241,9 +241,18 @@ fun ExploreScreen(
     }
 
     if (showFilterSheet) {
+        val availableYears = remember(uiState.allAnime) {
+            uiState.allAnime.map { it.year }
+                .filter { it in 2000..2026 }
+                .distinct()
+                .sortedDescending()
+                .take(10)
+                .ifEmpty { listOf(2026, 2025, 2024, 2023, 2022, 2021, 2020) }
+        }
         ExploreFilterBottomSheet(
             filter = filter,
-            genres = uiState.genres,
+            genres = uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) },
+            years = availableYears,
             onToggleGenre = onToggleGenre,
             onStatusChange = onStatusChange,
             onTypeChange = onTypeChange,
@@ -688,7 +697,7 @@ private fun CatalogExploreContent(
                         )
                     }
                 }
-                if (uiState.hasMoreCatalog && filter.query.isEmpty()) {
+                if (uiState.hasMoreCatalog && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
                     item(span = { GridItemSpan(2) }) {
                         LoadMoreCatalogFooter(
                             totalLoaded = uiState.allAnime.size,
@@ -717,7 +726,7 @@ private fun CatalogExploreContent(
                         onBookmarkClick = { onBookmarkClick(anime.id) }
                     )
                 }
-                if (uiState.hasMoreCatalog && filter.query.isEmpty()) {
+                if (uiState.hasMoreCatalog && filter.query.isEmpty() && filter.audioFilter != AudioFilter.DUB_INDO) {
                     item {
                         LoadMoreCatalogFooter(
                             totalLoaded = uiState.allAnime.size,
@@ -786,8 +795,9 @@ private fun ScheduleExploreContent(
     onPlayAnime: (String) -> Unit
 ) {
     val today = remember { AnimWatchUiState.currentReleaseDay() }
-    val dayAnime = remember(allAnime, selectedDay) {
-        allAnime.filter { it.releaseDay == selectedDay }
+    val subOnly = remember(allAnime) { allAnime.filterNot { it.isDubIndo } }
+    val dayAnime = remember(subOnly, selectedDay) {
+        subOnly.filter { it.releaseDay == selectedDay }
             .sortedBy { it.releaseTimeWib ?: "23:59" }
     }
 
@@ -824,7 +834,7 @@ private fun ScheduleExploreContent(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = if (isToday) "Hari ini" else "${allAnime.count { it.releaseDay == day }} ep",
+                        text = if (isToday) "Hari ini" else "${subOnly.count { it.releaseDay == day }} ep",
                         style = MaterialTheme.typography.labelSmall,
                         color = if (selected) TextOnGold.copy(alpha = 0.88f) else if (isToday) GoldPrimary else TextTertiary,
                         fontSize = 10.sp
@@ -1027,7 +1037,7 @@ private fun RankingExploreContent(
     onBookmarkClick: (String) -> Unit
 ) {
     val ranked = remember(allAnime) {
-        allAnime.sortedByDescending { it.rating }
+        allAnime.filterNot { it.isDubIndo }.sortedByDescending { it.rating }
     }
 
     LazyColumn(
@@ -1102,6 +1112,7 @@ private fun GenrePillChip(
 private fun ExploreFilterBottomSheet(
     filter: ExploreFilterState,
     genres: List<String>,
+    years: List<Int>,
     onToggleGenre: (String) -> Unit,
     onStatusChange: (AnimeStatus?) -> Unit,
     onTypeChange: (AnimeType?) -> Unit,
@@ -1186,7 +1197,7 @@ private fun ExploreFilterBottomSheet(
             Spacer(modifier = Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GenrePillChip("Semua", filter.yearFilter == null) { onYearChange(null) }
-                listOf(2026, 2025, 2024).forEach { yr ->
+                years.forEach { yr ->
                     GenrePillChip("$yr", filter.yearFilter == yr) { onYearChange(yr) }
                 }
             }

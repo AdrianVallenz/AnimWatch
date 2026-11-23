@@ -1702,9 +1702,10 @@ async function handleSearch(rawQuery: string): Promise<Response> {
 
   // Also include matching live Muse Indonesia & Ani-One Indonesia playlists (both Sub & Dub Indo separated!)
   const qNorm = q.toLowerCase().trim();
-  const cachedLive = getCached<CrawledPlaylistSummary[]>("yt-all-channel-playlists-v2") ?? [];
+  const cachedLive = await getAllLiveChannelPlaylists();
   const curatedIds = new Set(Object.values(MUSE_ID_PLAYLIST_BY_ANILIST_ID).map((x) => x.playlistId));
   const seenSubTitles = new Set(anilistItems.map((a) => normalizeTitleForMatch(a.title)));
+  const anilistById = new Map(anilistItems.map((a) => [a.id, a]));
   const ytMatches = cachedLive
     .filter((pl) => {
       const hits = pl.cleanTitle.toLowerCase().includes(qNorm) || pl.title.toLowerCase().includes(qNorm);
@@ -1713,7 +1714,22 @@ async function handleSearch(rawQuery: string): Promise<Response> {
       return !curatedIds.has(pl.playlistId) && !seenSubTitles.has(normalizeTitleForMatch(pl.cleanTitle));
     })
     .slice(0, 10)
-    .map((pl, idx) => buildPlaylistCard(pl, (pl.audioLang === "DUB_ID" ? 970000 : 950000) + idx, pl.audioLang === "DUB_ID"));
+    .map((pl, idx) => {
+      const isDub = pl.audioLang === "DUB_ID";
+      const linked = isDub && pl.anilistId ? anilistById.get(pl.anilistId) : undefined;
+      if (linked) {
+        return {
+          ...linked,
+          slug: `dub-${pl.playlistId}`,
+          genres: linked.genres.includes("Dub Indo") ? linked.genres : [...linked.genres, "Dub Indo"],
+          is_official_free: true,
+          is_dub_indo: true,
+          audio_lang: "DUB_ID",
+          official_channel: pl.channelName,
+        };
+      }
+      return buildPlaylistCard(pl, (isDub ? 970000 : 950000) + idx, isDub);
+    });
 
   const data = [...anilistItems, ...ytMatches];
   return jsonResponse(setCached(key, { status: "success", source: "anilist-live", query: q, data }, 3 * 60 * 1000));

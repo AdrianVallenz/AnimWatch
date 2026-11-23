@@ -436,7 +436,7 @@ fun AuthScreen(
                                     )
 
                                     Text(
-                                        text = "Akun demo: adrian@animwatch.id • Sandi: 123456",
+                                        text = "Akun demo: adrian@animwatch.id • Sandi: animwatch123",
                                         style = MaterialTheme.typography.bodySmall,
                                         fontSize = 11.5.sp,
                                         color = TextTertiary,

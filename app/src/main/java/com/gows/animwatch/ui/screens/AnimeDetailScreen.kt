@@ -130,6 +130,7 @@ fun AnimeDetailScreen(
     onBookmarkClick: (String) -> Unit,
     onPostComment: (String, Int?, String, Boolean) -> Unit,
     onToggleCommentLike: (String) -> Unit,
+    onShowMessage: (String) -> Unit = {},
     onShareClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -402,13 +403,21 @@ fun AnimeDetailScreen(
                         onClick = { showRatingDialog = true },
                         modifier = Modifier.weight(1f)
                     )
+                    val latestEp = anime.episodes.lastOrNull()
+                    val latestDownload = latestEp?.let { ep -> uiState.downloads.find { it.episodeId == ep.id } }
                     DetailQuickAction(
-                        icon = Icons.Rounded.Download,
-                        label = "Unduh Ep ${anime.episodes.lastOrNull()?.number ?: 1}",
-                        active = false,
+                        icon = if (latestDownload?.status == DownloadStatus.COMPLETED) Icons.Rounded.CheckCircle else Icons.Rounded.Download,
+                        label = when (latestDownload?.status) {
+                            DownloadStatus.COMPLETED -> "Ep ${latestEp.number} Offline"
+                            DownloadStatus.DOWNLOADING -> "Unduh ${(latestDownload.progress * 100).toInt()}%"
+                            else -> "Unduh Ep ${latestEp?.number ?: 1}"
+                        },
+                        active = latestDownload != null,
                         onClick = {
-                            anime.episodes.lastOrNull()?.let { ep ->
-                                onDownloadEpisode(anime, ep)
+                            if (latestEp != null) {
+                                onDownloadEpisode(anime, latestEp)
+                            } else {
+                                onShowMessage("Daftar episode sedang dimuat, coba sesaat lagi")
                             }
                         },
                         modifier = Modifier.weight(1f)
@@ -586,7 +595,7 @@ fun AnimeDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    anime.genres.forEach { genre ->
+                    anime.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }.forEach { genre ->
                         Box(
                             modifier = Modifier
                                 .clip(CircleShape)

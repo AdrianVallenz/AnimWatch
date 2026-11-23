@@ -109,9 +109,9 @@ fun formatTimeSeconds(totalSeconds: Int): String {
     val minutes = (safe % 3600) / 60
     val seconds = safe % 60
     return if (hours > 0) {
-        String.format("%02d:%02d:%02d", hours, minutes, seconds)
+        String.format(java.util.Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
     } else {
-        String.format("%02d:%02d", minutes, seconds)
+        String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
 

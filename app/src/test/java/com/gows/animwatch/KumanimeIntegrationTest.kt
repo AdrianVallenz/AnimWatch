@@ -418,6 +418,12 @@ class KumanimeIntegrationTest {
         val searchRes = dataSource.searchAnime("http://10.0.2.2:3000/api/", "frieren")
         assertTrue(searchRes.isSuccess)
         assertEquals("https://cdn.example.com/frieren.jpg", searchRes.getOrThrow().first().posterUrl)
+
+        // Direct slug detail fetch works for related/deep-linked anime not yet in catalog
+        val bySlugRes = dataSource.fetchAnimeDetailBySlug("http://10.0.2.2:3000/api/", "solo-leveling-s2")
+        assertTrue(bySlugRes.isSuccess)
+        assertEquals("Solo Leveling Season 2", bySlugRes.getOrThrow().title)
+        assertEquals(2, bySlugRes.getOrThrow().episodes.size)
     }
 
     @Test

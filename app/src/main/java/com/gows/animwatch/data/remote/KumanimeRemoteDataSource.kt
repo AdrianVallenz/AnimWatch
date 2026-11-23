@@ -262,6 +262,17 @@ class KumanimeRemoteDataSource(
         }
     }
 
+    suspend fun fetchAnimeDetailBySlug(baseUrl: String, slug: String): Result<Anime> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanSlug = slug.trim()
+            require(cleanSlug.isNotEmpty()) { "Slug anime kosong" }
+            val api = serviceProvider(baseUrl)
+            val detailDto = api.getAnimeDetail(cleanSlug).animeData
+                ?: throw IllegalStateException("Detail anime tidak ditemukan untuk slug: $cleanSlug")
+            KumanimeMapper.mergeAnimeDetail(existing = null, slug = cleanSlug, detail = detailDto)
+        }
+    }
+
     suspend fun fetchEpisodeStream(baseUrl: String, episode: Episode): Result<EpisodeStreamResult> =
         withContext(Dispatchers.IO) {
             runCatching {

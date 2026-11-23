@@ -115,6 +115,7 @@ fun HomeScreen(
     onOpenRanking: () -> Unit,
     onOpenRandom: () -> Unit,
     onOpenGenre: (String) -> Unit = {},
+    onOpenHistory: () -> Unit = {},
     onLoadMoreCatalog: () -> Unit = {},
     onOpenNotifications: () -> Unit,
     onOpenProfile: () -> Unit,
@@ -123,6 +124,9 @@ fun HomeScreen(
     var selectedHomeGenre by remember { mutableStateOf<String?>(null) }
 
     val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
+    val visibleHistory = remember(uiState.watchHistory, animeById) {
+        uiState.watchHistory.filter { it.animeId in animeById }
+    }
     val subAnime = remember(uiState.allAnime) { uiState.allAnime.filterNot { it.isDubIndo } }
     val dubIndoList = remember(uiState.allAnime) {
         uiState.allAnime
@@ -331,21 +335,21 @@ fun HomeScreen(
             }
         } else {
             // 4. Continue Watching
-            if (uiState.watchHistory.isNotEmpty()) {
+            if (visibleHistory.isNotEmpty()) {
                 item(key = "home_continue") {
                     Spacer(modifier = Modifier.height(24.dp))
                     SectionHeader(
                         title = "Lanjutkan Menonton",
                         subtitle = "Lanjutkan tepat dari menit terakhir",
                         actionLabel = "Riwayat",
-                        onActionClick = { onOpenCatalog(CatalogPreset.LATEST, "Baru Ditonton") }
+                        onActionClick = onOpenHistory
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(uiState.watchHistory, key = { it.animeId }) { progress ->
+                        items(visibleHistory, key = { it.animeId }) { progress ->
                             val anime = animeById[progress.animeId]
                             if (anime != null) {
                                 ContinueWatchingCard(
@@ -791,6 +795,7 @@ private fun HeroCarouselSection(
     onPlayClick: (Anime) -> Unit,
     onBookmarkClick: (String) -> Unit
 ) {
+    if (featuredAnime.isEmpty()) return
     val pagerState = rememberPagerState(pageCount = { featuredAnime.size })
     val heroScrimBrush = remember {
         Brush.verticalGradient(
@@ -805,7 +810,7 @@ private fun HeroCarouselSection(
         if (featuredAnime.size > 1) {
             while (true) {
                 delay(6200L)
-                if (!pagerState.isScrollInProgress) {
+                if (!pagerState.isScrollInProgress && featuredAnime.size > 1) {
                     val next = (pagerState.currentPage + 1) % featuredAnime.size
                     pagerState.animateScrollToPage(next)
                 }
@@ -819,7 +824,7 @@ private fun HeroCarouselSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             pageSpacing = 12.dp
         ) { page ->
-            val anime = featuredAnime[page]
+            val anime = featuredAnime.getOrNull(page) ?: return@HorizontalPager
             val isSaved = anime.id in watchlist
 
             Box(

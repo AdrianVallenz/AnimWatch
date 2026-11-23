@@ -139,7 +139,7 @@ object KumanimeMapper {
             durationMinutes = dto.durationMinutes ?: 24,
             year = dto.year?.takeIf { it in 1970..2035 } ?: 2026,
             season = dto.season?.trim().orEmpty().ifEmpty { "Ongoing" },
-            studio = dto.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            studio = dto.studio?.trim().orEmpty().ifEmpty { "Studio Anime" },
             status = parseAnimeStatus(dto.status, AnimeStatus.ONGOING),
             type = parseAnimeType(dto.type),
             ageRating = "13+",
@@ -236,7 +236,7 @@ object KumanimeMapper {
             durationMinutes = dto.durationMinutes ?: 24,
             year = dto.year?.takeIf { it in 1970..2035 } ?: 2026,
             season = dto.season?.trim().orEmpty().ifEmpty { if (status == AnimeStatus.COMPLETED) "Tamat" else "Populer" },
-            studio = dto.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            studio = dto.studio?.trim().orEmpty().ifEmpty { "Studio Anime" },
             status = status,
             type = parseAnimeType(dto.type),
             ageRating = "13+",
@@ -289,6 +289,10 @@ object KumanimeMapper {
         val totalEpisodes = dto.totalEpisodes?.takeIf { it > 0 } ?: if (type == AnimeType.MOVIE) 1 else 12
         val releasedEpisodes = dto.releasedEpisodes?.takeIf { it > 0 } ?: totalEpisodes
 
+        val isDubIndo = parseIsDubIndo(dto.isDubIndo, dto.audioLang, slug)
+        val isOfficialFree = dto.isOfficialFree == true
+        val officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() }
+
         return Anime(
             id = slug,
             slug = slug,
@@ -297,7 +301,7 @@ object KumanimeMapper {
                 dto.type?.trim().orEmpty().ifEmpty { type.label }
             },
             synopsis = dto.synopsis?.trim().orEmpty().ifEmpty {
-                "Ketuk untuk memuat informasi lengkap dan daftar episode dari Kumanime API."
+                "Ketuk untuk memuat informasi lengkap dan daftar episode."
             },
             rating = dto.rating?.coerceIn(1.0, 10.0) ?: 8.5,
             ratingCountLabel = dto.ratingCount?.trim().orEmpty().ifEmpty { "Live" },
@@ -306,7 +310,7 @@ object KumanimeMapper {
             durationMinutes = durationMin,
             year = year,
             season = dto.season?.trim().orEmpty().ifEmpty { if (type == AnimeType.MOVIE) "Movie $year" else "$year" },
-            studio = dto.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            studio = dto.studio?.trim().orEmpty().ifEmpty { "Studio Anime" },
             status = status,
             type = type,
             ageRating = "13+",
@@ -318,11 +322,16 @@ object KumanimeMapper {
             isFeatured = false,
             isTrending = false,
             isNewRelease = false,
-            isOfficialFree = dto.isOfficialFree == true,
-            isDubIndo = parseIsDubIndo(dto.isDubIndo, dto.audioLang, slug),
-            officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() },
+            isOfficialFree = isOfficialFree,
+            isDubIndo = isDubIndo,
+            officialChannel = officialChannel,
             artTheme = pickArtTheme(slug),
-            posterTag = if (type == AnimeType.MOVIE) "Movie" else "Populer",
+            posterTag = when {
+                isDubIndo -> "Dub Indo"
+                isOfficialFree -> officialChannel ?: "Siap Putar"
+                type == AnimeType.MOVIE -> "Movie"
+                else -> "Populer"
+            },
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true,
@@ -398,7 +407,7 @@ object KumanimeMapper {
             id = slug,
             slug = slug,
             title = cleanTitle,
-            japaneseTitle = detail.japaneseTitle?.trim().orEmpty().ifEmpty { "Kumanime Live" },
+            japaneseTitle = detail.japaneseTitle?.trim().orEmpty().ifEmpty { cleanTitle },
             synopsis = "",
             rating = detail.rating?.coerceIn(1.0, 10.0) ?: 8.7,
             ratingCountLabel = detail.ratingCount?.trim().orEmpty().ifEmpty { "Live" },
@@ -406,8 +415,8 @@ object KumanimeMapper {
             releasedEpisodes = epCount,
             durationMinutes = durationMin,
             year = detail.year?.takeIf { it in 1970..2035 } ?: 2026,
-            season = detail.season?.trim().orEmpty().ifEmpty { "Kumanime" },
-            studio = detail.studio?.trim().orEmpty().ifEmpty { "Kumanime API" },
+            season = detail.season?.trim().orEmpty().ifEmpty { "Tersedia" },
+            studio = detail.studio?.trim().orEmpty().ifEmpty { "Studio Anime" },
             status = parseAnimeStatus(detail.status, AnimeStatus.ONGOING),
             type = AnimeType.TV_SERIES,
             ageRating = "13+",
@@ -417,7 +426,7 @@ object KumanimeMapper {
             viewsLabel = "Live",
             popularityRank = 99,
             artTheme = pickArtTheme(slug),
-            posterTag = "Populer",
+            posterTag = if (parseIsDubIndo(detail.isDubIndo, detail.audioLang, slug)) "Dub Indo" else "Populer",
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true
@@ -429,8 +438,8 @@ object KumanimeMapper {
             synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { existing?.synopsis.orEmpty() },
             rating = detail.rating?.coerceIn(1.0, 10.0) ?: existing?.rating ?: 8.7,
             ratingCountLabel = detail.ratingCount?.trim().orEmpty().ifEmpty { existing?.ratingCountLabel ?: "Live" },
-            studio = detail.studio?.trim().orEmpty().ifEmpty { existing?.studio ?: "Kumanime API" },
-            season = detail.season?.trim().orEmpty().ifEmpty { existing?.season ?: "Kumanime" },
+            studio = detail.studio?.trim().orEmpty().ifEmpty { existing?.studio ?: "Studio Anime" },
+            season = detail.season?.trim().orEmpty().ifEmpty { existing?.season ?: "Tersedia" },
             year = detail.year?.takeIf { it in 1970..2035 } ?: existing?.year ?: 2026,
             status = parseAnimeStatus(detail.status, existing?.status ?: AnimeStatus.ONGOING),
             durationMinutes = durationMin,

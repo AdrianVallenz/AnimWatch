@@ -27,13 +27,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -59,10 +62,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gows.animwatch.R
 import com.gows.animwatch.data.local.AndroidDeviceStorageManager
 import com.gows.animwatch.data.local.SharedPreferencesSessionStore
+import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.data.remote.GoogleAuthDeepLinkBus
 import com.gows.animwatch.data.remote.GoogleAuthManager
 import com.gows.animwatch.data.remote.GoogleSignInOutcome
 import kotlinx.coroutines.launch
+import com.gows.animwatch.ui.components.CassetteLinearShimmer
 import com.gows.animwatch.ui.components.FloatingGoldBottomNav
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.MiniPlayerBar
@@ -79,6 +84,7 @@ import com.gows.animwatch.ui.screens.ThemeOnboardingScreen
 import com.gows.animwatch.ui.state.AnimWatchViewModel
 import com.gows.animwatch.ui.state.AppRoute
 import com.gows.animwatch.ui.state.ExploreMode
+import com.gows.animwatch.ui.state.LibraryTab
 import com.gows.animwatch.ui.state.MainTab
 import com.gows.animwatch.ui.theme.AnimWatchTheme
 import com.gows.animwatch.ui.theme.GoldPrimary
@@ -281,6 +287,10 @@ fun AnimWatchApp(
                                 onOpenRanking = viewModel::openExploreRanking,
                                 onOpenRandom = viewModel::openRandomAnime,
                                 onOpenGenre = viewModel::openExploreWithGenre,
+                                onOpenHistory = {
+                                    viewModel.selectTab(MainTab.LIBRARY)
+                                    viewModel.setLibraryTab(LibraryTab.HISTORY)
+                                },
                                 onLoadMoreCatalog = { viewModel.loadMoreCatalog() },
                                 onOpenNotifications = { showNotificationsSheet = true },
                                 onOpenProfile = { viewModel.selectTab(MainTab.PROFILE) }
@@ -373,10 +383,56 @@ fun AnimWatchApp(
                             onBookmarkClick = viewModel::toggleQuickBookmark,
                             onPostComment = viewModel::postComment,
                             onToggleCommentLike = viewModel::toggleCommentLike,
+                            onShowMessage = viewModel::emitMessage,
                             onShareClick = { title ->
                                 viewModel.emitMessage("Tautan '$title' disalin ke papan klip")
                             }
                         )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(ObsidianVoid)
+                                .statusBarsPadding()
+                        ) {
+                            IconButton(
+                                onClick = { viewModel.navigateBack() },
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(14.dp)
+                                    .size(40.dp)
+                                    .background(ObsidianCard, CircleShape)
+                                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = "Kembali",
+                                    tint = TextPrimary
+                                )
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = if (uiState.isLoadingDetail) "Memuat detail anime..." else "Anime belum tersedia",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                if (uiState.isLoadingDetail) {
+                                    CassetteLinearShimmer(modifier = Modifier.fillMaxWidth(0.7f))
+                                } else {
+                                    GoldGradientButton(
+                                        text = "Kembali",
+                                        onClick = { viewModel.navigateBack() },
+                                        height = 42.dp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -394,7 +450,9 @@ fun AnimWatchApp(
                         onAnimeClick = viewModel::openAnimeDetail,
                         onPlayAnime = { id -> viewModel.playAnime(id) },
                         onBookmarkClick = viewModel::toggleQuickBookmark,
-                        hasMore = uiState.hasMoreCatalog,
+                        hasMore = uiState.hasMoreCatalog &&
+                            route.preset != CatalogPreset.DUB_INDO &&
+                            route.preset != CatalogPreset.TOP_RATED,
                         isLoadingMore = uiState.isLoadingMoreCatalog,
                         onLoadMore = { viewModel.loadMoreCatalog() }
                     )

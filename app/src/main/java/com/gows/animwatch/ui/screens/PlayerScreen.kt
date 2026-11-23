@@ -220,8 +220,8 @@ fun PlayerScreen(
     var activeGestureHud by remember { mutableStateOf<String?>(null) }
     var seekFeedbackLabel by remember { mutableStateOf<String?>(null) }
 
-    var isScrubbing by remember { mutableStateOf(false) }
-    var scrubSeconds by remember { mutableIntStateOf(session.positionSeconds) }
+    var isScrubbing by remember(session.episodeId) { mutableStateOf(false) }
+    var scrubSeconds by remember(session.episodeId) { mutableIntStateOf(session.positionSeconds) }
 
     var commentDraft by remember { mutableStateOf("") }
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
@@ -987,7 +987,7 @@ fun PlayerScreen(
                         ) {
                             GoldTagChip(text = "Episode ${episode.number}", highlighted = true)
                             GoldTagChip(text = session.selectedQuality)
-                            GoldTagChip(text = currentServer?.name ?: "SankaStream")
+                            GoldTagChip(text = anime.officialChannel ?: currentServer?.name ?: "AnimWatch")
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
@@ -1616,7 +1616,7 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
     <body>
       <iframe
         id="ytplayer"
-        src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=1&enablejsapi=1"
+        src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=1&enablejsapi=1&origin=https://www.youtube-nocookie.com"
         referrerpolicy="strict-origin-when-cross-origin"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowfullscreen>
@@ -1655,11 +1655,19 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
     </html>
 """.trimIndent()
 
-private fun isAllowedEmbedNavigation(url: String): Boolean {
+private fun isAllowedEmbedNavigation(url: String, isMainFrame: Boolean = true): Boolean {
     val lower = url.lowercase()
-    return lower == "about:blank" ||
+    if (lower == "about:blank" ||
         lower.startsWith("https://www.youtube-nocookie.com/embed/") ||
         lower.startsWith("https://www.youtube.com/embed/")
+    ) return true
+    if (!isMainFrame) {
+        return lower.startsWith("https://www.youtube-nocookie.com/") ||
+            lower.startsWith("https://www.youtube.com/") ||
+            lower.startsWith("https://accounts.google.com/") ||
+            lower.startsWith("https://googleads.g.doubleclick.net/")
+    }
+    return false
 }
 
 private fun loadStreamIntoWebView(webView: WebView, streamUrl: String) {
@@ -1782,8 +1790,9 @@ private fun KumanimeWebStreamPlayer(
                         request: WebResourceRequest?
                     ): Boolean {
                         val target = request?.url?.toString().orEmpty()
+                        val isMain = request?.isForMainFrame ?: true
                         // Block all external/app redirects (never leave AnimWatch into YouTube app/browser)
-                        return !isAllowedEmbedNavigation(target)
+                        return !isAllowedEmbedNavigation(target, isMainFrame = isMain)
                     }
 
                     @Deprecated("Deprecated in Java")
