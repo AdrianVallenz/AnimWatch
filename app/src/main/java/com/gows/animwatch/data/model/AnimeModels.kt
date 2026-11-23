@@ -1,5 +1,6 @@
 package com.gows.animwatch.data.model
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
 enum class AnimeType(val label: String) {
@@ -40,6 +41,7 @@ enum class SortOption(val label: String) {
 
 enum class CatalogPreset(val title: String, val subtitle: String) {
     ALL("Semua Katalog", "Seluruh koleksi anime Sub Indo"),
+    OFFICIAL_FREE("Gratis Resmi Sub Indo", "Episode resmi dari Muse Indonesia & Ani-One Indonesia"),
     ONGOING("Sedang Tayang", "Episode baru hadir setiap minggu"),
     TRENDING("Sedang Hangat", "Paling banyak ditonton minggu ini"),
     TOP_RATED("Top 10 Peringkat", "Skor tertinggi pilihan penonton"),
@@ -163,6 +165,13 @@ data class SubtitleCue(
     val englishText: String
 )
 
+@Immutable
+data class ExternalPlatformLink(
+    val site: String,
+    val url: String
+)
+
+@Immutable
 data class Episode(
     val id: String,
     val animeId: String,
@@ -176,6 +185,7 @@ data class Episode(
     val isFiller: Boolean = false,
     val slug: String = "",
     val streamUrl: String = "",
+    val streamType: String = "official_trailer",
     val nextEpisodeSlug: String? = null,
     val prevEpisodeSlug: String? = null,
     val servers: List<StreamServer> = emptyList(),
@@ -183,6 +193,7 @@ data class Episode(
     val subtitles: List<SubtitleTrack> = emptyList()
 )
 
+@Immutable
 data class Anime(
     val id: String,
     val slug: String,
@@ -208,6 +219,8 @@ data class Anime(
     val isFeatured: Boolean = false,
     val isTrending: Boolean = false,
     val isNewRelease: Boolean = false,
+    val isOfficialFree: Boolean = false,
+    val officialChannel: String? = null,
     val artTheme: AnimeArtTheme,
     val posterTag: String,
     val posterUrl: String = "",
@@ -217,6 +230,7 @@ data class Anime(
     val latestEpisodeSlug: String? = null,
     val characters: List<CharacterRole> = emptyList(),
     val relatedIds: List<String> = emptyList(),
+    val externalLinks: List<ExternalPlatformLink> = emptyList(),
     val episodes: List<Episode> = emptyList()
 ) {
     val latestEpisodeNumber: Int

@@ -750,129 +750,125 @@ private fun ScheduleExploreContent(
                 }
                 items(dayAnime, key = { it.id }) { anime ->
                     val hasReminder = anime.id in reminders
-                    Surface(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onAnimeClick(anime.id) },
-                        shape = RoundedCornerShape(20.dp),
-                        color = ObsidianCard,
-                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(ObsidianCard)
+                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                            .clickable { onAnimeClick(anime.id) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(54.dp)
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.width(54.dp)
-                            ) {
-                                Text(
-                                    text = (anime.releaseTimeWib ?: "20:00").substringBefore(" "),
-                                    color = GoldPrimary,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "WIB",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextTertiary,
-                                    fontSize = 10.sp
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(50.dp)
-                                    .background(DividerSubtle)
+                            Text(
+                                text = (anime.releaseTimeWib ?: "20:00").substringBefore(" "),
+                                color = GoldPrimary,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "WIB",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiary,
+                                fontSize = 10.sp
+                            )
+                        }
 
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 52.dp, height = 72.dp)
-                                    .clip(RoundedCornerShape(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(50.dp)
+                                .background(DividerSubtle)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .size(width = 52.dp, height = 72.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                        ) {
+                            AnimePosterArtwork(
+                                artTheme = anime.artTheme,
+                                title = anime.title,
+                                posterUrl = anime.posterUrl,
+                                modifier = Modifier.fillMaxSize(),
+                                showKanjiWatermark = false,
+                                decodeSizePx = 240
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                AnimePosterArtwork(
-                                    artTheme = anime.artTheme,
-                                    title = anime.title,
-                                    posterUrl = anime.posterUrl,
-                                    modifier = Modifier.fillMaxSize(),
-                                    showKanjiWatermark = false
+                                if (anime.status == AnimeStatus.ONGOING) {
+                                    LedStatusDot(color = StatusLive, pulsing = false, size = 6.dp)
+                                }
+                                GoldTagChip(
+                                    text = if (anime.status == AnimeStatus.ONGOING)
+                                        "Ep ${anime.releasedEpisodes + 1} segera"
+                                    else "Tamat",
+                                    highlighted = anime.status == AnimeStatus.ONGOING
                                 )
                             }
+                            Spacer(modifier = Modifier.height(5.dp))
+                            Text(
+                                text = anime.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = anime.genres.take(2).joinToString(" • "),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 11.sp,
+                                color = TextTertiary
+                            )
+                        }
 
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    if (anime.status == AnimeStatus.ONGOING) {
-                                        LedStatusDot(color = StatusLive, pulsing = true, size = 6.dp)
-                                    }
-                                    GoldTagChip(
-                                        text = if (anime.status == AnimeStatus.ONGOING)
-                                            "Ep ${anime.releasedEpisodes + 1} segera"
-                                        else "Tamat",
-                                        highlighted = anime.status == AnimeStatus.ONGOING
+                        Column(horizontalAlignment = Alignment.End) {
+                            IconButton(
+                                onClick = { onToggleReminder(anime.id) },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(if (hasReminder) GoldTintStrong else ObsidianCardAlt)
+                                    .border(
+                                        0.75.dp,
+                                        if (hasReminder) GoldPrimary else GoldSubtleBorder,
+                                        CircleShape
                                     )
-                                }
-                                Spacer(modifier = Modifier.height(5.dp))
-                                Text(
-                                    text = anime.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = TextPrimary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = anime.genres.take(2).joinToString(" • "),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontSize = 11.sp,
-                                    color = TextTertiary
+                            ) {
+                                Icon(
+                                    imageVector = if (hasReminder) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
+                                    contentDescription = "Pengingat",
+                                    tint = if (hasReminder) GoldPrimary else TextSecondary,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
-
-                            Column(horizontalAlignment = Alignment.End) {
-                                IconButton(
-                                    onClick = { onToggleReminder(anime.id) },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(if (hasReminder) GoldTintStrong else ObsidianCardAlt)
-                                        .border(
-                                            0.75.dp,
-                                            if (hasReminder) GoldPrimary else GoldSubtleBorder,
-                                            CircleShape
-                                        )
-                                ) {
-                                    Icon(
-                                        imageVector = if (hasReminder) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsNone,
-                                        contentDescription = "Pengingat",
-                                        tint = if (hasReminder) GoldPrimary else TextSecondary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                IconButton(
-                                    onClick = { onPlayAnime(anime.id) },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(GoldGradientBrush)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.PlayArrow,
-                                        contentDescription = "Tonton",
-                                        tint = TextOnGold,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            IconButton(
+                                onClick = { onPlayAnime(anime.id) },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(GoldGradientBrush)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.PlayArrow,
+                                    contentDescription = "Tonton",
+                                    tint = TextOnGold,
+                                    modifier = Modifier.size(19.dp)
+                                )
                             }
                         }
                     }

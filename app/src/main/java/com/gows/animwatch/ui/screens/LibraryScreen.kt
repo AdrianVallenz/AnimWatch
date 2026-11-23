@@ -257,106 +257,111 @@ private fun WatchlistContent(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(savedEntries, key = { it.first.id }) { (anime, category) ->
-                    Surface(
+                    val watchedCount = uiState.watchedEpisodes[anime.id] ?: 0
+                    val maxTrackable = maxOf(anime.totalEpisodes, anime.releasedEpisodes, 1)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onAnimeClick(anime.id) },
-                        shape = RoundedCornerShape(18.dp),
-                        color = ObsidianCard,
-                        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(ObsidianCard)
+                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+                            .clickable { onAnimeClick(anime.id) }
+                            .padding(11.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
+                        Box(
                             modifier = Modifier
-                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                                .padding(11.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .width(64.dp)
+                                .aspectRatio(0.72f)
+                                .clip(RoundedCornerShape(12.dp))
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .width(64.dp)
-                                    .aspectRatio(0.72f)
-                                    .clip(RoundedCornerShape(12.dp))
+                            AnimePosterArtwork(
+                                artTheme = anime.artTheme,
+                                title = anime.title,
+                                posterUrl = anime.posterUrl,
+                                modifier = Modifier.fillMaxSize(),
+                                showKanjiWatermark = false,
+                                decodeSizePx = 240
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                AnimePosterArtwork(
-                                    artTheme = anime.artTheme,
-                                    title = anime.title,
-                                    posterUrl = anime.posterUrl,
-                                    modifier = Modifier.fillMaxSize(),
-                                    showKanjiWatermark = false
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(GoldTint)
+                                        .clickable { onEditCategory(anime) }
+                                        .padding(horizontal = 9.dp, vertical = 3.5.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(CircleShape)
-                                            .background(GoldTint)
-                                            .clickable { onEditCategory(anime) }
-                                            .padding(horizontal = 9.dp, vertical = 3.5.dp)
-                                    ) {
-                                        Text(
-                                            text = "${category.label} • Ubah",
-                                            color = GoldPrimary,
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Star,
-                                            contentDescription = null,
-                                            tint = GoldPrimary,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Text(
-                                            text = "${anime.rating}",
-                                            color = TextPrimary,
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
+                                    Text(
+                                        text = "${category.label} • Ubah",
+                                        color = GoldPrimary,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = anime.title,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = TextPrimary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = "Ep ${anime.releasedEpisodes}/${anime.totalEpisodes} • ${anime.studio}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontSize = 11.sp,
-                                    color = TextTertiary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Star,
+                                        contentDescription = null,
+                                        tint = GoldPrimary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text(
+                                        text = "${anime.rating}",
+                                        color = TextPrimary,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = anime.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "Progres $watchedCount/$maxTrackable Ep • ${anime.studio}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 11.sp,
+                                color = if (watchedCount > 0) GoldPrimary else TextTertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (watchedCount > 0) {
+                                Spacer(modifier = Modifier.height(5.dp))
+                                AnalogMeterGauge(
+                                    progress = (watchedCount.toFloat() / maxTrackable.toFloat()).coerceIn(0.05f, 1f),
+                                    height = 4.dp
                                 )
                             }
+                        }
 
-                            Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
 
-                            IconButton(
-                                onClick = { onPlayClick(anime) },
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(GoldGradientBrush)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.PlayArrow,
-                                    contentDescription = "Tonton",
-                                    tint = TextOnGold
-                                )
-                            }
+                        IconButton(
+                            onClick = { onPlayClick(anime) },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(GoldGradientBrush)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.PlayArrow,
+                                contentDescription = "Tonton",
+                                tint = TextOnGold
+                            )
                         }
                     }
                 }
@@ -414,33 +419,30 @@ private fun HistoryContent(
             }
             items(history, key = { it.animeId }) { progress ->
                 val anime = allAnime.find { it.id == progress.animeId } ?: return@items
-                Surface(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onResumeClick(progress) },
-                    shape = RoundedCornerShape(18.dp),
-                    color = ObsidianCard,
-                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(ObsidianCard)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+                        .clickable { onResumeClick(progress) }
+                        .padding(11.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    Box(
                         modifier = Modifier
-                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                            .padding(11.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .width(104.dp)
+                            .aspectRatio(16f / 10f)
+                            .clip(RoundedCornerShape(12.dp))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .width(104.dp)
-                                .aspectRatio(16f / 10f)
-                                .clip(RoundedCornerShape(12.dp))
-                        ) {
-                            AnimePosterArtwork(
-                                artTheme = anime.artTheme,
-                                title = anime.title,
-                                posterUrl = anime.posterUrl,
-                                modifier = Modifier.fillMaxSize(),
-                                showKanjiWatermark = false
-                            )
+                        AnimePosterArtwork(
+                            artTheme = anime.artTheme,
+                            title = anime.title,
+                            posterUrl = anime.posterUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            showKanjiWatermark = false,
+                            decodeSizePx = 280
+                        )
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.Center)
@@ -506,7 +508,6 @@ private fun HistoryContent(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                    }
                 }
             }
         }

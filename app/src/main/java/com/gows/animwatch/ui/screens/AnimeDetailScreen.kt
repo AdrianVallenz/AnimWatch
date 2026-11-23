@@ -27,9 +27,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.automirrored.rounded.Sort
 import androidx.compose.material.icons.automirrored.rounded.ViewList
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsNone
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.ThumbUp
@@ -60,6 +63,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -119,6 +123,7 @@ fun AnimeDetailScreen(
     onBack: () -> Unit,
     onPlayEpisode: (String, String?) -> Unit,
     onSelectWatchlist: (String, WatchlistCategory?) -> Unit,
+    onUpdateWatchedEpisodes: (String, Int) -> Unit,
     onRateAnime: (String, Int) -> Unit,
     onToggleReminder: (String) -> Unit,
     onDownloadEpisode: (Anime, Episode) -> Unit,
@@ -141,10 +146,16 @@ fun AnimeDetailScreen(
     var isSpoilerDraft by remember { mutableStateOf(false) }
     var revealedSpoilers by remember { mutableStateOf(setOf<String>()) }
 
+    val uriHandler = LocalUriHandler.current
     val watchlistCategory = uiState.watchlist[anime.id]
+    val watchedEpisodesCount = uiState.watchedEpisodes[anime.id] ?: 0
+    val maxTrackableEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
     val userRating = uiState.userRatings[anime.id] ?: 0
     val watchProgress = uiState.watchHistory.find { it.animeId == anime.id }
     val hasReminder = anime.id in uiState.reminders
+    val hasOfficialFreeEpisode = remember(anime.episodes, anime.isOfficialFree) {
+        anime.isOfficialFree || anime.episodes.any { it.streamType == "official_episode" }
+    }
 
     val displayedEpisodes = remember(anime.episodes, sortDescending) {
         if (sortDescending) anime.episodes.sortedByDescending { it.number }
@@ -175,7 +186,8 @@ fun AnimeDetailScreen(
                     title = anime.title,
                     posterUrl = anime.posterUrl,
                     modifier = Modifier.fillMaxSize(),
-                    showVignette = false
+                    showVignette = false,
+                    decodeSizePx = 640
                 )
 
                 Box(
@@ -255,26 +267,21 @@ fun AnimeDetailScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
-                    Surface(
+                    Box(
                         modifier = Modifier
                             .width(108.dp)
-                            .aspectRatio(0.70f),
-                        shape = RoundedCornerShape(18.dp),
-                        color = ObsidianCard,
-                        shadowElevation = if (IsDarkTheme) 0.dp else 6.dp
+                            .aspectRatio(0.70f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(ObsidianCard)
+                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                        ) {
-                            AnimePosterArtwork(
-                                artTheme = anime.artTheme,
-                                title = anime.title,
-                                posterUrl = anime.posterUrl,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        AnimePosterArtwork(
+                            artTheme = anime.artTheme,
+                            title = anime.title,
+                            posterUrl = anime.posterUrl,
+                            modifier = Modifier.fillMaxSize(),
+                            decodeSizePx = 320
+                        )
                     }
 
                     Spacer(modifier = Modifier.width(14.dp))
@@ -357,10 +364,13 @@ fun AnimeDetailScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                val playLabel = if (watchProgress != null) {
-                    "Lanjutkan Ep ${watchProgress.episodeNumber} (${formatTimeSeconds(watchProgress.positionSeconds)})"
-                } else {
-                    "Tonton Episode 1"
+                val playLabel = when {
+                    watchProgress != null ->
+                        "Lanjutkan Ep ${watchProgress.episodeNumber} (${formatTimeSeconds(watchProgress.positionSeconds)})"
+                    hasOfficialFreeEpisode ->
+                        "Tonton Episode 1 • Gratis Resmi"
+                    else ->
+                        "Putar Trailer / Episode 1"
                 }
 
                 GoldGradientButton(
@@ -404,44 +414,160 @@ fun AnimeDetailScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Soft Synopsis Card
-                Surface(
+                // Organic AniList Progress Tracker Card (synced to PostgreSQL)
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { synopsisExpanded = !synopsisExpanded },
-                    shape = RoundedCornerShape(20.dp),
-                    color = ObsidianCard,
-                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(ObsidianCard)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                        .padding(14.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
-                            .animateContentSize()
-                            .padding(16.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Pelacak Tontonan",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = buildString {
+                                    append(watchlistCategory?.label ?: "Belum masuk daftar")
+                                    if (!anime.officialChannel.isNullOrBlank()) {
+                                        append(" • ${anime.officialChannel}")
+                                    }
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiary
+                            )
+                        }
                         Text(
-                            text = "Sinopsis",
+                            text = "$watchedEpisodesCount / $maxTrackableEps Ep",
                             style = MaterialTheme.typography.titleSmall,
-                            color = TextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = anime.synopsis,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                            maxLines = if (synopsisExpanded) Int.MAX_VALUE else 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (synopsisExpanded) "Sembunyikan" else "Baca selengkapnya",
-                            style = MaterialTheme.typography.labelMedium,
                             color = GoldPrimary,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.Bold
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    AnalogMeterGauge(
+                        progress = (watchedEpisodesCount.toFloat() / maxTrackableEps.toFloat()).coerceIn(0f, 1f),
+                        height = 6.dp
+                    )
+
+                    Spacer(modifier = Modifier.height(11.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(GoldTint)
+                                .clickable { showWatchlistSheet = true }
+                                .padding(horizontal = 11.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = watchlistCategory?.label ?: "Atur Status",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GoldPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(ObsidianCardAlt)
+                                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                                    .clickable(enabled = watchedEpisodesCount > 0) {
+                                        onUpdateWatchedEpisodes(anime.id, watchedEpisodesCount - 1)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Remove,
+                                    contentDescription = "Kurangi Episode",
+                                    tint = if (watchedEpisodesCount > 0) TextPrimary else TextTertiary,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(GoldGradientBrush)
+                                    .clickable(enabled = watchedEpisodesCount < maxTrackableEps) {
+                                        onUpdateWatchedEpisodes(anime.id, watchedEpisodesCount + 1)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = "Tambah Episode",
+                                    tint = TextOnGold,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = if (watchedEpisodesCount >= maxTrackableEps) "Selesai" else "1 Ep",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextOnGold,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Soft Synopsis Card
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(ObsidianCard)
+                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(20.dp))
+                        .clickable { synopsisExpanded = !synopsisExpanded }
+                        .animateContentSize()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Sinopsis",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = anime.synopsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        maxLines = if (synopsisExpanded) Int.MAX_VALUE else 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (synopsisExpanded) "Sembunyikan" else "Baca selengkapnya",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = GoldPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -464,6 +590,46 @@ fun AnimeDetailScreen(
                                 color = GoldPrimary,
                                 fontWeight = FontWeight.Medium
                             )
+                        }
+                    }
+                }
+
+                if (anime.externalLinks.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "Platform Resmi",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        anime.externalLinks.forEach { link ->
+                            Row(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(ObsidianCard)
+                                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
+                                    .clickable { runCatching { uriHandler.openUri(link.url) } }
+                                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = link.site,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                    contentDescription = "Buka ${link.site}",
+                                    tint = GoldPrimary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -869,38 +1035,34 @@ private fun DetailQuickAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        color = if (active) GoldTintStrong else ObsidianCard,
-        shadowElevation = if (IsDarkTheme) 0.dp else 1.dp
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (active) GoldTintStrong else ObsidianCard)
+            .border(
+                if (active) 1.dp else 0.75.dp,
+                if (active) GoldPrimary else GoldSubtleBorder,
+                RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .border(
-                    if (active) 1.dp else 0.75.dp,
-                    if (active) GoldPrimary else GoldSubtleBorder,
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(vertical = 11.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (active) GoldBright else GoldPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (active) GoldBright else TextSecondary,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (active) GoldBright else GoldPrimary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) GoldBright else TextSecondary,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -914,142 +1076,140 @@ private fun EpisodeRowItem(
     onDownloadClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onPlayClick),
-        shape = RoundedCornerShape(18.dp),
-        color = ObsidianCard,
-        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+            .clip(RoundedCornerShape(18.dp))
+            .background(ObsidianCard)
+            .border(
+                0.75.dp,
+                if (watchFraction > 0f) GoldPrimary.copy(alpha = 0.45f) else GoldSubtleBorder,
+                RoundedCornerShape(18.dp)
+            )
+            .clickable(onClick = onPlayClick)
+            .padding(11.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        Box(
             modifier = Modifier
-                .border(
-                    0.75.dp,
-                    if (watchFraction > 0f) GoldPrimary.copy(alpha = 0.45f) else GoldSubtleBorder,
-                    RoundedCornerShape(18.dp)
-                )
-                .padding(11.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .width(102.dp)
+                .aspectRatio(16f / 10f)
+                .clip(RoundedCornerShape(12.dp))
         ) {
+            AnimePosterArtwork(
+                artTheme = anime.artTheme,
+                title = anime.title,
+                posterUrl = anime.posterUrl,
+                modifier = Modifier.fillMaxSize(),
+                showKanjiWatermark = false,
+                decodeSizePx = 280
+            )
             Box(
                 modifier = Modifier
-                    .width(102.dp)
-                    .aspectRatio(16f / 10f)
-                    .clip(RoundedCornerShape(12.dp))
+                    .align(Alignment.Center)
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(MediaScrimDark.copy(alpha = 0.72f))
+                    .border(1.dp, GoldBright.copy(alpha = 0.8f), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                AnimePosterArtwork(
-                    artTheme = anime.artTheme,
-                    title = anime.title,
-                    posterUrl = anime.posterUrl,
-                    modifier = Modifier.fillMaxSize(),
-                    showKanjiWatermark = false
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = "Putar",
+                    tint = MediaTextLight,
+                    modifier = Modifier.size(18.dp)
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(MediaScrimDark.copy(alpha = 0.72f))
-                        .border(1.dp, GoldBright.copy(alpha = 0.8f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Episode ${episode.number}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = GoldPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (episode.streamType == "official_episode") {
+                    GoldTagChip(text = "Gratis Resmi", highlighted = true)
+                } else if (episode.isFiller) {
+                    GoldTagChip(text = "Filler")
+                }
+                Text(
+                    text = "• ${episode.durationSeconds / 60} mnt",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextTertiary
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = episode.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (watchFraction > 0f) {
+                Spacer(modifier = Modifier.height(6.dp))
+                AnalogMeterGauge(
+                    progress = watchFraction.coerceIn(0.06f, 1f),
+                    height = 5.dp
+                )
+            } else {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = episode.releaseDate,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextTertiary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        when (downloadTask?.status) {
+            DownloadStatus.COMPLETED -> {
+                IconButton(onClick = onDownloadClick) {
                     Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = "Putar",
-                        tint = MediaTextLight,
-                        modifier = Modifier.size(18.dp)
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = "Tersimpan",
+                        tint = StatusEmerald
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+            DownloadStatus.DOWNLOADING -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onDownloadClick)
+                        .padding(4.dp)
                 ) {
+                    TapeReelSpinner(isSpinning = true, size = 20.dp, tint = GoldPrimary)
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Episode ${episode.number}",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "${(downloadTask.progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 9.5.sp,
                         color = GoldPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (episode.isFiller) {
-                        GoldTagChip(text = "Filler")
-                    }
-                    Text(
-                        text = "• ${episode.durationSeconds / 60} mnt",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextTertiary
-                    )
-                }
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = episode.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (watchFraction > 0f) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    AnalogMeterGauge(
-                        progress = watchFraction.coerceIn(0.06f, 1f),
-                        height = 5.dp
-                    )
-                } else {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = episode.releaseDate,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextTertiary
-                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(6.dp))
-
-            when (downloadTask?.status) {
-                DownloadStatus.COMPLETED -> {
-                    IconButton(onClick = onDownloadClick) {
-                        Icon(
-                            imageVector = Icons.Rounded.CheckCircle,
-                            contentDescription = "Tersimpan",
-                            tint = StatusEmerald
-                        )
-                    }
-                }
-
-                DownloadStatus.DOWNLOADING -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(onClick = onDownloadClick)
-                            .padding(4.dp)
-                    ) {
-                        TapeReelSpinner(isSpinning = true, size = 20.dp, tint = GoldPrimary)
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "${(downloadTask.progress * 100).toInt()}%",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.5.sp,
-                            color = GoldPrimary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
-                else -> {
-                    IconButton(onClick = onDownloadClick) {
-                        Icon(
-                            imageVector = Icons.Rounded.Download,
-                            contentDescription = "Unduh Episode",
-                            tint = GoldPrimary
-                        )
-                    }
+            else -> {
+                IconButton(onClick = onDownloadClick) {
+                    Icon(
+                        imageVector = Icons.Rounded.Download,
+                        contentDescription = "Unduh Episode",
+                        tint = GoldPrimary
+                    )
                 }
             }
         }
@@ -1064,17 +1224,14 @@ fun CommentCardItem(
     onLikeClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = ObsidianCard,
-        shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(ObsidianCard)
+            .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+            .padding(14.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
-                .padding(14.dp)
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1189,4 +1346,3 @@ fun CommentCardItem(
             }
         }
     }
-}

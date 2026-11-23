@@ -46,11 +46,22 @@ class KumanimeRemoteDataSource(
         runCatching {
             val api = serviceProvider(baseUrl)
             coroutineScope {
+                val officialFreeDeferred = async { runCatching { api.getOfficialFree() }.getOrNull() }
                 val popularDeferred = async { runCatching { api.getPopular() }.getOrNull() }
                 val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
                 val moviesDeferred = async { runCatching { api.getMovies() }.getOrNull() }
                 val completedDeferred = async { runCatching { api.getCompleted() }.getOrNull() }
 
+                val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto.copy(isOfficialFree = true),
+                            index = idx,
+                            defaultStatus = AnimeStatus.ONGOING,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
                 val popularList = popularDeferred.await()?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapPopularItem(dto, idx) }
                 val latestList = latestDeferred.await()?.data.orEmpty()
@@ -70,6 +81,11 @@ class KumanimeRemoteDataSource(
 
                 val merged = LinkedHashMap<String, Anime>()
                 popularList.forEach { merged[it.id] = it }
+                officialFreeList.forEach { item ->
+                    if (!merged.containsKey(item.id)) {
+                        merged[item.id] = item
+                    }
+                }
 
                 latestList.forEach { item ->
                     val existing = merged[item.id]
@@ -242,12 +258,13 @@ class KumanimeRemoteDataSource(
         baseUrl: String,
         token: String,
         animeId: String,
-        category: String?
+        category: String?,
+        watchedEpisodes: Int? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val res = serviceProvider(baseUrl).upsertWatchlist(
                 bearer(token),
-                WatchlistUpsertRequestDto(animeId, category)
+                WatchlistUpsertRequestDto(animeId, category, watchedEpisodes)
             )
             if (!res.isSuccessful) throw IllegalStateException("Gagal menyimpan watchlist")
         }

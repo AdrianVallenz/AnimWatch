@@ -45,6 +45,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
@@ -87,34 +88,42 @@ fun CrtScanlineOverlay(
 }
 
 /**
- * Soft breathing status indicator dot.
+ * Soft breathing status indicator dot (GPU-accelerated via graphicsLayer: zero recompositions per frame).
  */
 @Composable
 fun LedStatusDot(
     color: Color = GoldBright,
-    pulsing: Boolean = true,
+    pulsing: Boolean = false,
     size: Dp = 7.dp,
     modifier: Modifier = Modifier
 ) {
-    val alpha = if (pulsing) {
-        val transition = rememberInfiniteTransition(label = "status_pulse")
-        val anim by transition.animateFloat(
-            initialValue = 0.45f,
-            targetValue = 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1200, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "status_alpha"
+    if (!pulsing) {
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(color)
         )
-        anim
-    } else 1.0f
+        return
+    }
+
+    val transition = rememberInfiniteTransition(label = "status_pulse")
+    val animAlpha = transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "status_alpha"
+    )
 
     Box(
         modifier = modifier
             .size(size)
+            .graphicsLayer { alpha = animAlpha.value }
             .clip(CircleShape)
-            .background(color.copy(alpha = alpha))
+            .background(color)
     )
 }
 
@@ -128,8 +137,31 @@ fun TapeReelSpinner(
     tint: Color = GoldBright,
     modifier: Modifier = Modifier
 ) {
+    if (!isSpinning) {
+        Canvas(modifier = modifier.size(size)) {
+            val w = this.size.width
+            val h = this.size.height
+            val barWidth = w * 0.20f
+            val gap = w * 0.12f
+            val startX = (w - (barWidth * 3 + gap * 2)) / 2f
+            val heights = listOf(0.45f, 0.70f, 0.45f)
+            heights.forEachIndexed { idx, frac ->
+                val bh = (h * frac).coerceAtLeast(barWidth)
+                val x = startX + idx * (barWidth + gap)
+                val y = (h - bh) / 2f
+                drawRoundRect(
+                    color = tint.copy(alpha = 0.55f),
+                    topLeft = Offset(x, y),
+                    size = Size(barWidth, bh),
+                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                )
+            }
+        }
+        return
+    }
+
     val transition = rememberInfiniteTransition(label = "wave_anim")
-    val bar1 by transition.animateFloat(
+    val bar1 = transition.animateFloat(
         initialValue = 0.32f,
         targetValue = 0.92f,
         animationSpec = infiniteRepeatable(
@@ -138,7 +170,7 @@ fun TapeReelSpinner(
         ),
         label = "bar1"
     )
-    val bar2 by transition.animateFloat(
+    val bar2 = transition.animateFloat(
         initialValue = 0.85f,
         targetValue = 0.28f,
         animationSpec = infiniteRepeatable(
@@ -147,7 +179,7 @@ fun TapeReelSpinner(
         ),
         label = "bar2"
     )
-    val bar3 by transition.animateFloat(
+    val bar3 = transition.animateFloat(
         initialValue = 0.45f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
@@ -163,14 +195,14 @@ fun TapeReelSpinner(
         val barWidth = w * 0.20f
         val gap = w * 0.12f
         val startX = (w - (barWidth * 3 + gap * 2)) / 2f
-        val heights = if (isSpinning) listOf(bar1, bar2, bar3) else listOf(0.45f, 0.70f, 0.45f)
+        val heights = listOf(bar1.value, bar2.value, bar3.value)
 
         heights.forEachIndexed { idx, frac ->
             val bh = (h * frac).coerceAtLeast(barWidth)
             val x = startX + idx * (barWidth + gap)
             val y = (h - bh) / 2f
             drawRoundRect(
-                color = tint.copy(alpha = if (isSpinning) 0.95f else 0.55f),
+                color = tint.copy(alpha = 0.95f),
                 topLeft = Offset(x, y),
                 size = Size(barWidth, bh),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)

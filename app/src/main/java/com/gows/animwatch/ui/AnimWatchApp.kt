@@ -261,6 +261,7 @@ fun AnimWatchApp(
                             onBack = { viewModel.navigateBack() },
                             onPlayEpisode = { id, epId -> viewModel.playAnime(id, epId) },
                             onSelectWatchlist = viewModel::setWatchlistCategory,
+                            onUpdateWatchedEpisodes = viewModel::updateWatchedEpisodes,
                             onRateAnime = viewModel::rateAnime,
                             onToggleReminder = viewModel::toggleAnimeReminder,
                             onDownloadEpisode = { a, ep -> viewModel.handleEpisodeDownloadAction(a, ep) },

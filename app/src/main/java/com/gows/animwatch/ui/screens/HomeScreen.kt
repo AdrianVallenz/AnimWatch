@@ -43,11 +43,11 @@ import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +82,6 @@ import com.gows.animwatch.ui.theme.GoldGradientBrush
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
 import com.gows.animwatch.ui.theme.GoldTint
-import com.gows.animwatch.ui.theme.IsDarkTheme
 import com.gows.animwatch.ui.theme.MediaScrimDark
 import com.gows.animwatch.ui.theme.MediaTextLight
 import com.gows.animwatch.ui.theme.MediaTextSecondary
@@ -114,12 +113,28 @@ fun HomeScreen(
     onOpenProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val featuredList = uiState.allAnime.filter { it.isFeatured }.ifEmpty { uiState.allAnime.take(4) }
-    val latestReleases = uiState.allAnime.filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
-    val top10List = uiState.allAnime.sortedByDescending { it.rating }.take(10)
-    val trendingList = uiState.allAnime.filter { it.isTrending }.sortedBy { it.popularityRank }
-    val completedMarathon = uiState.allAnime.filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
-    val moviesList = uiState.allAnime.filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
+    val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
+    val featuredList = remember(uiState.allAnime) {
+        uiState.allAnime.filter { it.isFeatured }.ifEmpty { uiState.allAnime.take(4) }
+    }
+    val officialFreeList = remember(uiState.allAnime) {
+        uiState.allAnime.filter { it.isOfficialFree }
+    }
+    val latestReleases = remember(uiState.allAnime) {
+        uiState.allAnime.filter { !it.isOfficialFree && (it.isNewRelease || it.status == AnimeStatus.ONGOING) }
+    }
+    val top10List = remember(uiState.allAnime) {
+        uiState.allAnime.filter { !it.isOfficialFree }.sortedByDescending { it.rating }.take(10)
+    }
+    val trendingList = remember(uiState.allAnime) {
+        uiState.allAnime.filter { it.isTrending }.sortedBy { it.popularityRank }
+    }
+    val completedMarathon = remember(uiState.allAnime) {
+        uiState.allAnime.filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
+    }
+    val moviesList = remember(uiState.allAnime) {
+        uiState.allAnime.filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -128,7 +143,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(bottom = bottomInsetPadding)
     ) {
         // 1. Clean Organic Header Bar
-        item {
+        item(key = "home_top_bar") {
             HomeTopBar(
                 unreadNotifications = uiState.unreadNotificationCount,
                 avatarEmblem = uiState.userProfile.avatarEmblem,
@@ -139,7 +154,7 @@ fun HomeScreen(
         }
 
         // 2. Soft Connection Pill + Hero Featured Carousel
-        item {
+        item(key = "home_hero") {
             val apiStatus = uiState.apiConfig.status
             val ledColor = when (apiStatus) {
                 ApiConnectionStatus.CONNECTED -> StatusEmerald
@@ -148,7 +163,7 @@ fun HomeScreen(
                 ApiConnectionStatus.DEMO_LOCAL -> GoldPrimary
             }
             val statusLabel = when (apiStatus) {
-                ApiConnectionStatus.CONNECTED -> "Kumanime Terhubung"
+                ApiConnectionStatus.CONNECTED -> "AniList & Resmi Gratis Aktif"
                 ApiConnectionStatus.SYNCING -> "Menyinkronkan katalog..."
                 ApiConnectionStatus.OFFLINE_FALLBACK -> "Mode Katalog Offline"
                 ApiConnectionStatus.DEMO_LOCAL -> "Katalog Pilihan Siap"
@@ -156,12 +171,12 @@ fun HomeScreen(
             CassetteTelemetryStrip(
                 code = statusLabel,
                 statusText = if (apiStatus == ApiConnectionStatus.CONNECTED) {
-                    "${uiState.apiConfig.remoteCount} judul aktif"
+                    "${uiState.apiConfig.remoteCount} judul • ${officialFreeList.size} gratis resmi"
                 } else {
                     "${uiState.allAnime.size} anime • Sub Indo"
                 },
                 ledColor = ledColor,
-                pulsing = true,
+                pulsing = apiStatus == ApiConnectionStatus.SYNCING,
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 4.dp)
                     .clickable(onClick = onOpenProfile)
@@ -177,7 +192,7 @@ fun HomeScreen(
         }
 
         // 3. Soft Quick Discovery Shortcuts
-        item {
+        item(key = "home_shortcuts") {
             Spacer(modifier = Modifier.height(18.dp))
             QuickShortcutStrip(
                 onScheduleClick = onOpenSchedule,
@@ -188,9 +203,36 @@ fun HomeScreen(
             )
         }
 
+        // 3.5. Official Legal Free Sub Indo (Muse Indonesia & Ani-One Indonesia)
+        if (officialFreeList.isNotEmpty()) {
+            item(key = "home_official_free") {
+                Spacer(modifier = Modifier.height(26.dp))
+                SectionHeader(
+                    title = "Gratis Resmi Sub Indo",
+                    subtitle = "Episode resmi Muse Indonesia & Ani-One Indonesia",
+                    actionLabel = "Lihat Semua",
+                    onActionClick = { onOpenCatalog(CatalogPreset.OFFICIAL_FREE, "Gratis Resmi Sub Indo") }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(officialFreeList, key = { "free_${it.id}" }) { anime ->
+                        AnimePosterCard(
+                            anime = anime,
+                            isBookmarked = anime.id in uiState.watchlist,
+                            onClick = { onAnimeClick(anime.id) },
+                            onBookmarkClick = { onBookmarkClick(anime.id) }
+                        )
+                    }
+                }
+            }
+        }
+
         // 4. Continue Watching
         if (uiState.watchHistory.isNotEmpty()) {
-            item {
+            item(key = "home_continue") {
                 Spacer(modifier = Modifier.height(26.dp))
                 SectionHeader(
                     title = "Lanjutkan Menonton",
@@ -204,7 +246,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(uiState.watchHistory, key = { it.animeId }) { progress ->
-                        val anime = uiState.allAnime.find { it.id == progress.animeId }
+                        val anime = animeById[progress.animeId]
                         if (anime != null) {
                             ContinueWatchingCard(
                                 anime = anime,
@@ -384,45 +426,37 @@ private fun HomeTopBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = ObsidianCard,
-                shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+            IconButton(
+                onClick = onSearchClick,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, CircleShape)
             ) {
-                IconButton(
-                    onClick = onSearchClick,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = "Cari Anime",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = "Cari Anime",
+                    tint = TextPrimary,
+                    modifier = Modifier.size(19.dp)
+                )
             }
 
             Box {
-                Surface(
-                    shape = CircleShape,
-                    color = ObsidianCard,
-                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                IconButton(
+                    onClick = onNotificationClick,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(ObsidianCard)
+                        .border(0.75.dp, GoldSubtleBorder, CircleShape)
                 ) {
-                    IconButton(
-                        onClick = onNotificationClick,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .border(0.75.dp, GoldSubtleBorder, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Notifications,
-                            contentDescription = "Notifikasi",
-                            tint = if (unreadNotifications > 0) GoldPrimary else TextPrimary,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Rounded.Notifications,
+                        contentDescription = "Notifikasi",
+                        tint = if (unreadNotifications > 0) GoldPrimary else TextPrimary,
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
                 if (unreadNotifications > 0) {
                     Box(
@@ -471,13 +505,23 @@ private fun HeroCarouselSection(
     onBookmarkClick: (String) -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { featuredAnime.size })
+    val heroScrimBrush = remember {
+        Brush.verticalGradient(
+            0.0f to MediaScrimDark.copy(alpha = 0.14f),
+            0.38f to MediaScrimDark.copy(alpha = 0.24f),
+            0.70f to MediaScrimDark.copy(alpha = 0.86f),
+            1.0f to MediaScrimDark
+        )
+    }
 
     LaunchedEffect(featuredAnime.size) {
         if (featuredAnime.size > 1) {
             while (true) {
-                delay(5800L)
-                val next = (pagerState.currentPage + 1) % featuredAnime.size
-                pagerState.animateScrollToPage(next)
+                delay(6200L)
+                if (!pagerState.isScrollInProgress) {
+                    val next = (pagerState.currentPage + 1) % featuredAnime.size
+                    pagerState.animateScrollToPage(next)
+                }
             }
         }
     }
@@ -491,41 +535,30 @@ private fun HeroCarouselSection(
             val anime = featuredAnime[page]
             val isSaved = anime.id in watchlist
 
-            Surface(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(356.dp)
-                    .clickable { onAnimeClick(anime.id) },
-                shape = RoundedCornerShape(24.dp),
-                color = ObsidianCard,
-                shadowElevation = if (IsDarkTheme) 0.dp else 8.dp
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(ObsidianCard)
+                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
+                    .clickable { onAnimeClick(anime.id) }
             ) {
+                AnimePosterArtwork(
+                    artTheme = anime.artTheme,
+                    title = anime.title,
+                    posterUrl = anime.posterUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    showVignette = false,
+                    decodeSizePx = 720
+                )
+
+                // Smooth cinematic vignette (cached brush)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(24.dp))
-                ) {
-                    AnimePosterArtwork(
-                        artTheme = anime.artTheme,
-                        title = anime.title,
-                        posterUrl = anime.posterUrl,
-                        modifier = Modifier.fillMaxSize(),
-                        showVignette = false
-                    )
-
-                    // Smooth cinematic vignette (always dark over hero artwork for clear readability)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    0.0f to MediaScrimDark.copy(alpha = 0.14f),
-                                    0.38f to MediaScrimDark.copy(alpha = 0.24f),
-                                    0.70f to MediaScrimDark.copy(alpha = 0.86f),
-                                    1.0f to MediaScrimDark
-                                )
-                            )
-                    )
+                        .background(heroScrimBrush)
+                )
 
                     // Top floating capsule pills
                     Row(
@@ -641,7 +674,6 @@ private fun HeroCarouselSection(
                                 modifier = Modifier.weight(1f),
                                 height = 44.dp
                             )
-                        }
                     }
                 }
             }
@@ -713,25 +745,20 @@ private fun QuickActionPill(
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 4.dp)
     ) {
-        Surface(
-            modifier = Modifier.size(50.dp),
-            shape = CircleShape,
-            color = GoldTint,
-            shadowElevation = if (IsDarkTheme) 0.dp else 1.dp
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .clip(CircleShape)
+                .background(GoldTint)
+                .border(0.75.dp, GoldSubtleBorder, CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .border(0.75.dp, GoldSubtleBorder, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = GoldPrimary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = GoldPrimary,
+                modifier = Modifier.size(22.dp)
+            )
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(

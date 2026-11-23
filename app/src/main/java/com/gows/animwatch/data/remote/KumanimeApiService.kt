@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit
 interface KumanimeApiService {
 
     // Catalog Endpoints
+    @GET("official-free")
+    suspend fun getOfficialFree(): PopularResponseDto
+
     @GET("latest")
     suspend fun getLatest(): LatestResponseDto
 

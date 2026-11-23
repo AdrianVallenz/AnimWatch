@@ -3,7 +3,13 @@ import { SQL } from "bun";
 
 const ANILIST_ENDPOINT = "https://graphql.anilist.co";
 const CUSTOM_SOURCE_URL = (Bun.env.SOURCE_URL ?? "").trim().replace(/\/+$/, "");
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 6 * 60 * 1000;
+
+// Official free legal Indonesian anime YouTube channels (public Atom RSS feeds)
+const OFFICIAL_YT_CHANNELS = [
+  { name: "Muse Indonesia", channelId: "UCxxnxya_32jcKj4yN1_kD7A" },
+  { name: "Ani-One Indonesia", channelId: "UCUn0hEbVJc273anl_0ozDMQ" },
+];
 
 // ======================================================
 // PostgreSQL Connection & Schema Bootstrap (Railway DB)
@@ -30,11 +36,8 @@ async function initDatabase(): Promise<void> {
       tls: { rejectUnauthorized: false },
     });
 
-    // Verify connectivity
     await db`SELECT 1`;
 
-    // Schema designed with Postgres best practices:
-    // bigint identity PKs, text, timestamptz, boolean, composite keys & explicit FK indexes.
     await db.unsafe(`
       CREATE TABLE IF NOT EXISTS users (
         id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -66,9 +69,11 @@ async function initDatabase(): Promise<void> {
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         anime_id TEXT NOT NULL,
         category TEXT NOT NULL,
+        watched_episodes INTEGER NOT NULL DEFAULT 0,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (user_id, anime_id)
       );
+      ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS watched_episodes INTEGER NOT NULL DEFAULT 0;
 
       CREATE TABLE IF NOT EXISTS watch_history (
         user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -114,7 +119,6 @@ async function initDatabase(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_comment_likes_user_id ON comment_likes(user_id);
     `);
 
-    // Seed demo VIP account if not already present so instant Demo VIP login persists to DB
     const existingDemo = await db`SELECT id FROM users WHERE email = 'adrian@animwatch.id' LIMIT 1`;
     if (existingDemo.length === 0) {
       const demoHash = await Bun.password.hash("animwatch123");
@@ -147,7 +151,7 @@ async function initDatabase(): Promise<void> {
 await initDatabase();
 
 // ======================================================
-// In-memory TTL Cache for Anime Catalog
+// In-Memory TTL Cache
 // ======================================================
 
 interface CacheEntry<T> {
@@ -193,13 +197,8 @@ function generateToken(): string {
 }
 
 function makeEmblem(name: string): string {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   return (name.trim().slice(0, 2) || "AW").toUpperCase();
 }
 
@@ -263,9 +262,7 @@ function serializeUser(row: DbUserRow) {
     try {
       const parsed = JSON.parse(row.preferred_genres);
       if (Array.isArray(parsed)) genres = parsed.map(String);
-    } catch {
-      // keep default
-    }
+    } catch {}
   }
 
   let settings: Record<string, unknown> = {};
@@ -275,9 +272,7 @@ function serializeUser(row: DbUserRow) {
     try {
       const parsed = JSON.parse(row.settings);
       if (parsed && typeof parsed === "object") settings = parsed;
-    } catch {
-      // keep default
-    }
+    } catch {}
   }
 
   return {
@@ -317,15 +312,19 @@ async function loadUserSnapshot(userRow: DbUserRow) {
   const userId = Number(userRow.id);
 
   const [watchlistRows, historyRows, ratingRows] = await Promise.all([
-    db`SELECT anime_id, category FROM watchlist WHERE user_id = ${userId} ORDER BY updated_at DESC`,
+    db`SELECT anime_id, category, watched_episodes FROM watchlist WHERE user_id = ${userId} ORDER BY updated_at DESC`,
     db`SELECT anime_id, episode_id, episode_number, episode_title, position_seconds, duration_seconds, updated_at
        FROM watch_history WHERE user_id = ${userId} ORDER BY updated_at DESC LIMIT 40`,
     db`SELECT anime_id, score FROM user_ratings WHERE user_id = ${userId}`,
   ]);
 
   const watchlist: Record<string, string> = {};
-  for (const r of watchlistRows as Array<{ anime_id: string; category: string }>) {
+  const watchedEpisodes: Record<string, number> = {};
+  for (const r of watchlistRows as Array<{ anime_id: string; category: string; watched_episodes: number }>) {
     watchlist[r.anime_id] = r.category;
+    if (Number(r.watched_episodes) > 0) {
+      watchedEpisodes[r.anime_id] = Number(r.watched_episodes);
+    }
   }
 
   const ratings: Record<string, number> = {};
@@ -356,6 +355,7 @@ async function loadUserSnapshot(userRow: DbUserRow) {
   return {
     user: serializeUser(userRow),
     watchlist,
+    watchedEpisodes,
     history,
     ratings,
   };
@@ -513,22 +513,35 @@ async function handleUpsertWatchlist(req: Request): Promise<Response> {
   const user = await getAuthenticatedUser(req);
   if (!user) return jsonResponse({ status: false, message: "Unauthorized" }, 401);
 
-  const body = await parseJsonBody<{ animeId?: string; category?: string | null }>(req);
+  const body = await parseJsonBody<{ animeId?: string; category?: string | null; watchedEpisodes?: number | null }>(req);
   const animeId = (body?.animeId ?? "").trim();
   if (!animeId) return jsonResponse({ status: false, message: "animeId required" }, 400);
 
   const category = body?.category?.trim() || null;
-  if (!category) {
+  const watchedEp = body?.watchedEpisodes != null ? Math.max(0, Math.floor(Number(body.watchedEpisodes))) : null;
+
+  if (!category && watchedEp === null) {
     await db`DELETE FROM watchlist WHERE user_id = ${Number(user.id)} AND anime_id = ${animeId}`;
   } else {
-    await db`
-      INSERT INTO watchlist (user_id, anime_id, category, updated_at)
-      VALUES (${Number(user.id)}, ${animeId}, ${category}, NOW())
-      ON CONFLICT (user_id, anime_id)
-      DO UPDATE SET category = EXCLUDED.category, updated_at = NOW()
-    `;
+    const finalCat = category || "WATCHING";
+    const finalWatched = watchedEp ?? 0;
+    if (watchedEp !== null) {
+      await db`
+        INSERT INTO watchlist (user_id, anime_id, category, watched_episodes, updated_at)
+        VALUES (${Number(user.id)}, ${animeId}, ${finalCat}, ${finalWatched}, NOW())
+        ON CONFLICT (user_id, anime_id)
+        DO UPDATE SET category = EXCLUDED.category, watched_episodes = EXCLUDED.watched_episodes, updated_at = NOW()
+      `;
+    } else {
+      await db`
+        INSERT INTO watchlist (user_id, anime_id, category, updated_at)
+        VALUES (${Number(user.id)}, ${animeId}, ${finalCat}, NOW())
+        ON CONFLICT (user_id, anime_id)
+        DO UPDATE SET category = EXCLUDED.category, updated_at = NOW()
+      `;
+    }
   }
-  return jsonResponse({ status: "success", animeId, category });
+  return jsonResponse({ status: "success", animeId, category, watchedEpisodes: watchedEp });
 }
 
 async function handleUpsertHistory(req: Request): Promise<Response> {
@@ -731,7 +744,198 @@ async function handleToggleCommentLike(req: Request, rawId: string): Promise<Res
 }
 
 // ======================================================
-// Anime Catalog Engine (AniList Live + Optional Custom SOURCE_URL)
+// Official Legal Free YouTube Feeds (Muse ID & Ani-One ID)
+// ======================================================
+
+interface YtRssEntry {
+  videoId: string;
+  title: string;
+  published: string;
+  thumbnail: string;
+  channelName: string;
+}
+
+function ytNoCookieEmbed(videoId: string): string {
+  return `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3`;
+}
+
+async function fetchYouTubeAtomFeed(feedUrl: string, channelName: string): Promise<YtRssEntry[]> {
+  try {
+    const res = await fetch(feedUrl, {
+      headers: { "User-Agent": "AnimWatch-OfficialFeed/1.0" },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const $ = load(xml, { xmlMode: true });
+    const entries: YtRssEntry[] = [];
+
+    $("entry").each((_, el) => {
+      const videoId = $(el).find("yt\\:videoId").text().trim() || $(el).find("videoId").text().trim();
+      const title = $(el).find("title").first().text().trim();
+      const published = $(el).find("published").first().text().trim();
+      if (videoId && title) {
+        entries.push({
+          videoId,
+          title,
+          published,
+          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          channelName,
+        });
+      }
+    });
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+function isOfficialFullEpisodeTitle(title: string): boolean {
+  const lower = title.toLowerCase();
+  if (
+    lower.includes("#short") ||
+    lower.includes("#highlight") ||
+    lower.includes("highlight") ||
+    lower.includes("cuplikan") ||
+    lower.includes("trailer") ||
+    lower.includes("teaser") ||
+    lower.includes("pv ") ||
+    lower.includes("opening") ||
+    lower.includes("ending") ||
+    lower.includes("ost") ||
+    lower.includes("kompilasi")
+  ) {
+    return false;
+  }
+  return /\b(episode|ep\.?\s*\d+|eps\.?\s*\d+|s\d+e\d+|movie|ova)\b/i.test(title);
+}
+
+function parseOfficialEpisodeTitle(rawTitle: string): { seriesTitle: string; episodeNumber: number } {
+  let clean = rawTitle
+    .replace(/\[[^\]]*(bahasa indonesia|takarir|sub indo|english sub|dub)[^\]]*\]/gi, "")
+    .replace(/【[^】]*】/g, "")
+    .replace(/\|\s*(dub\s*jp|sub\s*indo|muse indonesia|ani-one).*$/i, "")
+    .replace(/^dub\s*id\s*[-–:]\s*/i, "")
+    .trim();
+
+  const epMatch = clean.match(/(?:episode|eps?\.?)\s*0*(\d+)/i) || clean.match(/s\d+e0*(\d+)/i);
+  const episodeNumber = epMatch ? Number(epMatch[1]) : 1;
+
+  const seriesTitle = clean
+    .replace(/[-–:|]*\s*(?:episode|eps?\.?)\s*\d+.*$/i, "")
+    .replace(/[-–:|]*\s*s\d+e\d+.*$/i, "")
+    .replace(/[-–:\s]+$/, "")
+    .trim() || rawTitle.slice(0, 48);
+
+  return { seriesTitle, episodeNumber };
+}
+
+async function handleOfficialFree(): Promise<Response> {
+  const key = "official-free-id";
+  const cached = getCached(key);
+  if (cached) return jsonResponse(cached);
+
+  const feedResults = await Promise.all(
+    OFFICIAL_YT_CHANNELS.map((ch) =>
+      fetchYouTubeAtomFeed(
+        `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.channelId}`,
+        ch.name
+      )
+    )
+  );
+
+  const allEntries = feedResults
+    .flat()
+    .filter((entry) => isOfficialFullEpisodeTitle(entry.title))
+    .sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
+
+  // Group multiple episodes of the same series together so each anime card has all recent official episodes
+  const grouped = new Map<
+    string,
+    {
+      slug: string;
+      seriesTitle: string;
+      channelName: string;
+      latestThumbnail: string;
+      latestPublished: string;
+      episodes: Array<{ eps_title: string; eps_slug: string; number: number; stream_url: string; stream_type: string; thumbnail: string }>;
+    }
+  >();
+
+  for (const entry of allEntries) {
+    const { seriesTitle, episodeNumber } = parseOfficialEpisodeTitle(entry.title);
+    const groupKey = slugify(seriesTitle) || entry.videoId;
+    const epObj = {
+      eps_title: `Episode ${episodeNumber} (${entry.channelName})`,
+      eps_slug: `yt-${entry.videoId}`,
+      number: episodeNumber,
+      stream_url: ytNoCookieEmbed(entry.videoId),
+      stream_type: "official_episode",
+      thumbnail: entry.thumbnail,
+    };
+
+    const existing = grouped.get(groupKey);
+    if (!existing) {
+      grouped.set(groupKey, {
+        slug: `ytfree-${groupKey}-${entry.videoId}`,
+        seriesTitle,
+        channelName: entry.channelName,
+        latestThumbnail: entry.thumbnail,
+        latestPublished: entry.published,
+        episodes: [epObj],
+      });
+    } else if (!existing.episodes.some((e) => e.eps_slug === epObj.eps_slug)) {
+      existing.episodes.push(epObj);
+    }
+  }
+
+  const data = Array.from(grouped.values())
+    .slice(0, 18)
+    .map((g, idx) => {
+      const sortedEps = g.episodes.sort((a, b) => a.number - b.number);
+      const latestEp = sortedEps[sortedEps.length - 1];
+      return {
+        title: g.seriesTitle,
+        japanese_title: `${g.channelName} • Gratis Resmi`,
+        slug: g.slug,
+        poster: g.latestThumbnail,
+        banner: g.latestThumbnail,
+        synopsis: `Tonton episode resmi Sub Indo secara gratis dan legal langsung dari kanal resmi ${g.channelName} di dalam AnimWatch.`,
+        genres: ["Sub Indo", "Gratis Resmi", g.channelName],
+        rating: Number((8.7 - idx * 0.04).toFixed(1)),
+        rating_count: "Resmi",
+        views_label: g.channelName,
+        studio: g.channelName,
+        status: "ONGOING",
+        type: "TV Series",
+        year: 2026,
+        season: "Gratis Resmi",
+        duration_minutes: 24,
+        total_episodes: Math.max(latestEp.number, 12),
+        released_episodes: latestEp.number,
+        episode: `Ep ${latestEp.number}`,
+        latest_eps_slug: latestEp.eps_slug,
+        trailer_url: latestEp.stream_url,
+        is_official_free: true,
+        official_channel: g.channelName,
+        stream_type: "official_episode",
+        episodes: sortedEps,
+        external_links: [
+          {
+            site: g.channelName,
+            url: `https://www.youtube.com/watch?v=${latestEp.eps_slug.replace(/^yt-/, "")}`,
+          },
+        ],
+      };
+    });
+
+  return jsonResponse(
+    setCached(key, { status: "success", source: "official-youtube-id", data }, 8 * 60 * 1000)
+  );
+}
+
+// ======================================================
+// Anime Catalog & Tracker Engine (AniList Live)
 // ======================================================
 
 function slugify(text: string): string {
@@ -739,7 +943,7 @@ function slugify(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 64);
+    .slice(0, 56);
 }
 
 function makeAnimeSlug(title: string, id: number): string {
@@ -758,7 +962,7 @@ function extractIdFromSlug(slug: string): number | null {
 }
 
 function cleanDescription(raw?: string | null): string {
-  if (!raw) return "Sinopsis resmi anime tersedia melalui katalog live AnimWatch.";
+  if (!raw) return "Sinopsis resmi anime tersedia melalui katalog AniList.";
   return raw
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?[^>]+(>|$)/g, "")
@@ -834,7 +1038,7 @@ function buildTrailerEmbed(trailer?: { id?: string | null; site?: string | null 
   if (!trailer?.id) return "";
   const site = (trailer.site ?? "").toLowerCase();
   if (site === "youtube") {
-    return `https://www.youtube.com/embed/${trailer.id}?rel=0&modestbranding=1`;
+    return ytNoCookieEmbed(trailer.id);
   }
   if (site === "dailymotion") {
     return `https://www.dailymotion.com/embed/video/${trailer.id}`;
@@ -848,22 +1052,23 @@ async function queryAniList<T>(query: string, variables: Record<string, unknown>
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
-      "User-Agent": "AnimWatch-KumanimeAPI/2.1",
+      "User-Agent": "AnimWatch-API/2.2",
     },
     body: JSON.stringify({ query, variables }),
   });
 
-  if (!res.ok) {
-    throw new Error(`AniList HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`AniList HTTP ${res.status}`);
   const payload = (await res.json()) as { data?: T; errors?: Array<{ message: string }> };
-  if (payload.errors?.length) {
-    throw new Error(payload.errors.map((e) => e.message).join("; "));
-  }
-  if (!payload.data) {
-    throw new Error("AniList returned empty data");
-  }
+  if (payload.errors?.length) throw new Error(payload.errors.map((e) => e.message).join("; "));
+  if (!payload.data) throw new Error("AniList returned empty data");
   return payload.data;
+}
+
+interface AniListExternalLink {
+  site?: string | null;
+  url?: string | null;
+  type?: string | null;
+  language?: string | null;
 }
 
 interface AniListMedia {
@@ -885,6 +1090,7 @@ interface AniListMedia {
   studios?: { nodes?: Array<{ name?: string | null }> | null } | null;
   nextAiringEpisode?: { episode?: number | null; airingAt?: number | null } | null;
   trailer?: { id?: string | null; site?: string | null } | null;
+  externalLinks?: AniListExternalLink[] | null;
   streamingEpisodes?: Array<{
     title?: string | null;
     thumbnail?: string | null;
@@ -913,7 +1119,7 @@ interface AniListMedia {
 const MEDIA_CARD_FIELDS = `
   id
   title { romaji english native }
-  coverImage { extraLarge large }
+  coverImage { large extraLarge }
   bannerImage
   description(asHtml: false)
   averageScore
@@ -938,8 +1144,9 @@ function pickTitle(m: AniListMedia): string {
 function mapMediaCommon(m: AniListMedia) {
   const title = pickTitle(m);
   const slug = makeAnimeSlug(m.title?.romaji || title, m.id);
-  const poster = m.coverImage?.extraLarge || m.coverImage?.large || "";
-  const banner = m.bannerImage || poster;
+  // Use coverImage.large (medium-lightweight HD) instead of huge extraLarge to keep Android memory lean
+  const poster = m.coverImage?.large || m.coverImage?.extraLarge || "";
+  const banner = m.bannerImage || m.coverImage?.extraLarge || poster;
   const rating = m.averageScore ? Number((m.averageScore / 10).toFixed(1)) : 8.2;
   const status = mapStatus(m.status);
   const nextEp = m.nextAiringEpisode?.episode ?? null;
@@ -970,7 +1177,7 @@ function mapMediaCommon(m: AniListMedia) {
     poster,
     banner,
     synopsis: cleanDescription(m.description),
-    genres: genres.length ? genres : ["Anime", "Sub Indo"],
+    genres: genres.length ? genres : ["Anime"],
     rating,
     rating_count: formatCount(m.popularity),
     views_label: formatCount(m.popularity),
@@ -992,83 +1199,14 @@ function mapMediaCommon(m: AniListMedia) {
   };
 }
 
-const SCRAPE_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8",
-};
-
-async function tryScrapeCustomPopular(): Promise<unknown[] | null> {
-  if (!CUSTOM_SOURCE_URL) return null;
-  try {
-    const res = await fetch(CUSTOM_SOURCE_URL, { headers: SCRAPE_HEADERS, signal: AbortSignal.timeout(7000) });
-    if (!res.ok) return null;
-    const $ = load(await res.text());
-    const data: unknown[] = [];
-    $("#content-wrap > .nganan > .menu > table").each((_, el) => {
-      const href = $(el).find("tbody > tr > .zvidesc > a").attr("href") ?? "";
-      const slug = href.match(/\/([^/]+)\/$/)?.[1] ?? "";
-      const title = $(el).find("tbody > tr > .zvidesc > a").text().trim();
-      const rawImg = $(el).find("tbody > tr > .zvithumb > a > img").attr("src") ?? "";
-      if (slug && title) {
-        data.push({
-          title,
-          poster: rawImg.startsWith("http") ? rawImg : `${CUSTOM_SOURCE_URL}${rawImg}`,
-          slug,
-          genres: ($(el).find("tbody > tr > td.zvidesc").text().match(/[A-Z][\w ]+(?=,|\s|$)/g) ?? []).slice(1),
-        });
-      }
-    });
-    return data.length > 0 ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-async function tryScrapeCustomLatest(page: number): Promise<unknown[] | null> {
-  if (!CUSTOM_SOURCE_URL) return null;
-  try {
-    const res = await fetch(`${CUSTOM_SOURCE_URL}/page/${page}/`, {
-      headers: SCRAPE_HEADERS,
-      signal: AbortSignal.timeout(7000),
-    });
-    if (!res.ok) return null;
-    const $ = load(await res.text());
-    const data: unknown[] = [];
-    $("#content-wrap > div.ngiri > div.menu > a").each((_, el) => {
-      const href = $(el).attr("href") ?? "";
-      const slug = href.match(/\/([^/]+)\/$/)?.[1] ?? "";
-      const title = $(el).find("div > p").text().trim();
-      const poster = $(el).find("div > img").attr("data-original") || $(el).find("div > img").attr("src") || "";
-      const episode = $(el).find("span.eps").text().trim();
-      if (slug && title) {
-        data.push({
-          title,
-          slug,
-          poster: poster.startsWith("http") ? poster : `${CUSTOM_SOURCE_URL}${poster}`,
-          episode,
-        });
-      }
-    });
-    return data.length > 0 ? data : null;
-  } catch {
-    return null;
-  }
-}
-
 async function handlePopular(): Promise<Response> {
   const key = "popular";
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
-  const customData = await tryScrapeCustomPopular();
-  if (customData) {
-    return jsonResponse(setCached(key, { status: "success", source: "custom", data: customData }));
-  }
-
   const query = `
     query {
-      Page(page: 1, perPage: 20) {
+      Page(page: 1, perPage: 18) {
         media(type: ANIME, sort: [TRENDING_DESC, POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1086,14 +1224,9 @@ async function handleLatest(page: number): Promise<Response> {
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
-  const customData = await tryScrapeCustomLatest(safePage);
-  if (customData) {
-    return jsonResponse(setCached(key, { status: "success", source: "custom", data: customData }));
-  }
-
   const query = `
     query ($page: Int) {
-      Page(page: $page, perPage: 22) {
+      Page(page: $page, perPage: 20) {
         media(type: ANIME, status: RELEASING, sort: [POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1113,7 +1246,7 @@ async function handleMovies(page: number): Promise<Response> {
 
   const query = `
     query ($page: Int) {
-      Page(page: $page, perPage: 16) {
+      Page(page: $page, perPage: 14) {
         media(type: ANIME, format: MOVIE, sort: [POPULARITY_DESC, SCORE_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1133,7 +1266,7 @@ async function handleCompleted(page: number): Promise<Response> {
 
   const query = `
     query ($page: Int) {
-      Page(page: $page, perPage: 16) {
+      Page(page: $page, perPage: 14) {
         media(type: ANIME, status: FINISHED, format: TV, sort: [SCORE_DESC, POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1147,16 +1280,14 @@ async function handleCompleted(page: number): Promise<Response> {
 
 async function handleSearch(rawQuery: string): Promise<Response> {
   const q = decodeURIComponent(rawQuery).trim();
-  if (!q) {
-    return jsonResponse({ status: "success", query: "", data: [] });
-  }
+  if (!q) return jsonResponse({ status: "success", query: "", data: [] });
   const key = `search:${q.toLowerCase()}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
   const query = `
     query ($search: String) {
-      Page(page: 1, perPage: 20) {
+      Page(page: 1, perPage: 18) {
         media(type: ANIME, search: $search, sort: [SEARCH_MATCH, POPULARITY_DESC], isAdult: false) {
           ${MEDIA_CARD_FIELDS}
         }
@@ -1165,13 +1296,14 @@ async function handleSearch(rawQuery: string): Promise<Response> {
   `;
   const result = await queryAniList<{ Page: { media: AniListMedia[] } }>(query, { search: q });
   const data = result.Page.media.map(mapMediaCommon);
-  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", query: q, data }, 2 * 60 * 1000));
+  return jsonResponse(setCached(key, { status: "success", source: "anilist-live", query: q, data }, 3 * 60 * 1000));
 }
 
 async function fetchAniListMediaDetail(slugOrId: string): Promise<AniListMedia | null> {
   const id = extractIdFromSlug(slugOrId);
   const detailFields = `
     ${MEDIA_CARD_FIELDS}
+    externalLinks { site url type language }
     streamingEpisodes { title thumbnail url site }
     characters(sort: [ROLE, RELEVANCE], perPage: 8) {
       edges {
@@ -1193,25 +1325,13 @@ async function fetchAniListMediaDetail(slugOrId: string): Promise<AniListMedia |
   `;
 
   if (id) {
-    const query = `
-      query ($id: Int) {
-        Media(id: $id, type: ANIME) {
-          ${detailFields}
-        }
-      }
-    `;
+    const query = `query ($id: Int) { Media(id: $id, type: ANIME) { ${detailFields} } }`;
     const res = await queryAniList<{ Media: AniListMedia | null }>(query, { id });
     return res.Media;
   }
 
   const searchTerm = decodeURIComponent(slugOrId).replace(/-/g, " ").trim();
-  const query = `
-    query ($search: String) {
-      Media(search: $search, type: ANIME) {
-        ${detailFields}
-      }
-    }
-  `;
+  const query = `query ($search: String) { Media(search: $search, type: ANIME) { ${detailFields} } }`;
   const res = await queryAniList<{ Media: AniListMedia | null }>(query, { search: searchTerm });
   return res.Media;
 }
@@ -1221,30 +1341,76 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
 
+  // If this is a Muse ID / Ani-One ID official free entry, resolve directly from official feed
+  if (slug.startsWith("ytfree-")) {
+    const feedRes = await handleOfficialFree();
+    const feedJson = (await feedRes.json()) as { data?: Array<Record<string, unknown>> };
+    const matched = feedJson.data?.find((item) => item.slug === slug);
+    if (matched) {
+      return jsonResponse({ status: "success", source: "official-youtube-id", animeData: matched });
+    }
+  }
+
   const media = await fetchAniListMediaDetail(slug);
   if (!media) {
     return jsonResponse({ status: "error", message: `Anime tidak ditemukan: ${slug}` }, 404);
   }
 
   const common = mapMediaCommon(media);
-  const streamEps = (media.streamingEpisodes ?? []).filter((e) => e?.title);
-  const episodeCount = Math.max(common.released_episodes, Math.min(streamEps.length, 48), 1);
-  const cappedCount = Math.min(episodeCount, 48);
+  const streamingLinks = (media.externalLinks ?? [])
+    .filter((l) => l.type === "STREAMING" && l.site && l.url)
+    .map((l) => ({ site: l.site!.trim(), url: l.url!.trim() }));
 
-  const episodes = Array.from({ length: cappedCount }, (_, i) => {
-    const epNum = i + 1;
-    const matched = streamEps[i];
-    const cleanEpTitle = matched?.title
-      ? matched.title.replace(/^Episode\s+\d+\s*[-:]\s*/i, "").trim() || `Episode ${epNum}`
-      : `Episode ${epNum}`;
-    return {
-      eps_title: `Episode ${epNum}: ${cleanEpTitle}`,
-      eps_slug: `ep-${media.id}-${epNum}`,
-      number: epNum,
-      thumbnail: matched?.thumbnail || common.poster,
-      external_url: matched?.url || "",
-    };
-  });
+  // Check if AniList lists an official legal YouTube playlist (e.g. Muse Asia / Ani-One)
+  const ytPlaylistLink = streamingLinks.find((l) => l.url.includes("youtube.com/playlist") && l.url.includes("list="));
+  let officialPlaylistEpisodes: YtRssEntry[] = [];
+  if (ytPlaylistLink) {
+    const plMatch = ytPlaylistLink.url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+    if (plMatch?.[1]) {
+      officialPlaylistEpisodes = await fetchYouTubeAtomFeed(
+        `https://www.youtube.com/feeds/videos.xml?playlist_id=${plMatch[1]}`,
+        "YouTube Resmi"
+      );
+    }
+  }
+
+  const streamEps = (media.streamingEpisodes ?? []).filter((e) => e?.title);
+  let episodes: Array<{
+    eps_title: string;
+    eps_slug: string;
+    number: number;
+    stream_url: string;
+    stream_type: string;
+    thumbnail: string;
+  }>;
+
+  if (officialPlaylistEpisodes.length > 0) {
+    episodes = officialPlaylistEpisodes.slice(0, 48).map((ytEp, idx) => ({
+      eps_title: ytEp.title,
+      eps_slug: `yt-${ytEp.videoId}`,
+      number: idx + 1,
+      stream_url: ytNoCookieEmbed(ytEp.videoId),
+      stream_type: "official_episode",
+      thumbnail: ytEp.thumbnail,
+    }));
+  } else {
+    const episodeCount = Math.min(Math.max(common.released_episodes, Math.min(streamEps.length, 48), 1), 48);
+    episodes = Array.from({ length: episodeCount }, (_, i) => {
+      const epNum = i + 1;
+      const matched = streamEps[i];
+      const cleanEpTitle = matched?.title
+        ? matched.title.replace(/^Episode\s+\d+\s*[-:]\s*/i, "").trim() || `Episode ${epNum}`
+        : `Episode ${epNum}`;
+      return {
+        eps_title: `Episode ${epNum}: ${cleanEpTitle}`,
+        eps_slug: `ep-${media.id}-${epNum}`,
+        number: epNum,
+        stream_url: common.trailer_url || "",
+        stream_type: common.trailer_url ? "official_trailer" : "info_only",
+        thumbnail: matched?.thumbnail || common.poster,
+      };
+    });
+  }
 
   const characters = (media.characters?.edges ?? [])
     .map((edge) => {
@@ -1271,12 +1437,15 @@ async function handleAnimeDetail(slug: string): Promise<Response> {
 
   const payload = {
     status: "success",
-    source: "anilist-live",
+    source: officialPlaylistEpisodes.length > 0 ? "anilist+youtube-official" : "anilist-live",
     animeData: {
       ...common,
+      is_official_free: officialPlaylistEpisodes.length > 0,
+      official_channel: officialPlaylistEpisodes.length > 0 ? "YouTube Resmi" : null,
       episodes,
       characters,
       related_slugs: relatedSlugs,
+      external_links: streamingLinks,
     },
   };
 
@@ -1287,6 +1456,27 @@ async function handleEpisodeDetail(slug: string): Promise<Response> {
   const key = `episode:${slug.toLowerCase()}`;
   const cached = getCached(key);
   if (cached) return jsonResponse(cached);
+
+  // Direct official YouTube episode slug (yt-<videoId>)
+  const ytMatch = slug.trim().match(/^yt-([a-zA-Z0-9_-]{8,16})$/);
+  if (ytMatch) {
+    const videoId = ytMatch[1];
+    const payload = {
+      status: "success",
+      source: "official-youtube",
+      eps_detail: {
+        title: "Episode Resmi YouTube",
+        poster: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        stream_url: ytNoCookieEmbed(videoId),
+        stream_type: "official_episode",
+        synopsis: "Episode resmi gratis legal diputar langsung di dalam AnimWatch.",
+        anime_slug: "-",
+        next_eps_slug: "-",
+        prev_eps_slug: "-",
+      },
+    };
+    return jsonResponse(setCached(key, payload));
+  }
 
   const epMatch = slug.trim().match(/^ep-(\d+)-(\d+)$/i);
   const animeId = epMatch ? Number(epMatch[1]) : extractIdFromSlug(slug);
@@ -1310,6 +1500,7 @@ async function handleEpisodeDetail(slug: string): Promise<Response> {
       title: epTitle,
       poster: matched?.thumbnail || common.poster,
       stream_url: common.trailer_url || "",
+      stream_type: common.trailer_url ? "official_trailer" : "info_only",
       synopsis: common.synopsis,
       anime_slug: common.slug,
       next_eps_slug: epNum < maxEp ? `ep-${media.id}-${epNum + 1}` : "-",
@@ -1337,13 +1528,30 @@ Bun.serve({
       if (path === "/" || path === "/api") {
         return jsonResponse({
           status: "ok",
-          service: "AnimWatch Kumanime + PostgreSQL API",
-          mode: CUSTOM_SOURCE_URL ? "custom-source+anilist-fallback" : "anilist-live",
+          service: "AnimWatch Official Streaming + AniList Tracker + PostgreSQL API",
+          mode: CUSTOM_SOURCE_URL ? "custom-source+anilist-live" : "anilist+official-yt-id",
           database: dbReady ? "connected" : "unavailable",
           routes: {
-            catalog: ["/api/popular", "/api/latest", "/api/movie", "/api/completed", "/api/search/:query", "/api/anime/:slug", "/api/episode/:slug"],
+            catalog: [
+              "/api/official-free",
+              "/api/popular",
+              "/api/latest",
+              "/api/movie",
+              "/api/completed",
+              "/api/search/:query",
+              "/api/anime/:slug",
+              "/api/episode/:slug",
+            ],
             auth: ["POST /api/auth/register", "POST /api/auth/login", "POST /api/auth/logout"],
-            user: ["GET /api/user/me", "PATCH /api/user/profile", "PATCH /api/user/preferences", "PUT /api/user/watchlist", "PUT /api/user/history", "DELETE /api/user/history", "PUT /api/user/ratings"],
+            user: [
+              "GET /api/user/me",
+              "PATCH /api/user/profile",
+              "PATCH /api/user/preferences",
+              "PUT /api/user/watchlist",
+              "PUT /api/user/history",
+              "DELETE /api/user/history",
+              "PUT /api/user/ratings",
+            ],
             comments: ["GET /api/comments/:animeId", "POST /api/comments", "POST /api/comments/:id/like"],
           },
         });
@@ -1388,7 +1596,8 @@ Bun.serve({
       const getCommentsMatch = path.match(/^\/api\/comments\/(.+)$/);
       if (method === "GET" && getCommentsMatch) return await handleGetComments(req, getCommentsMatch[1]);
 
-      // Anime Catalog Routes
+      // Official Legal Free Sub Indo + AniList Catalog Routes
+      if (path === "/api/official-free") return await handleOfficialFree();
       if (path === "/api/popular") return await handlePopular();
       if (path === "/api/latest") return await handleLatest(1);
       const latestPageMatch = path.match(/^\/api\/latest\/page\/(\d+)$/);
@@ -1414,4 +1623,4 @@ Bun.serve({
   },
 });
 
-console.log(`AnimWatch Kumanime + PostgreSQL API listening on port ${port}`);
+console.log(`AnimWatch Official Streaming + AniList + PostgreSQL API listening on port ${port}`);

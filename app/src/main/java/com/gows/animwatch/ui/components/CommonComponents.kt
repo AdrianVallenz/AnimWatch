@@ -354,102 +354,102 @@ fun AnimePosterCard(
             .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick)
     ) {
-        Surface(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.71f),
-            shape = RoundedCornerShape(18.dp),
-            color = ObsidianCard,
-            shadowElevation = if (IsDarkTheme) 0.dp else 4.dp
+                .aspectRatio(0.71f)
+                .clip(RoundedCornerShape(18.dp))
+                .background(ObsidianCard)
+                .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
         ) {
-            Box(
+            AnimePosterArtwork(
+                artTheme = anime.artTheme,
+                title = anime.title,
+                posterUrl = anime.posterUrl,
+                decodeSizePx = 360,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Top row: Soft pill rating & bookmark button
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(18.dp))
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
             ) {
-                AnimePosterArtwork(
-                    artTheme = anime.artTheme,
-                    title = anime.title,
-                    posterUrl = anime.posterUrl,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Top row: Soft pill rating & bookmark button
-                Row(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.72f))
-                            .padding(horizontal = 7.dp, vertical = 3.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Rounded.Star,
-                                contentDescription = null,
-                                tint = GoldBright,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = anime.rating.toString(),
-                                color = MediaTextLight,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(MediaScrimDark.copy(alpha = 0.70f))
-                            .clickable(onClick = onBookmarkClick),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
-                            contentDescription = "Simpan ke Daftar Tonton",
-                            tint = if (isBookmarked) GoldBright else MediaTextSecondary,
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
-                }
-
-                // Bottom episode pill over smooth vignette
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .clip(CircleShape)
+                        .background(MediaScrimDark.copy(alpha = 0.72f))
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (anime.status == AnimeStatus.ONGOING) {
-                            LedStatusDot(color = StatusLive, pulsing = true, size = 6.dp)
-                            Spacer(modifier = Modifier.width(5.dp))
-                        }
+                        Icon(
+                            imageVector = Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = GoldBright,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = if (anime.type.label == "Movie") "Movie"
-                            else "Ep ${anime.releasedEpisodes}/${anime.totalEpisodes}",
+                            text = anime.rating.toString(),
                             color = MediaTextLight,
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    Text(
-                        text = "${anime.year}",
-                        color = MediaTextSecondary,
-                        fontSize = 10.sp
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(MediaScrimDark.copy(alpha = 0.70f))
+                        .clickable(onClick = onBookmarkClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
+                        contentDescription = "Simpan ke Daftar Tonton",
+                        tint = if (isBookmarked) GoldBright else MediaTextSecondary,
+                        modifier = Modifier.size(15.dp)
                     )
                 }
+            }
+
+            // Bottom episode pill over smooth vignette
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (anime.status == AnimeStatus.ONGOING) {
+                        // Static dot inside scrolling cards to avoid dozens of simultaneous infinite animations
+                        LedStatusDot(color = StatusLive, pulsing = false, size = 6.dp)
+                        Spacer(modifier = Modifier.width(5.dp))
+                    }
+                    Text(
+                        text = when {
+                            anime.isOfficialFree -> anime.officialChannel?.substringBefore(" ") ?: "Resmi"
+                            anime.type.label == "Movie" -> "Movie"
+                            else -> "Ep ${anime.releasedEpisodes}/${anime.totalEpisodes}"
+                        },
+                        color = MediaTextLight,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = if (anime.isOfficialFree) "Gratis" else "${anime.year}",
+                    color = if (anime.isOfficialFree) GoldBright else MediaTextSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = if (anime.isOfficialFree) FontWeight.SemiBold else FontWeight.Normal
+                )
             }
         }
 

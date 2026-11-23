@@ -146,7 +146,41 @@ data class AnimWatchPalette(
     val textTertiary: Color,
     val textOnAccent: Color,
     val dividerSubtle: Color
-)
+) {
+    // Pre-computed brushes cached per palette instance (zero per-frame allocations during scroll)
+    val gradientBrush: Brush = Brush.linearGradient(
+        colors = listOf(accentBright, accentPrimary),
+        start = Offset.Zero,
+        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+    )
+    val horizontalBrush: Brush = Brush.horizontalGradient(
+        colors = listOf(accentPrimary, accentBright)
+    )
+    val borderBrush: Brush = Brush.linearGradient(
+        colors = listOf(
+            accentBright.copy(alpha = 0.42f),
+            accentPrimary.copy(alpha = 0.22f),
+            accentDeep.copy(alpha = 0.30f)
+        )
+    )
+    val cardBrush: Brush = if (isDark) {
+        Brush.linearGradient(
+            colors = listOf(
+                accentPrimary.copy(alpha = 0.18f),
+                surfaceCard,
+                surfaceElevated
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                accentPrimary.copy(alpha = 0.12f),
+                surfaceCard,
+                surfaceVoid
+            )
+        )
+    }
+}
 
 fun buildPalette(mode: AppAppearanceMode, accent: AppAccentTheme): AnimWatchPalette {
     val isDark = mode == AppAppearanceMode.DARK
@@ -209,11 +243,18 @@ fun buildPalette(mode: AppAppearanceMode, accent: AppAccentTheme): AnimWatchPale
 }
 
 object AppThemeState {
+    private var lastMode: AppAppearanceMode = AppAppearanceMode.DARK
+    private var lastAccent: AppAccentTheme = AppAccentTheme.COBALT_SAPPHIRE
+
     var current by mutableStateOf(
         buildPalette(AppAppearanceMode.DARK, AppAccentTheme.COBALT_SAPPHIRE)
     )
 
     fun apply(mode: AppAppearanceMode, accent: AppAccentTheme) {
+        // Avoid redundant snapshot writes that trigger full-tree recomposition storms
+        if (lastMode == mode && lastAccent == accent) return
+        lastMode = mode
+        lastAccent = accent
         current = buildPalette(mode, accent)
     }
 }
@@ -254,43 +295,8 @@ val StatusLive = Color(0xFFE04856)
 val StatusEmerald = Color(0xFF2EB377)
 val StatusAmber = Color(0xFFEF754B)
 
-// Soft Organic Brushes
-val GoldGradientBrush: Brush
-    get() = Brush.linearGradient(
-        colors = listOf(GoldBright, GoldPrimary),
-        start = Offset.Zero,
-        end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-    )
-
-val GoldHorizontalBrush: Brush
-    get() = Brush.horizontalGradient(
-        colors = listOf(GoldPrimary, GoldBright)
-    )
-
-val GoldBorderBrush: Brush
-    get() = Brush.linearGradient(
-        colors = listOf(
-            GoldBright.copy(alpha = 0.42f),
-            GoldPrimary.copy(alpha = 0.22f),
-            GoldDeep.copy(alpha = 0.30f)
-        )
-    )
-
-val ObsidianGoldCardBrush: Brush
-    get() = if (IsDarkTheme) {
-        Brush.linearGradient(
-            colors = listOf(
-                GoldPrimary.copy(alpha = 0.18f),
-                ObsidianCard,
-                ObsidianElevated
-            )
-        )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(
-                GoldPrimary.copy(alpha = 0.12f),
-                ObsidianCard,
-                ObsidianVoid
-            )
-        )
-    }
+// Soft Organic Brushes (cached on active palette)
+val GoldGradientBrush: Brush get() = AppThemeState.current.gradientBrush
+val GoldHorizontalBrush: Brush get() = AppThemeState.current.horizontalBrush
+val GoldBorderBrush: Brush get() = AppThemeState.current.borderBrush
+val ObsidianGoldCardBrush: Brush get() = AppThemeState.current.cardBrush

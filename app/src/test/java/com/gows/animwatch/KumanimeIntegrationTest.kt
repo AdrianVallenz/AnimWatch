@@ -9,6 +9,7 @@ import com.gows.animwatch.data.remote.CommentDto
 import com.gows.animwatch.data.remote.CommentsListResponseDto
 import com.gows.animwatch.data.remote.EpisodeDetailDataDto
 import com.gows.animwatch.data.remote.EpisodeDetailResponseDto
+import com.gows.animwatch.data.remote.ExternalLinkDto
 import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
 import com.gows.animwatch.data.remote.KumanimeApiClient
 import com.gows.animwatch.data.remote.KumanimeApiService
@@ -101,6 +102,35 @@ class KumanimeIntegrationTest {
             )
         )
 
+        override suspend fun getOfficialFree(): PopularResponseDto = PopularResponseDto(
+            status = "success",
+            data = listOf(
+                PopularItemDto(
+                    title = "Dandadan (Sub Indo)",
+                    poster = "https://i.ytimg.com/vi/abc12345678/hqdefault.jpg",
+                    slug = "ytfree-dandadan",
+                    genres = listOf("Gratis Resmi", "Muse Indonesia"),
+                    studio = "Muse Indonesia",
+                    status = "ONGOING",
+                    totalEpisodes = 12,
+                    releasedEpisodes = 2,
+                    isOfficialFree = true,
+                    officialChannel = "Muse Indonesia",
+                    streamType = "official_episode",
+                    externalLinks = listOf(ExternalLinkDto("Muse Indonesia", "https://www.youtube.com/channel/UCxxnxya_32jcKj4yN1_kD7A")),
+                    episodes = listOf(
+                        AnimeDetailEpisodeDto(
+                            epsTitle = "Episode 1 — Sub Indo",
+                            epsSlug = "yt-abc12345678",
+                            number = 1,
+                            streamUrl = "https://www.youtube-nocookie.com/embed/abc12345678?playsinline=1",
+                            streamType = "official_episode"
+                        )
+                    )
+                )
+            )
+        )
+
         override suspend fun searchAnime(query: String): SearchResponseDto = SearchResponseDto(
             status = "success",
             query = query,
@@ -176,6 +206,7 @@ class KumanimeIntegrationTest {
                     hasCompletedThemeSetup = true
                 ),
                 watchlist = mapOf("sousou-no-frieren-154587" to "WATCHING"),
+                watchedEpisodes = mapOf("sousou-no-frieren-154587" to 12),
                 ratings = mapOf("sousou-no-frieren-154587" to 10)
             )
         )
@@ -292,7 +323,13 @@ class KumanimeIntegrationTest {
         val catalogResult = dataSource.fetchInitialCatalog("https://kumanime-api-production.up.railway.app/api/")
         assertTrue(catalogResult.isSuccess)
         val catalog = catalogResult.getOrThrow()
-        assertEquals(4, catalog.size)
+        assertEquals(5, catalog.size)
+
+        val officialFree = catalog.first { it.isOfficialFree }
+        assertEquals("Muse Indonesia", officialFree.officialChannel)
+        assertEquals(1, officialFree.episodes.size)
+        assertEquals("official_episode", officialFree.episodes.first().streamType)
+        assertEquals(1, officialFree.externalLinks.size)
 
         val completedEntry = catalog.first { it.slug == "sousou-no-frieren-154587" }
         assertEquals("Madhouse", completedEntry.studio)
@@ -336,6 +373,7 @@ class KumanimeIntegrationTest {
         assertEquals("tok_login_456", auth.token)
         assertEquals("OCEAN_CYAN", auth.user?.accentTheme)
         assertEquals("WATCHING", auth.watchlist?.get("sousou-no-frieren-154587"))
+        assertEquals(12, auth.watchedEpisodes?.get("sousou-no-frieren-154587"))
 
         val postRes = dataSource.postComment(base, "tok_login_456", "sousou-no-frieren-154587", 1, "Mantap!", false)
         assertTrue(postRes.isSuccess)

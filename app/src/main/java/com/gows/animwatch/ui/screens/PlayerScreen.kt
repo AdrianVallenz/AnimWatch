@@ -7,6 +7,8 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.fadeIn
@@ -37,7 +39,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkAdd
@@ -58,7 +62,6 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SkipNext
@@ -67,7 +70,6 @@ import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.material.icons.rounded.Tv
-import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -108,6 +110,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.DownloadStatus
 import com.gows.animwatch.data.model.Episode
@@ -495,7 +500,7 @@ fun PlayerScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = if (isBrightness) Icons.Rounded.Brightness6 else Icons.Rounded.VolumeUp,
+                            imageVector = if (isBrightness) Icons.Rounded.Brightness6 else Icons.AutoMirrored.Rounded.VolumeUp,
                             contentDescription = null,
                             tint = GoldBright,
                             modifier = Modifier.size(20.dp)
@@ -644,7 +649,7 @@ fun PlayerScreen(
                                 if (session.isFullscreen) {
                                     IconButton(onClick = { activeModal = PlayerModal.EPISODES }) {
                                         Icon(
-                                            imageVector = Icons.Rounded.PlaylistPlay,
+                                            imageVector = Icons.AutoMirrored.Rounded.PlaylistPlay,
                                             contentDescription = "Episode",
                                             tint = GoldBright,
                                             modifier = Modifier.size(24.dp)
@@ -872,12 +877,18 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TapeReelSpinner(isSpinning = session.isPlaying, size = 18.dp, tint = GoldPrimary)
+                    TapeReelSpinner(
+                        isSpinning = session.isPlaying && !showingLiveWebStream,
+                        size = 18.dp,
+                        tint = GoldPrimary
+                    )
                     Spacer(modifier = Modifier.width(9.dp))
                     Text(
                         text = when {
                             session.isLoadingStream -> "Menyiapkan stream..."
-                            showingLiveWebStream -> "Siaran Langsung Kumanime"
+                            showingLiveWebStream && session.streamType == "official_episode" ->
+                                "Episode Resmi • Gratis Legal"
+                            showingLiveWebStream -> "Trailer Resmi • AniList"
                             session.isPlaying -> "Sedang memutar • ${session.selectedQuality}"
                             else -> "Dijeda"
                         },
@@ -909,12 +920,12 @@ fun PlayerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LedStatusDot(
                             color = if (session.isPlaying) StatusEmerald else StatusLive,
-                            pulsing = session.isPlaying,
+                            pulsing = false,
                             size = 6.dp
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = "${currentServer?.latencyMs ?: 24} ms",
+                            text = if (showingLiveWebStream) "In-App" else "${currentServer?.latencyMs ?: 24} ms",
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
@@ -1045,43 +1056,37 @@ fun PlayerScreen(
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(anime.episodes, key = { it.id }) { ep ->
                                 val isCurrent = ep.id == episode.id
-                                Surface(
+                                Column(
                                     modifier = Modifier
                                         .width(134.dp)
-                                        .clickable { onSelectEpisode(ep) },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (isCurrent) GoldPrimary else ObsidianCard,
-                                    shadowElevation = if (IsDarkTheme) 0.dp else 2.dp
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(
+                                            if (isCurrent) GoldGradientBrush
+                                            else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
+                                        )
+                                        .border(
+                                            if (isCurrent) 0.dp else 0.75.dp,
+                                            if (isCurrent) Color.Transparent else GoldSubtleBorder,
+                                            RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable { onSelectEpisode(ep) }
+                                        .padding(12.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .background(
-                                                if (isCurrent) GoldGradientBrush
-                                                else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
-                                            )
-                                            .border(
-                                                if (isCurrent) 0.dp else 0.75.dp,
-                                                if (isCurrent) Color.Transparent else GoldSubtleBorder,
-                                                RoundedCornerShape(16.dp)
-                                            )
-                                            .padding(12.dp)
-                                    ) {
-                                        Text(
-                                            text = "Episode ${ep.number}",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = if (isCurrent) TextOnGold else GoldPrimary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Spacer(modifier = Modifier.height(3.dp))
-                                        Text(
-                                            text = ep.title,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isCurrent) TextOnGold.copy(alpha = 0.88f) else TextSecondary,
-                                            fontSize = 11.5.sp,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    Text(
+                                        text = "Episode ${ep.number}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (isCurrent) TextOnGold else GoldPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = ep.title,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isCurrent) TextOnGold.copy(alpha = 0.88f) else TextSecondary,
+                                        fontSize = 11.5.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
                         }
@@ -1553,6 +1558,59 @@ private fun ModalOptionRow(
     }
 }
 
+private val YOUTUBE_ID_REGEX = Regex(
+    "(?:youtube-nocookie\\.com/embed/|youtube\\.com/embed/|youtu\\.be/|youtube\\.com/watch\\?v=)([A-Za-z0-9_-]{11})"
+)
+
+private fun extractYoutubeVideoId(url: String): String? =
+    YOUTUBE_ID_REGEX.find(url)?.groupValues?.getOrNull(1)
+
+private fun buildYoutubeEmbedHtml(videoId: String): String = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+      <style>
+        html,body{margin:0;padding:0;width:100%;height:100%;background:#0C0C10;overflow:hidden;}
+        iframe{position:fixed;inset:0;width:100%;height:100%;border:0;}
+      </style>
+    </head>
+    <body>
+      <iframe
+        src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&fs=1"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        allowfullscreen>
+      </iframe>
+    </body>
+    </html>
+""".trimIndent()
+
+private fun isAllowedEmbedNavigation(url: String): Boolean {
+    val lower = url.lowercase()
+    return lower == "about:blank" ||
+        lower.startsWith("https://www.youtube-nocookie.com/embed/") ||
+        lower.startsWith("https://www.youtube.com/embed/")
+}
+
+private fun loadStreamIntoWebView(webView: WebView, streamUrl: String) {
+    if (streamUrl.isBlank()) return
+    if (webView.tag == streamUrl) return
+    webView.tag = streamUrl
+    val ytId = extractYoutubeVideoId(streamUrl)
+    if (ytId != null) {
+        webView.loadDataWithBaseURL(
+            "https://www.youtube-nocookie.com",
+            buildYoutubeEmbedHtml(ytId),
+            "text/html",
+            "utf-8",
+            null
+        )
+    } else {
+        webView.loadUrl(streamUrl)
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun KumanimeWebStreamPlayer(
@@ -1560,12 +1618,30 @@ private fun KumanimeWebStreamPlayer(
     modifier: Modifier = Modifier
 ) {
     var currentWebView by remember { mutableStateOf<WebView?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner, currentWebView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> currentWebView?.onPause()
+                Lifecycle.Event.ON_RESUME -> currentWebView?.onResume()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
             currentWebView?.apply {
                 stopLoading()
+                onPause()
                 loadUrl("about:blank")
+                clearHistory()
+                removeAllViews()
                 destroy()
             }
             currentWebView = null
@@ -1585,16 +1661,32 @@ private fun KumanimeWebStreamPlayer(
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.loadWithOverviewMode = true
                 settings.useWideViewPort = true
-                webViewClient = WebViewClient()
+                settings.setSupportMultipleWindows(false)
+                settings.javaScriptCanOpenWindowsAutomatically = false
+                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(
+                        view: WebView?,
+                        request: WebResourceRequest?
+                    ): Boolean {
+                        val target = request?.url?.toString().orEmpty()
+                        // Block all external/app redirects (never leave AnimWatch into YouTube app/browser)
+                        return !isAllowedEmbedNavigation(target)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                        return !isAllowedEmbedNavigation(url.orEmpty())
+                    }
+                }
                 webChromeClient = WebChromeClient()
-                loadUrl(streamUrl)
+                loadStreamIntoWebView(this, streamUrl)
                 currentWebView = this
             }
         },
         update = { webView ->
-            if (webView.url != streamUrl && streamUrl.isNotBlank()) {
-                webView.loadUrl(streamUrl)
-            }
+            loadStreamIntoWebView(webView, streamUrl)
         },
         modifier = modifier
     )

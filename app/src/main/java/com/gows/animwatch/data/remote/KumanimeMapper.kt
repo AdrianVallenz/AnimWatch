@@ -6,6 +6,7 @@ import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.AnimeType
 import com.gows.animwatch.data.model.CharacterRole
 import com.gows.animwatch.data.model.Episode
+import com.gows.animwatch.data.model.ExternalPlatformLink
 import com.gows.animwatch.data.model.ReleaseDay
 import com.gows.animwatch.data.model.StreamServer
 import com.gows.animwatch.data.model.SubtitleTrack
@@ -178,6 +179,34 @@ object KumanimeMapper {
         val releasedEpisodes = dto.releasedEpisodes?.takeIf { it > 0 } ?: totalEpisodes
         val computedRating = dto.rating?.coerceIn(1.0, 10.0)
             ?: (9.3 - (index * 0.08)).coerceAtLeast(8.0).let { Math.round(it * 10.0) / 10.0 }
+        val isOfficialFree = dto.isOfficialFree == true
+        val officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() }
+        val mappedLinks = dto.externalLinks.orEmpty().mapNotNull { link ->
+            val site = link.site?.trim().orEmpty()
+            val url = link.url?.trim().orEmpty()
+            if (site.isNotEmpty() && url.startsWith("http")) ExternalPlatformLink(site, url) else null
+        }
+        val mappedEpisodes = dto.episodes.orEmpty().mapIndexedNotNull { idx, epDto ->
+            val epSlug = epDto.epsSlug?.trim().orEmpty()
+            if (epSlug.isEmpty()) return@mapIndexedNotNull null
+            val epLabel = epDto.epsTitle?.trim().orEmpty()
+            val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
+            Episode(
+                id = "remote_ep_$epSlug",
+                animeId = slug,
+                number = number,
+                title = epLabel.ifEmpty { "Episode $number" },
+                durationSeconds = (dto.durationMinutes ?: 24) * 60,
+                releaseDate = officialChannel ?: "Sub Indo",
+                synopsis = dto.synopsis?.trim().orEmpty().ifEmpty { "Episode resmi gratis legal." },
+                slug = epSlug,
+                streamUrl = normalizeUrl(epDto.streamUrl ?: dto.trailerUrl),
+                streamType = epDto.streamType ?: dto.streamType ?: "official_episode",
+                servers = defaultServers,
+                qualities = defaultQualities,
+                subtitles = defaultSubtitles
+            )
+        }.sortedBy { it.number }
 
         return Anime(
             id = slug,
@@ -206,13 +235,20 @@ object KumanimeMapper {
             isFeatured = markFeatured && index < 4,
             isTrending = markTrending,
             isNewRelease = status == AnimeStatus.ONGOING && index < 6,
+            isOfficialFree = isOfficialFree,
+            officialChannel = officialChannel,
             artTheme = pickArtTheme(slug),
-            posterTag = if (status == AnimeStatus.COMPLETED) "Tamat • $computedRating" else "Populer #${index + 1}",
+            posterTag = when {
+                isOfficialFree -> "${officialChannel ?: "Resmi"} • Gratis"
+                status == AnimeStatus.COMPLETED -> "Tamat • $computedRating"
+                else -> "Populer #${index + 1}"
+            },
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true,
             isEpisodeEntry = false,
-            episodes = emptyList()
+            externalLinks = mappedLinks,
+            episodes = mappedEpisodes
         )
     }
 
@@ -296,21 +332,31 @@ object KumanimeMapper {
             if (epSlug.isEmpty()) return@mapIndexedNotNull null
             val epLabel = epDto.epsTitle?.trim().orEmpty()
             val number = epDto.number?.takeIf { it > 0 } ?: extractNumber(epLabel, fallback = idx + 1)
+            val resolvedStream = normalizeUrl(epDto.streamUrl).ifEmpty { trailerStream }
+            val resolvedType = epDto.streamType?.takeIf { it.isNotBlank() }
+                ?: if (resolvedStream.isNotBlank()) "official_trailer" else "info_only"
             Episode(
                 id = "remote_ep_$epSlug",
                 animeId = slug,
                 number = number,
                 title = epLabel.replace(Regex("^Episode(?=\\d)"), "Episode ").ifEmpty { "Episode $number" },
                 durationSeconds = durationMin * 60,
-                releaseDate = "Sub Indo",
-                synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { "Tersedia melalui Kumanime API." },
+                releaseDate = if (resolvedType == "official_episode") "Resmi Gratis" else "AniList",
+                synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { "Tersedia melalui katalog AniList." },
                 slug = epSlug,
-                streamUrl = trailerStream,
+                streamUrl = resolvedStream,
+                streamType = resolvedType,
                 servers = defaultServers,
                 qualities = defaultQualities,
                 subtitles = defaultSubtitles
             )
         }.sortedBy { it.number }
+
+        val mappedLinks = detail.externalLinks.orEmpty().mapNotNull { link ->
+            val site = link.site?.trim().orEmpty()
+            val url = link.url?.trim().orEmpty()
+            if (site.isNotEmpty() && url.startsWith("http")) ExternalPlatformLink(site, url) else null
+        }
 
         val mappedCharacters = detail.characters.orEmpty().mapNotNull { ch ->
             val name = ch.name?.trim().orEmpty()
@@ -378,10 +424,13 @@ object KumanimeMapper {
             releasedEpisodes = epCount,
             isRemote = true,
             isEpisodeEntry = false,
+            isOfficialFree = (detail.isOfficialFree == true) || (existing?.isOfficialFree == true),
+            officialChannel = detail.officialChannel?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.officialChannel,
             episodes = finalEpisodes,
             characters = mappedCharacters.ifEmpty { existing?.characters.orEmpty() },
             relatedIds = detail.relatedSlugs?.filter { it.isNotBlank() }?.ifEmpty { existing?.relatedIds.orEmpty() }
-                ?: existing?.relatedIds.orEmpty()
+                ?: existing?.relatedIds.orEmpty(),
+            externalLinks = mappedLinks.ifEmpty { existing?.externalLinks.orEmpty() }
         )
     }
 
@@ -393,6 +442,7 @@ object KumanimeMapper {
             title = detail.title?.trim().orEmpty().ifEmpty { episode.title },
             synopsis = detail.synopsis?.trim().orEmpty().ifEmpty { episode.synopsis },
             streamUrl = stream.ifEmpty { episode.streamUrl },
+            streamType = detail.streamType?.takeIf { it.isNotBlank() } ?: episode.streamType,
             nextEpisodeSlug = nextSlug,
             prevEpisodeSlug = prevSlug
         )

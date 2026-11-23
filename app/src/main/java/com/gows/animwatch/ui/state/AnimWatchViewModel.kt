@@ -114,6 +114,7 @@ data class PlayerSession(
     val autoNextCountdownSec: Int? = null,
     val isEpisodeLiked: Boolean = false,
     val streamUrl: String = "",
+    val streamType: String = "official_trailer",
     val isLoadingStream: Boolean = false,
     val useWebStreamView: Boolean = true
 )
@@ -133,6 +134,7 @@ data class AnimWatchUiState(
     val allAnime: List<Anime> = emptyList(),
     val genres: List<String> = emptyList(),
     val watchlist: Map<String, WatchlistCategory> = emptyMap(),
+    val watchedEpisodes: Map<String, Int> = emptyMap(),
     val userRatings: Map<String, Int> = emptyMap(),
     val watchHistory: List<WatchProgress> = emptyList(),
     val downloads: List<DownloadTask> = emptyList(),
@@ -332,6 +334,7 @@ class AnimWatchViewModel(
         }
 
         val restoredRatings = dto.ratings.orEmpty()
+        val restoredWatchedEpisodes = dto.watchedEpisodes.orEmpty()
         val completedSetup = u.hasCompletedThemeSetup ?: false
 
         _uiState.update { state ->
@@ -347,6 +350,7 @@ class AnimWatchViewModel(
                 currentTab = MainTab.HOME,
                 backStack = listOf(AppRoute.TabsRoot),
                 watchlist = restoredWatchlist,
+                watchedEpisodes = restoredWatchedEpisodes,
                 watchHistory = restoredHistory,
                 userRatings = restoredRatings,
                 settings = mergedSettings,
@@ -769,27 +773,34 @@ class AnimWatchViewModel(
 
             val result = remoteDataSource.fetchInitialCatalog(config.baseUrl)
             result.onSuccess { remoteItems ->
-                val remoteIds = remoteItems.map { it.id }.toSet()
+                val mockIds = repository.getAllAnime().map { it.id }.toSet()
+                val remoteIdSet = remoteItems.map { it.id }.toSet()
                 val dynamicGenres = remoteItems
                     .flatMap { it.genres }
                     .distinct()
                     .ifEmpty { repository.getAllGenres() }
 
                 _uiState.update { state ->
+                    val preservedSavedRemote = state.allAnime.filter { existing ->
+                        existing.isRemote && existing.id !in remoteIdSet &&
+                            (existing.id in state.watchlist || state.watchHistory.any { h -> h.animeId == existing.id })
+                    }
+                    val finalCatalog = remoteItems + preservedSavedRemote
                     state.copy(
-                        allAnime = remoteItems,
+                        allAnime = finalCatalog,
                         genres = dynamicGenres,
-                        watchlist = state.watchlist.filterKeys { it in remoteIds },
-                        watchHistory = state.watchHistory.filter { it.animeId in remoteIds },
+                        watchlist = state.watchlist.filterKeys { it !in mockIds },
+                        watchedEpisodes = state.watchedEpisodes.filterKeys { it !in mockIds },
+                        watchHistory = state.watchHistory.filterNot { it.animeId in mockIds },
                         apiConfig = state.apiConfig.copy(
                             status = ApiConnectionStatus.CONNECTED,
-                            lastSyncMessage = "Terhubung (${remoteItems.size} anime live dimuat)",
+                            lastSyncMessage = "Terhubung (${remoteItems.size} judul AniList & Resmi Gratis)",
                             remoteCount = remoteItems.size
                         )
                     )
                 }
                 if (!silentIfOffline) {
-                    emitMessage("Kumanime API terhubung: ${remoteItems.size} anime dimuat")
+                    emitMessage("Katalog AniList & Gratis Resmi dimuat (${remoteItems.size} judul)")
                 }
             }.onFailure { err ->
                 val reason = err.localizedMessage?.take(72) ?: "Server tidak dapat dijangkau"
@@ -832,7 +843,10 @@ class AnimWatchViewModel(
             }
         }
         val anime = _uiState.value.allAnime.find { it.id == animeId }
-        if (anime != null && anime.isRemote && (anime.episodes.isEmpty() || anime.isEpisodeEntry || (anime.characters.isEmpty() && anime.episodes.size <= 1))) {
+        val isYtFreeReady = anime?.slug?.startsWith("ytfree-") == true && anime.episodes.isNotEmpty()
+        if (anime != null && anime.isRemote && !isYtFreeReady &&
+            (anime.episodes.isEmpty() || anime.isEpisodeEntry || (anime.characters.isEmpty() && anime.episodes.size <= 1))
+        ) {
             fetchRemoteDetailFor(anime)
         }
         if (cloudSyncEnabled) {
@@ -1037,16 +1051,26 @@ class AnimWatchViewModel(
             selectedServerId = serverId,
             selectedSubtitleId = subtitleId,
             streamUrl = targetEpisode.streamUrl,
+            streamType = targetEpisode.streamType,
             isLoadingStream = needsRemoteStream,
             useWebStreamView = true
         )
 
         _uiState.update { it.copy(playerSession = session) }
         recordWatchProgress(anime, targetEpisode, resumePos)
-        startPlayerTicker()
+        syncPlayerTickerForSession(session)
 
         if (needsRemoteStream) {
             fetchRemoteEpisodeStream(anime, targetEpisode)
+        }
+    }
+
+    private fun syncPlayerTickerForSession(session: PlayerSession?) {
+        val showingLiveWebStream = session != null && session.useWebStreamView && session.streamUrl.isNotBlank()
+        if (session != null && session.isPlaying && !showingLiveWebStream && !session.isLoadingStream) {
+            startPlayerTicker()
+        } else {
+            playerTickerJob?.cancel()
         }
     }
 
@@ -1072,11 +1096,13 @@ class AnimWatchViewModel(
                         curSession.copy(
                             episodeTitle = enrichedEp.title,
                             streamUrl = enrichedEp.streamUrl,
+                            streamType = enrichedEp.streamType,
                             isLoadingStream = false
                         )
                     } else curSession
                     cur.copy(allAnime = updatedAnimeList, playerSession = updatedSession)
                 }
+                syncPlayerTickerForSession(_uiState.value.playerSession)
                 if (enrichedEp.streamUrl.isBlank()) {
                     emitMessage("Link stream tidak tersedia, memakai mode simulasi")
                 }
@@ -1087,7 +1113,8 @@ class AnimWatchViewModel(
                         cur.copy(playerSession = curSession.copy(isLoadingStream = false))
                     } else cur
                 }
-                emitMessage("Gagal memuat link video dari Kumanime API")
+                syncPlayerTickerForSession(_uiState.value.playerSession)
+                emitMessage("Gagal memuat link video dari server")
             }
         }
     }
@@ -1097,6 +1124,7 @@ class AnimWatchViewModel(
             val session = state.playerSession ?: return@update state
             state.copy(playerSession = session.copy(useWebStreamView = !session.useWebStreamView))
         }
+        syncPlayerTickerForSession(_uiState.value.playerSession)
     }
 
     fun togglePlayPause() {
@@ -1112,11 +1140,7 @@ class AnimWatchViewModel(
                 )
             )
         }
-        if (_uiState.value.playerSession?.isPlaying == true) {
-            startPlayerTicker()
-        } else {
-            playerTickerJob?.cancel()
-        }
+        syncPlayerTickerForSession(_uiState.value.playerSession)
     }
 
     fun seekTo(seconds: Int) {
@@ -1534,25 +1558,78 @@ class AnimWatchViewModel(
     }
 
     fun setWatchlistCategory(animeId: String, category: WatchlistCategory?) {
-        val title = _uiState.value.allAnime.find { it.id == animeId }?.title ?: "Anime"
+        val anime = _uiState.value.allAnime.find { it.id == animeId }
+        val title = anime?.title ?: "Anime"
+        var syncedWatched: Int? = null
         _uiState.update { state ->
             val nextMap = state.watchlist.toMutableMap()
+            val nextWatched = state.watchedEpisodes.toMutableMap()
             if (category == null) {
                 nextMap.remove(animeId)
+                nextWatched.remove(animeId)
                 emitMessage("$title dihapus dari Daftar Tonton")
             } else {
                 nextMap[animeId] = category
+                if (category == WatchlistCategory.COMPLETED && anime != null) {
+                    val maxEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
+                    if ((nextWatched[animeId] ?: 0) < maxEps) {
+                        nextWatched[animeId] = maxEps
+                        syncedWatched = maxEps
+                    }
+                }
                 emitMessage("$title disimpan ke ${category.label}")
             }
-            state.copy(watchlist = nextMap)
+            state.copy(watchlist = nextMap, watchedEpisodes = nextWatched)
         }
         val token = authToken
         val state = _uiState.value
         if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
             viewModelScope.launch {
-                remoteDataSource.syncWatchlist(state.apiConfig.baseUrl, token, animeId, category?.name)
+                remoteDataSource.syncWatchlist(
+                    baseUrl = state.apiConfig.baseUrl,
+                    token = token,
+                    animeId = animeId,
+                    category = category?.name,
+                    watchedEpisodes = syncedWatched
+                )
             }
         }
+    }
+
+    fun updateWatchedEpisodes(animeId: String, count: Int) {
+        val anime = _uiState.value.allAnime.find { it.id == animeId } ?: return
+        val maxEps = maxOf(anime.totalEpisodes, anime.releasedEpisodes, anime.episodes.size, 1)
+        val clamped = count.coerceIn(0, maxEps)
+        val currentCat = _uiState.value.watchlist[animeId]
+        val targetCat = when {
+            clamped >= maxEps -> WatchlistCategory.COMPLETED
+            clamped > 0 && (currentCat == null || currentCat == WatchlistCategory.PLAN_TO_WATCH || currentCat == WatchlistCategory.COMPLETED) ->
+                WatchlistCategory.WATCHING
+            else -> currentCat ?: WatchlistCategory.WATCHING
+        }
+        _uiState.update { state ->
+            state.copy(
+                watchedEpisodes = state.watchedEpisodes + (animeId to clamped),
+                watchlist = state.watchlist + (animeId to targetCat)
+            )
+        }
+        val token = authToken
+        val state = _uiState.value
+        if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
+            viewModelScope.launch {
+                remoteDataSource.syncWatchlist(
+                    baseUrl = state.apiConfig.baseUrl,
+                    token = token,
+                    animeId = animeId,
+                    category = targetCat.name,
+                    watchedEpisodes = clamped
+                )
+            }
+        }
+        emitMessage(
+            if (clamped >= maxEps) "Progres ${anime.title.substringBefore(":")} selesai ($clamped/$maxEps Ep)!"
+            else "Progres tracker: $clamped/$maxEps Episode"
+        )
     }
 
     fun toggleQuickBookmark(animeId: String) {
@@ -1918,6 +1995,7 @@ class AnimWatchViewModel(
         val list = _uiState.value.allAnime
         val byPreset = when (preset) {
             CatalogPreset.ALL -> list
+            CatalogPreset.OFFICIAL_FREE -> list.filter { it.isOfficialFree }
             CatalogPreset.ONGOING -> list.filter { it.status == AnimeStatus.ONGOING }
             CatalogPreset.TRENDING -> list.filter { it.isTrending }.sortedBy { it.popularityRank }
             CatalogPreset.TOP_RATED -> list.sortedByDescending { it.rating }.take(10)

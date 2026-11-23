@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Size as CoilSize
 import com.gows.animwatch.data.model.AnimeArtTheme
 import com.gows.animwatch.data.model.ArtMotif
 import com.gows.animwatch.ui.theme.GoldBright
@@ -100,6 +103,14 @@ fun AnimWatchCrestLogo(
     }
 }
 
+private val PosterVignetteBrush = Brush.verticalGradient(
+    colorStops = arrayOf(
+        0.0f to Color.Transparent,
+        0.58f to Color.Transparent,
+        1.0f to MediaScrimDark.copy(alpha = 0.88f)
+    )
+)
+
 @Composable
 fun AnimePosterArtwork(
     artTheme: AnimeArtTheme,
@@ -107,75 +118,70 @@ fun AnimePosterArtwork(
     modifier: Modifier = Modifier,
     posterUrl: String = "",
     showKanjiWatermark: Boolean = true,
-    showVignette: Boolean = true
+    showVignette: Boolean = true,
+    decodeSizePx: Int = 420
 ) {
     val context = LocalContext.current
     Box(
-        modifier = modifier
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, MediaScrimDark)
-                )
-            )
+        modifier = modifier.background(artTheme.secondaryBg)
     ) {
-        // Fallback Cassette Futurism procedural artwork (always visible while loading or offline)
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawArtMotif(
-                motif = artTheme.motif,
-                glow = artTheme.accentGlow,
-                phase = 0f,
-                isWide = size.width > size.height * 1.15f
-            )
-        }
-
-        if (showKanjiWatermark && posterUrl.isBlank()) {
-            Text(
-                text = artTheme.kanjiCrest,
-                color = artTheme.accentGlow.copy(alpha = 0.14f),
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 10.dp, end = 10.dp)
-            )
-        }
-
         if (posterUrl.isNotBlank()) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
+            // Fast path: skip heavy Canvas overdraw when loading real remote poster
+            val request = remember(posterUrl, decodeSizePx) {
+                ImageRequest.Builder(context)
                     .data(posterUrl)
-                    .crossfade(true)
-                    .build(),
+                    .size(CoilSize(decodeSizePx, decodeSizePx))
+                    .precision(Precision.INEXACT)
+                    .crossfade(160)
+                    .build()
+            }
+            AsyncImage(
+                model = request,
                 contentDescription = title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
+        } else {
+            // Procedural fallback artwork only when offline / no remote URL
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(artTheme.primaryBg, artTheme.secondaryBg, MediaScrimDark)
+                        )
+                    )
+            )
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawArtMotif(
+                    motif = artTheme.motif,
+                    glow = artTheme.accentGlow,
+                    phase = 0f,
+                    isWide = size.width > size.height * 1.15f
+                )
+            }
+            if (showKanjiWatermark) {
+                Text(
+                    text = artTheme.kanjiCrest,
+                    color = artTheme.accentGlow.copy(alpha = 0.14f),
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 10.dp)
+                )
+            }
         }
 
         if (showVignette) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to Color.Transparent,
-                                0.55f to Color.Transparent,
-                                1.0f to MediaScrimDark.copy(alpha = 0.92f)
-                            )
-                        )
-                    )
+                    .background(PosterVignetteBrush)
             )
         }
-
-        // Subtle Cassette Futurism CRT scanlines
-        CrtScanlineOverlay(
-            modifier = Modifier.fillMaxSize(),
-            lineAlpha = 0.08f,
-            stepPx = 6f
-        )
     }
 }
 

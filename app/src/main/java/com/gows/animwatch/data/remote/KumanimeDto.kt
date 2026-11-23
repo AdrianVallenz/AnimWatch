@@ -61,7 +61,17 @@ data class PopularItemDto(
     @SerializedName("released_episodes") val releasedEpisodes: Int? = null,
     @SerializedName("airing_day") val airingDay: String? = null,
     @SerializedName("airing_time") val airingTime: String? = null,
-    @SerializedName("trailer_url") val trailerUrl: String? = null
+    @SerializedName("trailer_url") val trailerUrl: String? = null,
+    @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("official_channel") val officialChannel: String? = null,
+    @SerializedName("stream_type") val streamType: String? = null,
+    @SerializedName("episodes") val episodes: List<AnimeDetailEpisodeDto>? = null,
+    @SerializedName("external_links") val externalLinks: List<ExternalLinkDto>? = null
+)
+
+data class ExternalLinkDto(
+    @SerializedName("site") val site: String? = null,
+    @SerializedName("url") val url: String? = null
 )
 
 data class MovieResponseDto(
@@ -135,15 +145,20 @@ data class AnimeDetailDataDto(
     @SerializedName("airing_day") val airingDay: String? = null,
     @SerializedName("airing_time") val airingTime: String? = null,
     @SerializedName("trailer_url") val trailerUrl: String? = null,
+    @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("episodes") val episodes: List<AnimeDetailEpisodeDto>? = null,
     @SerializedName("characters") val characters: List<AnimeDetailCharacterDto>? = null,
-    @SerializedName("related_slugs") val relatedSlugs: List<String>? = null
+    @SerializedName("related_slugs") val relatedSlugs: List<String>? = null,
+    @SerializedName("external_links") val externalLinks: List<ExternalLinkDto>? = null
 )
 
 data class AnimeDetailEpisodeDto(
     @SerializedName("eps_title") val epsTitle: String? = null,
     @SerializedName("eps_slug") val epsSlug: String? = null,
-    @SerializedName("number") val number: Int? = null
+    @SerializedName("number") val number: Int? = null,
+    @SerializedName("stream_url") val streamUrl: String? = null,
+    @SerializedName("stream_type") val streamType: String? = null
 )
 
 data class EpisodeDetailResponseDto(
@@ -156,6 +171,7 @@ data class EpisodeDetailDataDto(
     @SerializedName("title") val title: String? = null,
     @SerializedName("poster") val poster: String? = null,
     @SerializedName("stream_url") val streamUrl: String? = null,
+    @SerializedName("stream_type") val streamType: String? = null,
     @SerializedName("synopsis") val synopsis: String? = null,
     @SerializedName("anime_slug") val animeSlug: String? = null,
     @SerializedName("next_eps_slug") val nextEpsSlug: String? = null,
@@ -213,6 +229,7 @@ data class AuthResponseDto(
     @SerializedName("token") val token: String? = null,
     @SerializedName("user") val user: UserProfileDto? = null,
     @SerializedName("watchlist") val watchlist: Map<String, String>? = null,
+    @SerializedName("watchedEpisodes") val watchedEpisodes: Map<String, Int>? = null,
     @SerializedName("history") val history: List<WatchHistoryDto>? = null,
     @SerializedName("ratings") val ratings: Map<String, Int>? = null
 )
@@ -233,7 +250,8 @@ data class UpdatePreferencesRequestDto(
 
 data class WatchlistUpsertRequestDto(
     @SerializedName("animeId") val animeId: String,
-    @SerializedName("category") val category: String?
+    @SerializedName("category") val category: String?,
+    @SerializedName("watchedEpisodes") val watchedEpisodes: Int? = null
 )
 
 data class HistoryUpsertRequestDto(
