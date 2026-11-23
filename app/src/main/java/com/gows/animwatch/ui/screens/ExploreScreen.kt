@@ -746,39 +746,26 @@ private fun LoadMoreCatalogFooter(
     isLoading: Boolean,
     onLoadMore: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        if (isLoading) {
+    androidx.compose.runtime.LaunchedEffect(totalLoaded, isLoading) {
+        if (!isLoading) {
+            onLoadMore()
+        }
+    }
+    if (isLoading) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             Text(
-                text = "Memuat lebih banyak koleksi anime...",
+                text = "Memuat koleksi anime lainnya ($totalLoaded termuat)...",
                 style = MaterialTheme.typography.labelMedium,
                 color = GoldPrimary,
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.height(8.dp))
             CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(ObsidianCard)
-                    .border(0.75.dp, GoldSubtleBorder, RoundedCornerShape(16.dp))
-                    .clickable(onClick = onLoadMore)
-                    .padding(vertical = 13.dp, horizontal = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Muat Lebih Banyak Anime ($totalLoaded termuat)",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = GoldPrimary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
         }
     }
 }

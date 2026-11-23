@@ -124,6 +124,8 @@ fun AuthScreen(
         }
     }
 
+    val hostContext = androidx.compose.ui.platform.LocalContext.current
+
     val launchSystemGoogleAccountPicker = {
         if (hasNativeGoogleOAuth) {
             onGoogleSignIn()
@@ -134,13 +136,17 @@ fun AuthScreen(
                     null,
                     null,
                     arrayOf("com.google"),
-                    false,
+                    true,
                     null,
                     null,
                     null,
                     null
                 )
-                googleAccountPickerLauncher.launch(pickerIntent)
+                if (pickerIntent.resolveActivity(hostContext.packageManager) != null) {
+                    googleAccountPickerLauncher.launch(pickerIntent)
+                } else {
+                    showDirectGoogleDialog = true
+                }
             }.onFailure {
                 showDirectGoogleDialog = true
             }

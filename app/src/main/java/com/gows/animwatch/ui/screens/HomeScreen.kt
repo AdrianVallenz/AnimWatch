@@ -596,8 +596,13 @@ fun HomeScreen(
             }
         }
 
-        // 13. Catalog Expansion Footer
+        // 13. Auto-loaded Catalog Summary Footer
         item(key = "home_load_more") {
+            if (uiState.hasMoreCatalog && !uiState.isLoadingMoreCatalog) {
+                LaunchedEffect(uiState.catalogPageLoaded) {
+                    onLoadMoreCatalog()
+                }
+            }
             Spacer(modifier = Modifier.height(24.dp))
             Column(
                 modifier = Modifier
@@ -616,34 +621,25 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Muat lebih banyak koleksi playlist dan katalog anime populer lainnya.",
+                    text = if (uiState.isLoadingMoreCatalog) {
+                        "Sedang memuat sisa koleksi anime secara otomatis..."
+                    } else {
+                        "Seluruh katalog & playlist anime otomatis diperbarui."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = TextTertiary
                 )
-                if (uiState.hasMoreCatalog) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    if (uiState.isLoadingMoreCatalog) {
-                        CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            GoldOutlinedButton(
-                                text = "Muat Lebih Banyak",
-                                onClick = onLoadMoreCatalog,
-                                modifier = Modifier.weight(1f),
-                                height = 42.dp
-                            )
-                            GoldGradientButton(
-                                text = "Jelajah Semua",
-                                onClick = onOpenSearch,
-                                modifier = Modifier.weight(1f),
-                                height = 42.dp
-                            )
-                        }
-                    }
+                if (uiState.isLoadingMoreCatalog) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    CassetteLinearShimmer(modifier = Modifier.fillMaxWidth())
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+                GoldGradientButton(
+                    text = "Jelajah Semua",
+                    onClick = onOpenSearch,
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 42.dp
+                )
             }
         }
     }

@@ -206,7 +206,7 @@ fun AnimWatchApp(
                     localContext.getString(R.string.google_web_client_id).trim()
                 }.getOrDefault("")
                 val resolvedClientId = uiState.googleWebClientId.ifBlank { localClientId }
-                val hasCloudOAuthConfigured = resolvedClientId.isNotBlank() || uiState.googleWebOAuthEnabled
+                val hasCloudOAuthConfigured = resolvedClientId.isNotBlank()
 
                 var triggerManualGooglePrompt by remember { mutableStateOf(false) }
 
@@ -272,7 +272,7 @@ fun AnimWatchApp(
                                                 null,
                                                 null,
                                                 arrayOf("com.google"),
-                                                false,
+                                                true,
                                                 null,
                                                 null,
                                                 null,
@@ -353,7 +353,7 @@ fun AnimWatchApp(
                                     viewModel.selectTab(MainTab.LIBRARY)
                                     viewModel.setLibraryTab(LibraryTab.HISTORY)
                                 },
-                                onLoadMoreCatalog = { viewModel.loadMoreCatalog() },
+                                onLoadMoreCatalog = { viewModel.loadMoreCatalog(silent = true) },
                                 onOpenNotifications = { showNotificationsSheet = true },
                                 onOpenProfile = { viewModel.selectTab(MainTab.PROFILE) }
                             )
@@ -381,7 +381,7 @@ fun AnimWatchApp(
                                 onSortChange = viewModel::setSortOption,
                                 onToggleGridView = viewModel::toggleExploreGridMode,
                                 onResetFilters = viewModel::resetExploreFilters,
-                                onLoadMoreCatalog = { viewModel.loadMoreCatalog() },
+                                onLoadMoreCatalog = { viewModel.loadMoreCatalog(silent = true) },
                                 onSelectScheduleDay = viewModel::selectScheduleDay,
                                 onToggleReminder = viewModel::toggleAnimeReminder,
                                 onAnimeClick = viewModel::openAnimeDetail,
@@ -512,7 +512,7 @@ fun AnimWatchApp(
                             route.preset != CatalogPreset.DUB_INDO &&
                             route.preset != CatalogPreset.TOP_RATED,
                         isLoadingMore = uiState.isLoadingMoreCatalog,
-                        onLoadMore = { viewModel.loadMoreCatalog() }
+                        onLoadMore = { viewModel.loadMoreCatalog(silent = true) }
                     )
                 }
             }

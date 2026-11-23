@@ -142,7 +142,7 @@ data class AnimWatchUiState(
     val isGuestSession: Boolean = false,
     val isGoogleAuthLoading: Boolean = false,
     val googleWebClientId: String = "",
-    val googleWebOAuthEnabled: Boolean = true,
+    val googleWebOAuthEnabled: Boolean = false,
     val hasCompletedThemeSetup: Boolean = false,
     val isEditingTheme: Boolean = false,
     val appearanceMode: AppAppearanceMode = AppAppearanceMode.DARK,
@@ -1057,7 +1057,7 @@ class AnimWatchViewModel(
         }
     }
 
-    fun loadMoreCatalog(silent: Boolean = false) {
+    fun loadMoreCatalog(silent: Boolean = true) {
         val state = _uiState.value
         if (!state.apiConfig.useLiveApi || state.isLoadingMoreCatalog || !state.hasMoreCatalog) return
         val nextPage = state.catalogPageLoaded + 1
@@ -1157,19 +1157,24 @@ class AnimWatchViewModel(
 
     private fun prefetchRemainingOfficialSeasons(baseUrl: String) {
         viewModelScope.launch {
-            for (page in 2..7) {
+            for (page in 2..10) {
                 val cur = _uiState.value
                 if (!cur.apiConfig.useLiveApi || cur.catalogPageLoaded >= page) continue
                 val res = remoteDataSource.fetchCatalogPage(baseUrl, page)
                 val pageItems = res.getOrNull() ?: break
-                if (pageItems.isEmpty()) break
+                if (pageItems.isEmpty()) {
+                    _uiState.update { it.copy(hasMoreCatalog = false, isLoadingMoreCatalog = false) }
+                    break
+                }
                 _uiState.update { state ->
                     val merged = LinkedHashMap<String, Anime>()
                     state.allAnime.forEach { merged[it.id] = it }
+                    var addedCount = 0
                     pageItems.forEach { item ->
                         val existing = merged[item.id]
                         if (existing == null) {
                             merged[item.id] = item
+                            addedCount++
                         } else if (item.isOfficialFree && !existing.isOfficialFree) {
                             merged[item.id] = existing.copy(
                                 isOfficialFree = true,
@@ -1178,9 +1183,13 @@ class AnimWatchViewModel(
                         }
                     }
                     val finalList = merged.values.toList()
+                    val dynamicGenres = finalList.flatMap { it.genres }.distinct().ifEmpty { state.genres }
                     state.copy(
                         allAnime = finalList,
+                        genres = dynamicGenres,
                         catalogPageLoaded = maxOf(state.catalogPageLoaded, page),
+                        isLoadingMoreCatalog = false,
+                        hasMoreCatalog = addedCount > 0 && page < 10,
                         apiConfig = state.apiConfig.copy(
                             lastSyncMessage = "Terhubung (${finalList.size} judul)",
                             remoteCount = finalList.size
@@ -1188,6 +1197,7 @@ class AnimWatchViewModel(
                     )
                 }
             }
+            _uiState.update { it.copy(hasMoreCatalog = false, isLoadingMoreCatalog = false) }
         }
     }
 

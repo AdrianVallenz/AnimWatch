@@ -60,11 +60,7 @@ object GoogleAuthManager {
     ): GoogleSignInOutcome {
         val cleanClientId = webClientId.trim()
         if (cleanClientId.isEmpty()) {
-            return if (webOAuthEnabled) {
-                launchBrowserOAuth(activity, apiBaseUrl)
-            } else {
-                GoogleSignInOutcome.OpenInAppGooglePrompt
-            }
+            return GoogleSignInOutcome.OpenInAppGooglePrompt
         }
 
         val credentialManager = CredentialManager.create(activity)
@@ -88,24 +84,18 @@ object GoogleAuthManager {
                 val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                 if (googleIdTokenCredential.idToken.isNotBlank()) {
                     GoogleSignInOutcome.IdToken(googleIdTokenCredential.idToken)
-                } else if (webOAuthEnabled) {
-                    launchBrowserOAuth(activity, apiBaseUrl)
                 } else {
                     GoogleSignInOutcome.OpenInAppGooglePrompt
                 }
-            } else if (webOAuthEnabled) {
-                launchBrowserOAuth(activity, apiBaseUrl)
             } else {
                 GoogleSignInOutcome.OpenInAppGooglePrompt
             }
         } catch (_: GetCredentialCancellationException) {
             GoogleSignInOutcome.Cancelled
         } catch (_: GetCredentialException) {
-            if (webOAuthEnabled) launchBrowserOAuth(activity, apiBaseUrl)
-            else GoogleSignInOutcome.OpenInAppGooglePrompt
+            GoogleSignInOutcome.OpenInAppGooglePrompt
         } catch (_: Exception) {
-            if (webOAuthEnabled) launchBrowserOAuth(activity, apiBaseUrl)
-            else GoogleSignInOutcome.OpenInAppGooglePrompt
+            GoogleSignInOutcome.OpenInAppGooglePrompt
         }
     }
 
