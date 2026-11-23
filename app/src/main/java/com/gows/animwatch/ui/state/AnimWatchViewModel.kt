@@ -1435,6 +1435,19 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(exploreFilter = state.exploreFilter.copy(query = query))
         }
+        val trimmed = query.trim()
+        remoteSearchJob?.cancel()
+        if (trimmed.length < 2) {
+            _uiState.update { it.copy(isSearchingRemote = false) }
+            return
+        }
+        val cfg = _uiState.value.apiConfig
+        if (cfg.useLiveApi) {
+            remoteSearchJob = viewModelScope.launch {
+                delay(420L)
+                executeRemoteSearch(cfg.baseUrl, trimmed)
+            }
+        }
     }
 
     fun commitSearchQuery(query: String) {
@@ -1447,28 +1460,34 @@ class AnimWatchViewModel(
             state.copy(searchHistory = updated)
         }
         val cfg = _uiState.value.apiConfig
-        if (cfg.useLiveApi && cfg.status == ApiConnectionStatus.CONNECTED) {
+        if (cfg.useLiveApi) {
             remoteSearchJob?.cancel()
             remoteSearchJob = viewModelScope.launch {
-                _uiState.update { it.copy(isSearchingRemote = true) }
-                val res = remoteDataSource.searchAnime(cfg.baseUrl, trimmed)
-                res.onSuccess { found ->
-                    if (found.isNotEmpty()) {
-                        _uiState.update { state ->
-                            val merged = LinkedHashMap<String, Anime>()
-                            found.forEach { merged[it.id] = it }
-                            state.allAnime.forEach { existing ->
-                                if (!merged.containsKey(existing.id)) merged[existing.id] = existing
-                            }
-                            state.copy(allAnime = merged.values.toList(), isSearchingRemote = false)
-                        }
-                    } else {
-                        _uiState.update { it.copy(isSearchingRemote = false) }
-                    }
-                }.onFailure {
-                    _uiState.update { it.copy(isSearchingRemote = false) }
-                }
+                executeRemoteSearch(cfg.baseUrl, trimmed)
             }
+        }
+    }
+
+    private suspend fun executeRemoteSearch(baseUrl: String, query: String) {
+        _uiState.update { it.copy(isSearchingRemote = true) }
+        val res = remoteDataSource.searchAnime(baseUrl, query)
+        res.onSuccess { found ->
+            if (found.isNotEmpty()) {
+                _uiState.update { state ->
+                    val merged = LinkedHashMap<String, Anime>()
+                    state.allAnime.forEach { merged[it.id] = it }
+                    found.forEach { item ->
+                        if (!merged.containsKey(item.id)) {
+                            merged[item.id] = item
+                        }
+                    }
+                    state.copy(allAnime = merged.values.toList(), isSearchingRemote = false)
+                }
+            } else {
+                _uiState.update { it.copy(isSearchingRemote = false) }
+            }
+        }.onFailure {
+            _uiState.update { it.copy(isSearchingRemote = false) }
         }
     }
 

@@ -82,8 +82,17 @@ class KumanimeRemoteDataSource(
                 val merged = LinkedHashMap<String, Anime>()
                 popularList.forEach { merged[it.id] = it }
                 officialFreeList.forEach { item ->
-                    if (!merged.containsKey(item.id)) {
+                    val existing = merged[item.id]
+                    if (existing == null) {
                         merged[item.id] = item
+                    } else {
+                        merged[item.id] = existing.copy(
+                            isOfficialFree = true,
+                            officialChannel = item.officialChannel ?: existing.officialChannel,
+                            posterTag = item.posterTag,
+                            episodes = if (item.episodes.isNotEmpty()) item.episodes else existing.episodes,
+                            externalLinks = if (item.externalLinks.isNotEmpty()) item.externalLinks else existing.externalLinks
+                        )
                     }
                 }
 
