@@ -83,6 +83,12 @@ sealed interface AppRoute {
     ) : AppRoute
 }
 
+enum class AudioFilter(val label: String) {
+    ALL("Semua"),
+    SUB_INDO("Sub Indo"),
+    DUB_INDO("Dub Indo")
+}
+
 @Immutable
 data class ExploreFilterState(
     val query: String = "",
@@ -91,6 +97,7 @@ data class ExploreFilterState(
     val typeFilter: AnimeType? = null,
     val yearFilter: Int? = null,
     val onlyPlayable: Boolean = false,
+    val audioFilter: AudioFilter = AudioFilter.ALL,
     val sortOption: SortOption = SortOption.POPULAR,
     val isGridView: Boolean = true
 ) {
@@ -99,7 +106,8 @@ data class ExploreFilterState(
             (if (statusFilter != null) 1 else 0) +
             (if (typeFilter != null) 1 else 0) +
             (if (yearFilter != null) 1 else 0) +
-            (if (onlyPlayable) 1 else 0)
+            (if (onlyPlayable) 1 else 0) +
+            (if (audioFilter != AudioFilter.ALL) 1 else 0)
 }
 
 @Immutable
@@ -1722,6 +1730,12 @@ class AnimWatchViewModel(
         }
     }
 
+    fun setAudioFilter(audioFilter: AudioFilter) {
+        _uiState.update { state ->
+            state.copy(exploreFilter = state.exploreFilter.copy(audioFilter = audioFilter))
+        }
+    }
+
     fun setStatusFilter(status: AnimeStatus?) {
         _uiState.update { state ->
             state.copy(exploreFilter = state.exploreFilter.copy(statusFilter = status))
@@ -2299,8 +2313,13 @@ class AnimWatchViewModel(
             val matchesType = filter.typeFilter == null || anime.type == filter.typeFilter
             val matchesYear = filter.yearFilter == null || anime.year == filter.yearFilter
             val matchesPlayable = !filter.onlyPlayable || anime.isOfficialFree
+            val matchesAudio = when (filter.audioFilter) {
+                AudioFilter.ALL -> true
+                AudioFilter.SUB_INDO -> !anime.isDubIndo
+                AudioFilter.DUB_INDO -> anime.isDubIndo
+            }
 
-            matchesQuery && matchesGenres && matchesStatus && matchesType && matchesYear && matchesPlayable
+            matchesQuery && matchesGenres && matchesStatus && matchesType && matchesYear && matchesPlayable && matchesAudio
         }
 
         return when (filter.sortOption) {
@@ -2319,13 +2338,14 @@ class AnimWatchViewModel(
         val list = _uiState.value.allAnime
         val byPreset = when (preset) {
             CatalogPreset.ALL -> list
-            CatalogPreset.OFFICIAL_FREE -> list.filter { it.isOfficialFree }
-            CatalogPreset.ONGOING -> list.filter { it.status == AnimeStatus.ONGOING }
-            CatalogPreset.TRENDING -> list.filter { it.isTrending }.sortedBy { it.popularityRank }
-            CatalogPreset.TOP_RATED -> list.sortedByDescending { it.rating }.take(10)
-            CatalogPreset.LATEST -> list.filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
-            CatalogPreset.COMPLETED -> list.filter { it.status == AnimeStatus.COMPLETED }
-            CatalogPreset.MOVIES -> list.filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
+            CatalogPreset.OFFICIAL_FREE -> list.filter { it.isOfficialFree && !it.isDubIndo }
+            CatalogPreset.DUB_INDO -> list.filter { it.isDubIndo }
+            CatalogPreset.ONGOING -> list.filter { !it.isDubIndo && it.status == AnimeStatus.ONGOING }
+            CatalogPreset.TRENDING -> list.filter { !it.isDubIndo && it.isTrending }.sortedBy { it.popularityRank }
+            CatalogPreset.TOP_RATED -> list.filterNot { it.isDubIndo }.sortedByDescending { it.rating }.take(10)
+            CatalogPreset.LATEST -> list.filter { !it.isDubIndo && (it.isNewRelease || it.status == AnimeStatus.ONGOING) }
+            CatalogPreset.COMPLETED -> list.filter { !it.isDubIndo && it.status == AnimeStatus.COMPLETED }
+            CatalogPreset.MOVIES -> list.filter { !it.isDubIndo && (it.type == AnimeType.MOVIE || it.type == AnimeType.OVA) }
         }
         return if (genre != null) {
             byPreset.filter { a -> a.genres.any { it.equals(genre, ignoreCase = true) } }

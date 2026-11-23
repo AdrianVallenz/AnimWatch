@@ -24,6 +24,12 @@ interface KumanimeApiService {
     @GET("official-free/page/{page}")
     suspend fun getOfficialFreePage(@Path("page") page: Int): PopularResponseDto
 
+    @GET("dub-indo")
+    suspend fun getDubIndo(): PopularResponseDto
+
+    @GET("dub-indo/page/{page}")
+    suspend fun getDubIndoPage(@Path("page") page: Int): PopularResponseDto
+
     @GET("latest")
     suspend fun getLatest(): LatestResponseDto
 

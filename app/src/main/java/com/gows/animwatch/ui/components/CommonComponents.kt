@@ -441,7 +441,22 @@ fun AnimePosterCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (anime.status == AnimeStatus.ONGOING) {
+                    if (anime.isDubIndo) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(GoldPrimary)
+                                .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                        ) {
+                            Text(
+                                text = "DUB",
+                                color = TextOnGold,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(5.dp))
+                    } else if (anime.status == AnimeStatus.ONGOING) {
                         LedStatusDot(color = StatusLive, pulsing = false, size = 5.5.dp)
                         Spacer(modifier = Modifier.width(4.dp))
                     }

@@ -33,6 +33,8 @@ data class LatestItemDto(
     @SerializedName("airing_time") val airingTime: String? = null,
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null
 )
 
@@ -65,6 +67,8 @@ data class PopularItemDto(
     @SerializedName("airing_time") val airingTime: String? = null,
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("stream_type") val streamType: String? = null,
     @SerializedName("episodes") val episodes: List<AnimeDetailEpisodeDto>? = null,
@@ -114,6 +118,8 @@ data class CatalogCardDto(
     @SerializedName("airing_time") val airingTime: String? = null,
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null
 )
 
@@ -150,6 +156,8 @@ data class AnimeDetailDataDto(
     @SerializedName("airing_time") val airingTime: String? = null,
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
+    @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("episodes") val episodes: List<AnimeDetailEpisodeDto>? = null,
     @SerializedName("characters") val characters: List<AnimeDetailCharacterDto>? = null,

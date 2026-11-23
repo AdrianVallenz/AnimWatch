@@ -139,6 +139,29 @@ class KumanimeIntegrationTest {
 
         override suspend fun getOfficialFreePage(page: Int): PopularResponseDto = getOfficialFree()
 
+        override suspend fun getDubIndo(): PopularResponseDto = PopularResponseDto(
+            status = "success",
+            data = listOf(
+                PopularItemDto(
+                    title = "Mushoku Tensei: Jobless Reincarnation",
+                    poster = "https://cdn.example.com/mushoku.jpg",
+                    slug = "dub-PLPanbgyToztZQCUAX0zVQe4HtNDvNtRTw",
+                    genres = listOf("Fantasy", "Dub Indo"),
+                    studio = "Muse Indonesia",
+                    status = "ONGOING",
+                    totalEpisodes = 15,
+                    releasedEpisodes = 15,
+                    isOfficialFree = true,
+                    isDubIndo = true,
+                    audioLang = "DUB_ID",
+                    officialChannel = "Muse Indonesia",
+                    streamType = "official_episode"
+                )
+            )
+        )
+
+        override suspend fun getDubIndoPage(page: Int): PopularResponseDto = getDubIndo()
+
         override suspend fun searchAnime(query: String): SearchResponseDto = SearchResponseDto(
             status = "success",
             query = query,
@@ -356,9 +379,11 @@ class KumanimeIntegrationTest {
         val catalogResult = dataSource.fetchInitialCatalog("https://kumanime-api-production.up.railway.app/api/")
         assertTrue(catalogResult.isSuccess)
         val catalog = catalogResult.getOrThrow()
-        assertEquals(5, catalog.size)
+        assertEquals(6, catalog.size)
+        assertTrue(catalog.any { it.isDubIndo && it.slug.startsWith("dub-") })
+        assertEquals(5, catalog.count { !it.isDubIndo })
 
-        val officialFree = catalog.first { it.isOfficialFree }
+        val officialFree = catalog.first { it.isOfficialFree && !it.isDubIndo }
         assertEquals("Muse Indonesia", officialFree.officialChannel)
         assertEquals(1, officialFree.episodes.size)
         assertEquals("official_episode", officialFree.episodes.first().streamType)

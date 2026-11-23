@@ -291,6 +291,10 @@ fun AnimeDetailScreen(
                                 text = anime.status.label,
                                 highlighted = anime.status == AnimeStatus.ONGOING
                             )
+                            GoldTagChip(
+                                text = if (anime.isDubIndo) "Dub Indo" else "Sub Indo",
+                                highlighted = anime.isDubIndo
+                            )
                             GoldTagChip(text = anime.type.label)
                             GoldTagChip(text = anime.ageRating)
                             if (anime.isOfficialFree && !anime.officialChannel.isNullOrBlank()) {

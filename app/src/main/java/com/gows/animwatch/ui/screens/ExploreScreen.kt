@@ -90,6 +90,7 @@ import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldTagChip
 import com.gows.animwatch.ui.components.LedStatusDot
 import com.gows.animwatch.ui.state.AnimWatchUiState
+import com.gows.animwatch.ui.state.AudioFilter
 import com.gows.animwatch.ui.state.ExploreFilterState
 import com.gows.animwatch.ui.state.ExploreMode
 import com.gows.animwatch.ui.theme.DividerSubtle
@@ -123,6 +124,7 @@ fun ExploreScreen(
     onClearSearchHistory: () -> Unit,
     onToggleGenre: (String) -> Unit,
     onToggleOnlyPlayable: () -> Unit,
+    onSelectAudioFilter: (AudioFilter) -> Unit,
     onStatusChange: (AnimeStatus?) -> Unit,
     onTypeChange: (AnimeType?) -> Unit,
     onYearChange: (Int?) -> Unit,
@@ -201,6 +203,7 @@ fun ExploreScreen(
                     onClearSearchHistory = onClearSearchHistory,
                     onToggleGenre = onToggleGenre,
                     onToggleOnlyPlayable = onToggleOnlyPlayable,
+                    onSelectAudioFilter = onSelectAudioFilter,
                     onOpenFilterSheet = { showFilterSheet = true },
                     onToggleGridView = onToggleGridView,
                     onResetFilters = onResetFilters,
@@ -264,6 +267,7 @@ private fun CatalogExploreContent(
     onClearSearchHistory: () -> Unit,
     onToggleGenre: (String) -> Unit,
     onToggleOnlyPlayable: () -> Unit,
+    onSelectAudioFilter: (AudioFilter) -> Unit,
     onOpenFilterSheet: () -> Unit,
     onToggleGridView: () -> Unit,
     onResetFilters: () -> Unit,
@@ -407,9 +411,45 @@ private fun CatalogExploreContent(
             }
         }
 
+        // Audio Category Switcher (Semua / Sub Indo / Dub Indo)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AudioFilter.entries.forEach { audioOpt ->
+                val selected = filter.audioFilter == audioOpt
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        .background(
+                            if (selected) GoldGradientBrush
+                            else Brush.linearGradient(listOf(ObsidianCard, ObsidianCard))
+                        )
+                        .border(
+                            width = if (selected) 0.dp else 0.75.dp,
+                            color = if (selected) Color.Transparent else GoldSubtleBorder,
+                            shape = CircleShape
+                        )
+                        .clickable { onSelectAudioFilter(audioOpt) }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = audioOpt.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) TextOnGold else TextSecondary,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+
         // Quick Genre Chips Row + Ready-to-Play toggle
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
@@ -452,7 +492,7 @@ private fun CatalogExploreContent(
                     )
                 }
             }
-            items(uiState.genres) { genre ->
+            items(uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }) { genre ->
                 GenrePillChip(
                     label = genre,
                     selected = genre in filter.selectedGenres,

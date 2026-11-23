@@ -302,6 +302,7 @@ fun AnimWatchApp(
                                 onClearSearchHistory = viewModel::clearSearchHistory,
                                 onToggleGenre = viewModel::toggleGenreFilter,
                                 onToggleOnlyPlayable = viewModel::toggleOnlyPlayableFilter,
+                                onSelectAudioFilter = viewModel::setAudioFilter,
                                 onStatusChange = viewModel::setStatusFilter,
                                 onTypeChange = viewModel::setTypeFilter,
                                 onYearChange = viewModel::setYearFilter,

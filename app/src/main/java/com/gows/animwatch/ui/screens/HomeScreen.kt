@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Star
@@ -122,13 +123,19 @@ fun HomeScreen(
     var selectedHomeGenre by remember { mutableStateOf<String?>(null) }
 
     val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
-    val playableList = remember(uiState.allAnime) {
+    val subAnime = remember(uiState.allAnime) { uiState.allAnime.filterNot { it.isDubIndo } }
+    val dubIndoList = remember(uiState.allAnime) {
         uiState.allAnime
+            .filter { it.isDubIndo }
+            .sortedWith(compareByDescending<Anime> { it.rating }.thenBy { it.popularityRank })
+    }
+    val playableList = remember(subAnime) {
+        subAnime
             .filter { it.isOfficialFree }
             .sortedWith(compareByDescending<Anime> { it.rating }.thenBy { it.popularityRank })
     }
-    val featuredList = remember(uiState.allAnime) {
-        uiState.allAnime
+    val featuredList = remember(subAnime) {
+        subAnime
             .sortedWith(
                 compareByDescending<Anime> { it.isOfficialFree && it.rating >= 8.3 }
                     .thenByDescending { it.isFeatured }
@@ -136,41 +143,41 @@ fun HomeScreen(
             )
             .take(7)
     }
-    val latestReleases = remember(uiState.allAnime) {
-        uiState.allAnime
+    val latestReleases = remember(subAnime) {
+        subAnime
             .filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenBy { it.popularityRank })
             .take(24)
     }
-    val top10List = remember(uiState.allAnime) {
-        uiState.allAnime.sortedByDescending { it.rating }.take(10)
+    val top10List = remember(subAnime) {
+        subAnime.sortedByDescending { it.rating }.take(10)
     }
-    val trendingList = remember(uiState.allAnime) {
-        uiState.allAnime
+    val trendingList = remember(subAnime) {
+        subAnime
             .filter { it.isTrending || it.isOfficialFree }
             .sortedWith(compareByDescending<Anime> { it.isTrending }.thenBy { it.popularityRank })
             .take(24)
     }
-    val actionList = remember(uiState.allAnime) {
-        uiState.allAnime
+    val actionList = remember(subAnime) {
+        subAnime
             .filter { a -> a.genres.any { it.equals("Action", ignoreCase = true) } }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
             .take(20)
     }
-    val fantasyList = remember(uiState.allAnime) {
-        uiState.allAnime
+    val fantasyList = remember(subAnime) {
+        subAnime
             .filter { a -> a.genres.any { it.equals("Fantasy", ignoreCase = true) } }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
             .take(20)
     }
-    val completedMarathon = remember(uiState.allAnime) {
-        uiState.allAnime
+    val completedMarathon = remember(subAnime) {
+        subAnime
             .filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
             .take(24)
     }
-    val moviesList = remember(uiState.allAnime) {
-        uiState.allAnime
+    val moviesList = remember(subAnime) {
+        subAnime
             .filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
             .sortedByDescending { it.rating }
             .take(24)
@@ -181,11 +188,11 @@ fun HomeScreen(
             "Sci-Fi", "Drama", "Sports", "Supernatural", "Slice of Life"
         )
         preferredOrder.filter { p -> uiState.genres.any { it.equals(p, ignoreCase = true) } }
-            .ifEmpty { uiState.genres.take(8) }
+            .ifEmpty { uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }.take(8) }
     }
-    val genreFilteredAnime = remember(uiState.allAnime, selectedHomeGenre) {
+    val genreFilteredAnime = remember(subAnime, selectedHomeGenre) {
         val g = selectedHomeGenre ?: return@remember emptyList()
-        uiState.allAnime
+        subAnime
             .filter { a -> a.genres.any { it.equals(g, ignoreCase = true) } }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
     }
@@ -266,11 +273,11 @@ fun HomeScreen(
         item(key = "home_shortcuts") {
             Spacer(modifier = Modifier.height(16.dp))
             QuickShortcutStrip(
+                onDubIndoClick = { onOpenCatalog(CatalogPreset.DUB_INDO, "Kategori Dub Indo") },
                 onScheduleClick = onOpenSchedule,
                 onOngoingClick = { onOpenCatalog(CatalogPreset.ONGOING, "Sedang Tayang") },
                 onRankingClick = onOpenRanking,
-                onMoviesClick = { onOpenCatalog(CatalogPreset.MOVIES, "Anime Movie & OVA") },
-                onRandomClick = onOpenRandom
+                onMoviesClick = { onOpenCatalog(CatalogPreset.MOVIES, "Anime Movie & OVA") }
             )
             if (quickGenres.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(14.dp))
@@ -354,14 +361,14 @@ fun HomeScreen(
                 }
             }
 
-            // 5. Koleksi Siap Tonton Lengkap (All Muse Indonesia & Ani-One Indonesia playlists!)
+            // 5. Koleksi Siap Tonton Sub Indo
             if (playableList.isNotEmpty()) {
                 item(key = "home_playable") {
                     Spacer(modifier = Modifier.height(26.dp))
                     SectionHeader(
-                        title = "Siap Tonton Lengkap",
-                        subtitle = "${playableList.size} serial langsung putar di aplikasi",
-                        onActionClick = { onOpenCatalog(CatalogPreset.OFFICIAL_FREE, "Siap Tonton Lengkap") }
+                        title = "Siap Tonton • Sub Indo",
+                        subtitle = "${playableList.size} serial Sub Indo langsung putar",
+                        onActionClick = { onOpenCatalog(CatalogPreset.OFFICIAL_FREE, "Siap Tonton • Sub Indo") }
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(
@@ -369,6 +376,32 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(playableList.take(24), key = { "play_${it.id}" }) { anime ->
+                            AnimePosterCard(
+                                anime = anime,
+                                isBookmarked = anime.id in uiState.watchlist,
+                                onClick = { onAnimeClick(anime.id) },
+                                onBookmarkClick = { onBookmarkClick(anime.id) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5b. Kategori Tersendiri: Dub Indo (Sulih Suara Bahasa Indonesia)
+            if (dubIndoList.isNotEmpty()) {
+                item(key = "home_dub_indo") {
+                    Spacer(modifier = Modifier.height(26.dp))
+                    SectionHeader(
+                        title = "Kategori Dub Indo",
+                        subtitle = "${dubIndoList.size} serial sulih suara Bahasa Indonesia",
+                        onActionClick = { onOpenCatalog(CatalogPreset.DUB_INDO, "Kategori Dub Indo") }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(dubIndoList.take(24), key = { "dub_${it.id}" }) { anime ->
                             AnimePosterCard(
                                 anime = anime,
                                 isBookmarked = anime.id in uiState.watchlist,
@@ -566,7 +599,7 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "${uiState.allAnime.size} anime tersedia • ${playableList.size} siap putar langsung",
+                    text = "${subAnime.size} Sub Indo • ${dubIndoList.size} Dub Indo tersedia",
                     style = MaterialTheme.typography.titleSmall,
                     color = TextPrimary
                 )
@@ -984,11 +1017,11 @@ private fun HeroCarouselSection(
 
 @Composable
 private fun QuickShortcutStrip(
+    onDubIndoClick: () -> Unit,
     onScheduleClick: () -> Unit,
     onOngoingClick: () -> Unit,
     onRankingClick: () -> Unit,
-    onMoviesClick: () -> Unit,
-    onRandomClick: () -> Unit
+    onMoviesClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -996,11 +1029,11 @@ private fun QuickShortcutStrip(
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        QuickActionPill(Icons.Rounded.RecordVoiceOver, "Dub Indo", onDubIndoClick)
         QuickActionPill(Icons.Rounded.CalendarMonth, "Jadwal", onScheduleClick)
         QuickActionPill(Icons.Rounded.LiveTv, "Ongoing", onOngoingClick)
         QuickActionPill(Icons.Rounded.EmojiEvents, "Top 10", onRankingClick)
         QuickActionPill(Icons.Rounded.Movie, "Movie", onMoviesClick)
-        QuickActionPill(Icons.Rounded.Shuffle, "Acak", onRandomClick)
     }
 }
 

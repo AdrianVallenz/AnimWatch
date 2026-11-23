@@ -41,7 +41,8 @@ enum class SortOption(val label: String) {
 
 enum class CatalogPreset(val title: String, val subtitle: String) {
     ALL("Semua Katalog", "Seluruh koleksi anime"),
-    OFFICIAL_FREE("Siap Tonton Lengkap", "Episode lengkap siap diputar langsung di aplikasi"),
+    OFFICIAL_FREE("Siap Tonton • Sub Indo", "Episode lengkap Sub Indo siap diputar langsung"),
+    DUB_INDO("Kategori Dub Indo", "Koleksi anime sulih suara Bahasa Indonesia"),
     ONGOING("Sedang Tayang", "Episode baru hadir setiap minggu"),
     TRENDING("Sedang Hangat", "Paling banyak ditonton minggu ini"),
     TOP_RATED("Top 10 Peringkat", "Skor tertinggi pilihan penonton"),
@@ -221,6 +222,7 @@ data class Anime(
     val isTrending: Boolean = false,
     val isNewRelease: Boolean = false,
     val isOfficialFree: Boolean = false,
+    val isDubIndo: Boolean = false,
     val officialChannel: String? = null,
     val artTheme: AnimeArtTheme,
     val posterTag: String,

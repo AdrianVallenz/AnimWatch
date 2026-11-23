@@ -47,6 +47,7 @@ class KumanimeRemoteDataSource(
             val api = serviceProvider(baseUrl)
             coroutineScope {
                 val officialFreeDeferred = async { runCatching { api.getOfficialFree() }.getOrNull() }
+                val dubIndoDeferred = async { runCatching { api.getDubIndo() }.getOrNull() }
                 val popularDeferred = async { runCatching { api.getPopular() }.getOrNull() }
                 val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
                 val moviesDeferred = async { runCatching { api.getMovies() }.getOrNull() }
@@ -55,7 +56,17 @@ class KumanimeRemoteDataSource(
                 val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
-                            dto = dto.copy(isOfficialFree = true),
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = false),
+                            index = idx,
+                            defaultStatus = AnimeStatus.ONGOING,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val dubIndoList = dubIndoDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = true, audioLang = "DUB_ID"),
                             index = idx,
                             defaultStatus = AnimeStatus.ONGOING,
                             markTrending = false,
@@ -135,6 +146,12 @@ class KumanimeRemoteDataSource(
                     }
                 }
 
+                dubIndoList.forEach { dub ->
+                    if (!merged.containsKey(dub.id)) {
+                        merged[dub.id] = dub
+                    }
+                }
+
                 if (merged.isEmpty()) {
                     throw IllegalStateException("Server katalog merespons kosong. Pastikan koneksi internet aktif.")
                 }
@@ -150,6 +167,7 @@ class KumanimeRemoteDataSource(
             val api = serviceProvider(baseUrl)
             coroutineScope {
                 val officialFreeDeferred = async { runCatching { api.getOfficialFreePage(safePage) }.getOrNull() }
+                val dubIndoDeferred = async { runCatching { api.getDubIndoPage(safePage) }.getOrNull() }
                 val popularDeferred = async { runCatching { api.getPopularPage(safePage) }.getOrNull() }
                 val latestDeferred = async { runCatching { api.getLatestPage(safePage) }.getOrNull() }
                 val completedDeferred = async { runCatching { api.getCompletedPage(safePage) }.getOrNull() }
@@ -158,7 +176,17 @@ class KumanimeRemoteDataSource(
                 val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
-                            dto = dto.copy(isOfficialFree = true),
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = false),
+                            index = rankOffset + idx,
+                            defaultStatus = AnimeStatus.ONGOING,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val dubIndoList = dubIndoDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = true, audioLang = "DUB_ID"),
                             index = rankOffset + idx,
                             defaultStatus = AnimeStatus.ONGOING,
                             markTrending = false,
@@ -197,6 +225,7 @@ class KumanimeRemoteDataSource(
                 latestList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 completedList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 moviesList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                dubIndoList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 merged.values.toList()
             }
         }
