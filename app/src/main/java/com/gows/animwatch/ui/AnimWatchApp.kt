@@ -195,10 +195,39 @@ fun AnimWatchApp(
                 val resolvedClientId = uiState.googleWebClientId.ifBlank { localClientId }
                 val hasCloudOAuthConfigured = resolvedClientId.isNotBlank() || uiState.googleWebOAuthEnabled
 
+                var triggerManualGooglePrompt by remember { mutableStateOf(false) }
+
+                val googleAccountPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == android.app.Activity.RESULT_OK) {
+                        val selectedEmail = result.data
+                            ?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)
+                            ?.trim()
+                            .orEmpty()
+                        if (selectedEmail.isNotBlank()) {
+                            val derivedName = selectedEmail
+                                .substringBefore("@")
+                                .replace(Regex("[._-]+"), " ")
+                                .split(" ")
+                                .filter { it.isNotBlank() }
+                                .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
+                                .ifEmpty { "Google User" }
+                            viewModel.loginWithGoogleProfile(selectedEmail, derivedName)
+                        } else {
+                            triggerManualGooglePrompt = true
+                        }
+                    } else {
+                        viewModel.setGoogleAuthLoading(false)
+                    }
+                }
+
                 AuthScreen(
                     authError = uiState.authError,
                     isGoogleLoading = uiState.isGoogleAuthLoading,
                     hasNativeGoogleOAuth = hasCloudOAuthConfigured,
+                    forceOpenManualDialog = triggerManualGooglePrompt,
+                    onConsumeForceOpenManualDialog = { triggerManualGooglePrompt = false },
                     onClearAuthError = viewModel::clearAuthError,
                     onGoogleSignIn = {
                         val activity = localContext.findHostActivity()
@@ -224,6 +253,22 @@ fun AnimWatchApp(
                                     }
                                     GoogleSignInOutcome.OpenInAppGooglePrompt -> {
                                         viewModel.setGoogleAuthLoading(false)
+                                        runCatching {
+                                            @Suppress("DEPRECATION")
+                                            val pickerIntent = android.accounts.AccountManager.newChooseAccountIntent(
+                                                null,
+                                                null,
+                                                arrayOf("com.google"),
+                                                false,
+                                                null,
+                                                null,
+                                                null,
+                                                null
+                                            )
+                                            googleAccountPickerLauncher.launch(pickerIntent)
+                                        }.onFailure {
+                                            triggerManualGooglePrompt = true
+                                        }
                                     }
                                     GoogleSignInOutcome.Cancelled -> {
                                         viewModel.setGoogleAuthLoading(false)

@@ -1,5 +1,10 @@
 package com.gows.animwatch.ui.screens
 
+import android.accounts.AccountManager
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,12 +92,68 @@ fun AuthScreen(
     authError: String?,
     isGoogleLoading: Boolean = false,
     hasNativeGoogleOAuth: Boolean = false,
+    forceOpenManualDialog: Boolean = false,
+    onConsumeForceOpenManualDialog: () -> Unit = {},
     onClearAuthError: () -> Unit,
     onGoogleSignIn: () -> Unit = {},
     onGoogleDirectSignIn: (email: String, displayName: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showDirectGoogleDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(forceOpenManualDialog) {
+        if (forceOpenManualDialog) {
+            showDirectGoogleDialog = true
+            onConsumeForceOpenManualDialog()
+        }
+    }
+
+    // Native Android System Google Account Picker ("Pilih akun untuk AnimWatch")
+    val googleAccountPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val selectedEmail = result.data
+                ?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                ?.trim()
+                .orEmpty()
+            if (selectedEmail.isNotBlank()) {
+                val derivedName = selectedEmail
+                    .substringBefore("@")
+                    .replace(Regex("[._-]+"), " ")
+                    .split(" ")
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
+                    .ifEmpty { "Google User" }
+                onGoogleDirectSignIn(selectedEmail, derivedName)
+            } else {
+                showDirectGoogleDialog = true
+            }
+        }
+    }
+
+    val launchSystemGoogleAccountPicker = {
+        if (hasNativeGoogleOAuth) {
+            onGoogleSignIn()
+        } else {
+            runCatching {
+                @Suppress("DEPRECATION")
+                val pickerIntent: Intent = AccountManager.newChooseAccountIntent(
+                    null,
+                    null,
+                    arrayOf("com.google"),
+                    false,
+                    null,
+                    null,
+                    null,
+                    null
+                )
+                googleAccountPickerLauncher.launch(pickerIntent)
+            }.onFailure {
+                showDirectGoogleDialog = true
+            }
+        }
+    }
 
     Box(
         modifier = modifier
@@ -211,11 +273,7 @@ fun AuthScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .clickable(enabled = !isGoogleLoading) {
                                 onClearAuthError()
-                                if (hasNativeGoogleOAuth) {
-                                    onGoogleSignIn()
-                                } else {
-                                    showDirectGoogleDialog = true
-                                }
+                                launchSystemGoogleAccountPicker()
                             },
                         shape = RoundedCornerShape(18.dp),
                         color = if (IsDarkTheme) Color.White else ObsidianElevated,
