@@ -215,7 +215,7 @@ data class AnimWatchUiState(
 
 class AnimWatchViewModel(
     private val repository: AnimeRepository = MockAnimeRepository(),
-    private val remoteDataSource: KumanimeRemoteDataSource = KumanimeRemoteDataSource()
+    private val remoteDataSource: KumanimeRemoteDataSource = KumanimeRemoteDataSource(enableDirectAiringFeed = true)
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(loadInitialState())
@@ -223,6 +223,9 @@ class AnimWatchViewModel(
 
     private val _toastMessages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val toastMessages: SharedFlow<String> = _toastMessages.asSharedFlow()
+
+    private val _systemNotificationBatch = MutableSharedFlow<List<NotificationItem>>(extraBufferCapacity = 4)
+    val systemNotificationBatch: SharedFlow<List<NotificationItem>> = _systemNotificationBatch.asSharedFlow()
 
     private data class LocalAccount(
         val displayName: String,
@@ -254,6 +257,8 @@ class AnimWatchViewModel(
     private var lastHistorySyncAnimeId: String? = null
     private var lastHistorySyncEpisodeId: String? = null
     private var lastHistorySyncAtMs: Long = 0L
+    private val readNotificationIds = mutableSetOf<String>()
+    private var knownLatestEpisodes: MutableMap<String, Int> = mutableMapOf()
 
     private var playerTickerJob: Job? = null
     private var apiSyncJob: Job? = null
@@ -302,6 +307,11 @@ class AnimWatchViewModel(
         sessionStore = store
         cloudSyncEnabled = true
 
+        readNotificationIds.clear()
+        readNotificationIds.addAll(store.getReadNotificationIds())
+        knownLatestEpisodes = store.getKnownLatestEpisodes().toMutableMap()
+        val persistedReminders = store.getReminderAnimeIds()
+
         // Restore saved theme & API URL immediately
         val savedUrl = store.getApiBaseUrl()
         val savedMode = store.getAppearanceMode()?.let { name ->
@@ -314,6 +324,7 @@ class AnimWatchViewModel(
             state.copy(
                 appearanceMode = savedMode ?: state.appearanceMode,
                 accentTheme = savedAccent ?: state.accentTheme,
+                reminders = if (persistedReminders.isNotEmpty()) persistedReminders else state.reminders,
                 apiConfig = if (savedUrl != null) {
                     state.apiConfig.copy(baseUrl = KumanimeApiClient.normalizeBaseUrl(savedUrl))
                 } else state.apiConfig
@@ -1010,6 +1021,7 @@ class AnimWatchViewModel(
                         watchlist = state.watchlist.filterKeys { it !in mockIds },
                         watchedEpisodes = state.watchedEpisodes.filterKeys { it !in mockIds },
                         watchHistory = state.watchHistory.filterNot { it.animeId in mockIds },
+                        reminders = state.reminders.filterNot { it in mockIds }.toSet(),
                         catalogPageLoaded = 1,
                         hasMoreCatalog = true,
                         isLoadingMoreCatalog = false,
@@ -1020,8 +1032,9 @@ class AnimWatchViewModel(
                         )
                     )
                 }
+                rebuildLiveNotifications(triggerSystemPush = true)
                 if (!silentIfOffline) {
-                    emitMessage("Katalog dimuat (${remoteItems.size} judul)")
+                    emitMessage("Katalog & update anime terbaru dimuat (${remoteItems.size} judul)")
                 }
                 hydrateMissingSavedAnime(config.baseUrl)
                 // Silently prefetch remaining catalog pages so all multi-season anime (S1..S4+) are available immediately
@@ -2007,14 +2020,20 @@ class AnimWatchViewModel(
 
     fun toggleAnimeReminder(animeId: String) {
         val animeTitle = _uiState.value.allAnime.find { it.id == animeId }?.title ?: "Anime"
+        var updatedReminders: Set<String> = emptySet()
         _uiState.update { state ->
             val enabled = animeId !in state.reminders
             val next = if (enabled) state.reminders + animeId else state.reminders - animeId
+            updatedReminders = next
             emitMessage(
-                if (enabled) "Pengingat rilis diaktifkan untuk $animeTitle"
+                if (enabled) "Notifikasi episode baru diaktifkan untuk $animeTitle"
                 else "Pengingat dinonaktifkan"
             )
             state.copy(reminders = next)
+        }
+        sessionStore.saveReminderAnimeIds(updatedReminders)
+        if (_uiState.value.allAnime.any { it.isRemote }) {
+            rebuildLiveNotifications(triggerSystemPush = false)
         }
     }
 
@@ -2470,7 +2489,162 @@ class AnimWatchViewModel(
         }
     }
 
+    fun refreshLatestUpdates() {
+        val state = _uiState.value
+        if (!state.apiConfig.useLiveApi) {
+            rebuildLiveNotifications(triggerSystemPush = false)
+            emitMessage("Menampilkan pembaruan dari katalog saat ini")
+            return
+        }
+        viewModelScope.launch {
+            val baseUrl = _uiState.value.apiConfig.baseUrl
+            remoteDataSource.fetchLatestAiringUpdates(baseUrl).onSuccess { freshUpdates ->
+                if (freshUpdates.isNotEmpty()) {
+                    _uiState.update { cur ->
+                        val merged = LinkedHashMap<String, Anime>()
+                        cur.allAnime.forEach { merged[it.id] = it }
+                        freshUpdates.forEach { aired ->
+                            val mediaSuffix = "-${aired.id.substringAfterLast('-')}"
+                            val existingEntry = merged.entries.firstOrNull { (k, _) ->
+                                k == aired.id || (mediaSuffix.length > 2 && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
+                            }
+                            if (existingEntry == null) {
+                                merged[aired.id] = aired
+                            } else {
+                                val existing = existingEntry.value
+                                val bestEp = maxOf(existing.releasedEpisodes, aired.releasedEpisodes)
+                                merged[existingEntry.key] = existing.copy(
+                                    isNewRelease = true,
+                                    releasedEpisodes = bestEp,
+                                    lastAiredAtEpochSec = maxOf(existing.lastAiredAtEpochSec, aired.lastAiredAtEpochSec),
+                                    releaseDay = aired.releaseDay ?: existing.releaseDay,
+                                    releaseTimeWib = aired.releaseTimeWib ?: existing.releaseTimeWib,
+                                    posterTag = if (!existing.isDubIndo && !existing.isOfficialFree) "Ep $bestEp Baru" else existing.posterTag
+                                )
+                            }
+                        }
+                        cur.copy(allAnime = merged.values.toList())
+                    }
+                }
+                rebuildLiveNotifications(triggerSystemPush = true)
+                emitMessage("Update anime terbaru berhasil diperbarui")
+            }.onFailure {
+                rebuildLiveNotifications(triggerSystemPush = false)
+                emitMessage("Gagal memeriksa update terbaru dari server")
+            }
+        }
+    }
+
+    private fun rebuildLiveNotifications(triggerSystemPush: Boolean) {
+        val state = _uiState.value
+        val catalog = state.allAnime
+        if (catalog.isEmpty()) return
+
+        val today = AnimWatchUiState.currentReleaseDay()
+        val nowSec = System.currentTimeMillis() / 1000L
+        val trackedIds = state.reminders + state.watchlist.keys
+        val isRemoteLoaded = catalog.any { it.isRemote }
+
+        val candidates = catalog
+            .filter { !it.isDubIndo }
+            .filter {
+                it.lastAiredAtEpochSec > 0L ||
+                    it.isNewRelease ||
+                    it.releaseDay == today ||
+                    (it.status == AnimeStatus.ONGOING && it.id in trackedIds) ||
+                    it.id in state.reminders
+            }
+            .sortedWith(
+                compareByDescending<Anime> { anime ->
+                    val prev = knownLatestEpisodes[anime.id] ?: 0
+                    anime.id in trackedIds && prev > 0 && anime.releasedEpisodes > prev
+                }
+                    .thenByDescending { it.id in state.reminders }
+                    .thenByDescending { it.id in state.watchlist && it.status == AnimeStatus.ONGOING }
+                    .thenByDescending { it.lastAiredAtEpochSec }
+                    .thenByDescending { it.releaseDay == today }
+                    .thenByDescending { it.isNewRelease }
+                    .thenBy { it.popularityRank }
+            )
+            .take(15)
+
+        if (candidates.isEmpty() && !isRemoteLoaded) return
+
+        val nextKnown = knownLatestEpisodes.toMutableMap()
+        val liveItems = candidates.map { anime ->
+            val ep = maxOf(anime.releasedEpisodes, anime.latestEpisodeNumber, 1)
+            val prevKnown = knownLatestEpisodes[anime.id] ?: 0
+            val isNewTrackedEp = prevKnown in 1 until ep
+            nextKnown[anime.id] = maxOf(prevKnown, ep)
+
+            val notifId = "live_${anime.id}_ep_$ep"
+            val tag = when {
+                isNewTrackedEp -> "EPISODE BARU"
+                anime.id in state.reminders -> "PENGINGAT"
+                anime.id in state.watchlist -> "DISIMPAN"
+                anime.lastAiredAtEpochSec > 0L -> "RILIS TERBARU"
+                anime.releaseDay == today -> "TAYANG HARI INI"
+                else -> "UPDATE TERBARU"
+            }
+            val title = when {
+                isNewTrackedEp -> "${anime.title} • Ep $ep Baru!"
+                anime.id in state.reminders -> "Jadwal: ${anime.title}"
+                else -> "${anime.title} — Episode $ep"
+            }
+            val channelSuffix = anime.officialChannel?.let { " • $it" }.orEmpty()
+            val message = when {
+                anime.releaseDay == today && !anime.releaseTimeWib.isNullOrBlank() ->
+                    "Episode $ep tayang hari ini pukul ${anime.releaseTimeWib}$channelSuffix."
+                anime.isOfficialFree ->
+                    "Episode $ep tersedia untuk ditonton langsung di AnimWatch$channelSuffix."
+                else ->
+                    "Update episode $ep terbaru (${anime.status.label})$channelSuffix."
+            }
+            val timeLabel = when {
+                anime.lastAiredAtEpochSec > 0L -> {
+                    val diff = nowSec - anime.lastAiredAtEpochSec
+                    when {
+                        diff < 0L -> "Segera • ${anime.releaseTimeWib ?: today.label}"
+                        diff < 3600L -> "${(diff / 60L).coerceAtLeast(1)} menit lalu"
+                        diff < 86_400L -> "${diff / 3600L} jam lalu"
+                        else -> "${diff / 86_400L} hari lalu"
+                    }
+                }
+                anime.releaseDay == today -> "Hari ini${anime.releaseTimeWib?.let { " • $it" } ?: ""}"
+                anime.releaseDay != null && anime.releaseTimeWib != null -> "${anime.releaseDay.label} • ${anime.releaseTimeWib}"
+                else -> "Rilis Terbaru"
+            }
+
+            NotificationItem(
+                id = notifId,
+                title = title,
+                message = message,
+                timeAgo = timeLabel,
+                animeId = anime.id,
+                isRead = notifId in readNotificationIds,
+                tag = tag,
+                posterUrl = anime.posterUrl,
+                episodeNumber = ep
+            )
+        }
+
+        knownLatestEpisodes = nextKnown
+        sessionStore.saveKnownLatestEpisodes(nextKnown)
+        _uiState.update { it.copy(notifications = liveItems) }
+
+        if (triggerSystemPush && state.settings.episodeNotifications) {
+            val unread = liveItems.filter { !it.isRead }
+            val topSig = unread.take(3).joinToString("|") { it.id }
+            if (unread.isNotEmpty() && topSig.isNotBlank() && topSig != sessionStore.getLastSystemNotifiedSignature()) {
+                sessionStore.saveLastSystemNotifiedSignature(topSig)
+                _systemNotificationBatch.tryEmit(unread.take(4))
+            }
+        }
+    }
+
     fun markNotificationRead(notificationId: String) {
+        readNotificationIds.add(notificationId)
+        sessionStore.saveReadNotificationIds(readNotificationIds)
         _uiState.update { state ->
             state.copy(
                 notifications = state.notifications.map {
@@ -2481,6 +2655,9 @@ class AnimWatchViewModel(
     }
 
     fun markAllNotificationsRead() {
+        val currentIds = _uiState.value.notifications.map { it.id }
+        readNotificationIds.addAll(currentIds)
+        sessionStore.saveReadNotificationIds(readNotificationIds)
         _uiState.update { state ->
             state.copy(notifications = state.notifications.map { it.copy(isRead = true) })
         }
@@ -2618,17 +2795,23 @@ class AnimWatchViewModel(
         return when (filter.sortOption) {
             SortOption.POPULAR -> filtered.sortedBy { it.popularityRank }
             SortOption.TOP_RATING -> filtered.sortedByDescending { it.rating }
-            SortOption.LATEST -> filtered.sortedWith(
-                compareByDescending<Anime> { it.isNewRelease }
-                    .thenByDescending { it.year }
-                    .thenBy { it.popularityRank }
-            )
+            SortOption.LATEST -> {
+                val today = AnimWatchUiState.currentReleaseDay()
+                filtered.sortedWith(
+                    compareByDescending<Anime> { it.lastAiredAtEpochSec }
+                        .thenByDescending { it.releaseDay == today && it.status == AnimeStatus.ONGOING }
+                        .thenByDescending { it.isNewRelease }
+                        .thenByDescending { it.year }
+                        .thenBy { it.popularityRank }
+                )
+            }
             SortOption.TITLE_AZ -> filtered.sortedBy { it.title }
         }
     }
 
     fun getCatalogAnime(preset: CatalogPreset, genre: String?): List<Anime> {
         val list = _uiState.value.allAnime
+        val today = AnimWatchUiState.currentReleaseDay()
         val byPreset = when (preset) {
             CatalogPreset.ALL -> list
             CatalogPreset.OFFICIAL_FREE -> list.filter { it.isOfficialFree && !it.isDubIndo }
@@ -2636,7 +2819,14 @@ class AnimWatchViewModel(
             CatalogPreset.ONGOING -> list.filter { !it.isDubIndo && it.status == AnimeStatus.ONGOING }
             CatalogPreset.TRENDING -> list.filter { !it.isDubIndo && it.isTrending }.sortedBy { it.popularityRank }
             CatalogPreset.TOP_RATED -> list.filterNot { it.isDubIndo }.sortedByDescending { it.rating }.take(10)
-            CatalogPreset.LATEST -> list.filter { !it.isDubIndo && (it.isNewRelease || it.status == AnimeStatus.ONGOING) }
+            CatalogPreset.LATEST -> list
+                .filter { !it.isDubIndo && (it.isNewRelease || it.status == AnimeStatus.ONGOING || it.lastAiredAtEpochSec > 0L) }
+                .sortedWith(
+                    compareByDescending<Anime> { it.lastAiredAtEpochSec }
+                        .thenByDescending { it.releaseDay == today }
+                        .thenByDescending { it.isOfficialFree }
+                        .thenBy { it.popularityRank }
+                )
             CatalogPreset.COMPLETED -> list.filter { !it.isDubIndo && it.status == AnimeStatus.COMPLETED }
             CatalogPreset.MOVIES -> list.filter { !it.isDubIndo && (it.type == AnimeType.MOVIE || it.type == AnimeType.OVA) }
         }

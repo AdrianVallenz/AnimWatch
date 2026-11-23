@@ -856,12 +856,12 @@ class MockAnimeRepository : AnimeRepository {
         ),
         NotificationItem(
             id = "n3",
-            title = "Unduhan Selesai",
-            message = "Kijin no Yaiba Episode 12 (1080p) siap ditonton secara offline di Koleksiku.",
+            title = "Rekomendasi Maraton Tamat",
+            message = "Aethelgard: Chronicles of the Astral Blade sudah tamat (24 Episode) dan siap ditonton penuh.",
             timeAgo = "Kemarin",
-            animeId = "onigiri-blade",
+            animeId = "astral-chronicles",
             isRead = true,
-            tag = "OFFLINE"
+            tag = "TAMAT"
         )
     )
 

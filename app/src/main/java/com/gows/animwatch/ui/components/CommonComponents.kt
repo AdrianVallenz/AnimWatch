@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarOutline
@@ -69,12 +70,14 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.gows.animwatch.data.model.Anime
 import com.gows.animwatch.data.model.AnimeStatus
 import com.gows.animwatch.data.model.NotificationItem
@@ -1311,6 +1314,7 @@ fun NotificationsBottomSheet(
     notifications: List<NotificationItem>,
     onNotificationClick: (NotificationItem) -> Unit,
     onMarkAllRead: () -> Unit,
+    onRefreshUpdates: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1324,6 +1328,7 @@ fun NotificationsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
@@ -1332,7 +1337,10 @@ fun NotificationsBottomSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(
                         imageVector = Icons.Rounded.Notifications,
                         contentDescription = null,
@@ -1340,13 +1348,28 @@ fun NotificationsBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Notifikasi",
+                        text = "Notifikasi & Update",
                         style = MaterialTheme.typography.headlineSmall,
-                        color = TextPrimary
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                TextButton(onClick = onMarkAllRead) {
-                    Text("Tandai dibaca", color = GoldPrimary, fontSize = 12.5.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onRefreshUpdates,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = "Cek Update Anime Terbaru",
+                            tint = GoldPrimary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                    TextButton(onClick = onMarkAllRead) {
+                        Text("Tandai dibaca", color = GoldPrimary, fontSize = 12.5.sp)
+                    }
                 }
             }
 
@@ -1363,6 +1386,7 @@ fun NotificationsBottomSheet(
                 }
             } else {
                 LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 6.dp)
                 ) {
@@ -1378,23 +1402,40 @@ fun NotificationsBottomSheet(
                                     RoundedCornerShape(16.dp)
                                 )
                                 .clickable { onNotificationClick(item) }
-                                .padding(13.dp),
-                            verticalAlignment = Alignment.Top
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            LedStatusDot(
-                                color = if (item.isRead) TextTertiary else GoldPrimary,
-                                pulsing = !item.isRead,
-                                size = 8.dp,
-                                modifier = Modifier.padding(top = 5.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
+                            if (item.posterUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = item.posterUrl,
+                                    contentDescription = item.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(width = 46.dp, height = 62.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(ObsidianElevated)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                            }
                             Column(modifier = Modifier.weight(1f)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    GoldTagChip(text = item.tag, highlighted = !item.isRead)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        if (!item.isRead) {
+                                            LedStatusDot(
+                                                color = GoldPrimary,
+                                                pulsing = true,
+                                                size = 7.dp
+                                            )
+                                        }
+                                        GoldTagChip(text = item.tag, highlighted = !item.isRead)
+                                    }
                                     Text(
                                         text = item.timeAgo,
                                         style = MaterialTheme.typography.bodySmall,
@@ -1406,13 +1447,17 @@ fun NotificationsBottomSheet(
                                 Text(
                                     text = item.title,
                                     style = MaterialTheme.typography.titleSmall,
-                                    color = TextPrimary
+                                    color = TextPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = item.message,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
+                                    color = TextSecondary,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }

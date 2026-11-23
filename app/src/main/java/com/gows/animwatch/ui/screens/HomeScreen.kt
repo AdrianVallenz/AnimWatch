@@ -147,10 +147,16 @@ fun HomeScreen(
             )
             .take(7)
     }
-    val latestReleases = remember(subAnime) {
+    val todayReleaseDay = remember { AnimWatchUiState.currentReleaseDay() }
+    val latestReleases = remember(subAnime, todayReleaseDay) {
         subAnime
-            .filter { it.isNewRelease || it.status == AnimeStatus.ONGOING }
-            .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenBy { it.popularityRank })
+            .filter { it.isNewRelease || it.status == AnimeStatus.ONGOING || it.lastAiredAtEpochSec > 0L }
+            .sortedWith(
+                compareByDescending<Anime> { it.lastAiredAtEpochSec }
+                    .thenByDescending { it.releaseDay == todayReleaseDay }
+                    .thenByDescending { it.isOfficialFree }
+                    .thenBy { it.popularityRank }
+            )
             .take(24)
     }
     val top10List = remember(subAnime) {
@@ -213,6 +219,7 @@ fun HomeScreen(
                 totalAnimeCount = uiState.allAnime.size,
                 unreadNotifications = uiState.unreadNotificationCount,
                 avatarEmblem = uiState.userProfile.avatarEmblem,
+                avatarUrl = uiState.userProfile.avatarUrl,
                 onSearchClick = onOpenSearch,
                 onNotificationClick = onOpenNotifications,
                 onProfileClick = onOpenProfile
@@ -677,6 +684,7 @@ private fun HomeTopBar(
     totalAnimeCount: Int,
     unreadNotifications: Int,
     avatarEmblem: String,
+    avatarUrl: String,
     onSearchClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onProfileClick: () -> Unit
@@ -768,21 +776,12 @@ private fun HomeTopBar(
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(GoldGradientBrush)
-                    .clickable(onClick = onProfileClick),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = avatarEmblem,
-                    color = TextOnGold,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            UserAvatarBadge(
+                avatarUrl = avatarUrl,
+                emblem = avatarEmblem,
+                size = 40.dp,
+                onClick = onProfileClick
+            )
         }
     }
 }

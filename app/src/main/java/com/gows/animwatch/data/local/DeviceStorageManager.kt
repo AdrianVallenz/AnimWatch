@@ -213,8 +213,8 @@ class AndroidDeviceStorageManager(private val appContext: Context) : OfflineStor
         return listOf(
             AppPermissionStatus(
                 id = "notifications",
-                title = "Notifikasi Rilis & Unduhan",
-                description = "Mengingatkan jadwal episode baru dan status unduhan offline",
+                title = "Notifikasi Episode Terbaru",
+                description = "Mengingatkan jadwal tayang & update episode anime terbaru",
                 androidPermission = notifPermission,
                 isGranted = notifGranted,
                 canRequestRuntime = notifPermission != null && !notifGranted

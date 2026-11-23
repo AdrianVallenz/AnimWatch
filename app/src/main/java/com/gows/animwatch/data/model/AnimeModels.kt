@@ -231,6 +231,7 @@ data class Anime(
     val isRemote: Boolean = false,
     val isEpisodeEntry: Boolean = false,
     val latestEpisodeSlug: String? = null,
+    val lastAiredAtEpochSec: Long = 0L,
     val characters: List<CharacterRole> = emptyList(),
     val relatedIds: List<String> = emptyList(),
     val externalLinks: List<ExternalPlatformLink> = emptyList(),
@@ -505,7 +506,9 @@ data class NotificationItem(
     val timeAgo: String,
     val animeId: String?,
     val isRead: Boolean,
-    val tag: String
+    val tag: String,
+    val posterUrl: String = "",
+    val episodeNumber: Int? = null
 )
 
 enum class SubtitleSizeOption(val label: String, val scale: Float) {

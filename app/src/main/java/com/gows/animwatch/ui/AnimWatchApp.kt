@@ -61,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gows.animwatch.R
 import com.gows.animwatch.data.local.AndroidDeviceStorageManager
+import com.gows.animwatch.data.local.AppNotificationHelper
 import com.gows.animwatch.data.local.SharedPreferencesSessionStore
 import com.gows.animwatch.data.model.CatalogPreset
 import com.gows.animwatch.data.remote.GoogleAuthDeepLinkBus
@@ -121,6 +122,10 @@ fun AnimWatchApp(
     ) {
         hasDismissedPermissionPrompt = true
         viewModel.refreshDeviceStorageAndPermissions()
+        val unread = viewModel.uiState.value.notifications.filter { !it.isRead }
+        if (unread.isNotEmpty() && viewModel.uiState.value.settings.episodeNotifications) {
+            AppNotificationHelper.postEpisodeUpdate(appContext, unread.take(4))
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -158,6 +163,14 @@ fun AnimWatchApp(
                     message = msg,
                     duration = SnackbarDuration.Short
                 )
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            viewModel.systemNotificationBatch.collect { items ->
+                if (viewModel.uiState.value.settings.episodeNotifications) {
+                    AppNotificationHelper.postEpisodeUpdate(appContext, items)
+                }
             }
         }
 
@@ -635,6 +648,7 @@ fun AnimWatchApp(
                 item.animeId?.let(viewModel::openAnimeDetail)
             },
             onMarkAllRead = viewModel::markAllNotificationsRead,
+            onRefreshUpdates = viewModel::refreshLatestUpdates,
             onDismiss = { showNotificationsSheet = false }
         )
     }
@@ -673,11 +687,11 @@ fun AnimWatchApp(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "AnimWatch memerlukan beberapa izin berikut agar pengingat rilis episode dan penyimpanan offline di perangkat berjalan lancar:",
+                        text = "AnimWatch memerlukan izin berikut agar notifikasi rilis episode anime terbaru berjalan lancar:",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
-                    uiState.appPermissions.forEach { perm ->
+                    uiState.appPermissions.filterNot { it.id == "storage" }.forEach { perm ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

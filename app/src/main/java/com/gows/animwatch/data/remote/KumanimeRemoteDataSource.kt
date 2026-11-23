@@ -1,15 +1,28 @@
 package com.gows.animwatch.data.remote
 
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.gows.animwatch.data.model.Anime
+import com.gows.animwatch.data.model.AnimeArtTheme
 import com.gows.animwatch.data.model.AnimeStatus
+import com.gows.animwatch.data.model.AnimeType
 import com.gows.animwatch.data.model.CommentItem
 import com.gows.animwatch.data.model.Episode
+import com.gows.animwatch.data.model.ReleaseDay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneOffset
+import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 data class EpisodeStreamResult(
     val episode: Episode,
@@ -21,9 +34,16 @@ data class EpisodeStreamResult(
  * Isolates Retrofit calls and DTO mapping so ViewModel stays clean and testable.
  */
 class KumanimeRemoteDataSource(
-    private val serviceProvider: (String) -> KumanimeApiService = { KumanimeApiClient.create(it) }
+    private val serviceProvider: (String) -> KumanimeApiService = { KumanimeApiClient.create(it) },
+    private val enableDirectAiringFeed: Boolean = false
 ) {
     private val gson = Gson()
+    private val directGraphClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(7, TimeUnit.SECONDS)
+            .readTimeout(9, TimeUnit.SECONDS)
+            .build()
+    }
 
     private fun extractErrorMessage(response: Response<*>, fallback: String): String {
         val raw = runCatching { response.errorBody()?.string() }.getOrNull()
@@ -52,6 +72,11 @@ class KumanimeRemoteDataSource(
                 val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
                 val moviesDeferred = async { runCatching { api.getMovies() }.getOrNull() }
                 val completedDeferred = async { runCatching { api.getCompleted() }.getOrNull() }
+                val recentAiredDeferred = async<List<Anime>> {
+                    if (enableDirectAiringFeed) {
+                        runCatching { fetchRecentAiringFromAniList() }.getOrDefault(emptyList())
+                    } else emptyList()
+                }
 
                 val officialFreeList = officialFreeDeferred.await()?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
@@ -152,11 +177,241 @@ class KumanimeRemoteDataSource(
                     }
                 }
 
+                val recentAired = recentAiredDeferred.await()
+                recentAired.forEach { aired ->
+                    val mediaSuffix = "-${aired.id.substringAfterLast('-')}"
+                    val existingEntry = merged.entries.firstOrNull { (k, _) ->
+                        k == aired.id || (mediaSuffix.length > 2 && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
+                    }
+                    if (existingEntry == null) {
+                        merged[aired.id] = aired
+                    } else {
+                        val existing = existingEntry.value
+                        val bestEp = maxOf(existing.releasedEpisodes, aired.releasedEpisodes)
+                        merged[existingEntry.key] = existing.copy(
+                            isNewRelease = true,
+                            releasedEpisodes = bestEp,
+                            lastAiredAtEpochSec = maxOf(existing.lastAiredAtEpochSec, aired.lastAiredAtEpochSec),
+                            releaseDay = aired.releaseDay ?: existing.releaseDay,
+                            releaseTimeWib = aired.releaseTimeWib ?: existing.releaseTimeWib,
+                            posterTag = if (!existing.isDubIndo && !existing.isOfficialFree) "Ep $bestEp Baru" else existing.posterTag
+                        )
+                    }
+                }
+
                 if (merged.isEmpty()) {
                     throw IllegalStateException("Server katalog merespons kosong. Pastikan koneksi internet aktif.")
                 }
                 merged.values.toList()
             }
+        }
+    }
+
+    suspend fun fetchLatestAiringUpdates(baseUrl: String): Result<List<Anime>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val api = serviceProvider(baseUrl)
+            coroutineScope {
+                val latestDeferred = async { runCatching { api.getLatest() }.getOrNull() }
+                val airedDeferred = async<List<Anime>> {
+                    if (enableDirectAiringFeed) {
+                        runCatching { fetchRecentAiringFromAniList() }.getOrDefault(emptyList())
+                    } else emptyList()
+                }
+
+                val merged = LinkedHashMap<String, Anime>()
+                airedDeferred.await().forEach { merged[it.id] = it }
+                latestDeferred.await()?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto -> KumanimeMapper.mapLatestItem(dto, idx) }
+                    .forEach { item ->
+                        if (!merged.containsKey(item.id)) {
+                            merged[item.id] = item
+                        }
+                    }
+                merged.values.toList()
+            }
+        }
+    }
+
+    private fun fetchRecentAiringFromAniList(): List<Anime> {
+        val nowSec = Instant.now().epochSecond
+        val startSec = nowSec - 72L * 3600L
+        val endSec = nowSec + 2L * 3600L
+        val graphqlQuery = """
+            query (${'$'}start: Int, ${'$'}end: Int) {
+              Page(page: 1, perPage: 36) {
+                airingSchedules(airingAt_greater: ${'$'}start, airingAt_lesser: ${'$'}end, sort: TIME_DESC) {
+                  episode
+                  airingAt
+                  media {
+                    id
+                    isAdult
+                    title { romaji english native }
+                    coverImage { large extraLarge }
+                    bannerImage
+                    description(asHtml: false)
+                    averageScore
+                    popularity
+                    episodes
+                    duration
+                    seasonYear
+                    season
+                    status
+                    format
+                    genres
+                    studios(isMain: true) { nodes { name } }
+                  }
+                }
+              }
+            }
+        """.trimIndent()
+
+        val payloadJson = gson.toJson(
+            mapOf(
+                "query" to graphqlQuery,
+                "variables" to mapOf("start" to startSec, "end" to endSec)
+            )
+        )
+        val req = Request.Builder()
+            .url("https://graphql.anilist.co")
+            .post(payloadJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .header("Accept", "application/json")
+            .header("User-Agent", "AnimWatch-Android/1.3")
+            .build()
+
+        directGraphClient.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) return emptyList()
+            val bodyStr = res.body?.string() ?: return emptyList()
+            val root = JsonParser.parseString(bodyStr).asJsonObject
+            val schedules = root.getAsJsonObject("data")
+                ?.getAsJsonObject("Page")
+                ?.getAsJsonArray("airingSchedules")
+                ?: return emptyList()
+
+            val results = LinkedHashMap<String, Anime>()
+            schedules.forEachIndexed { idx, el ->
+                val obj = el.asJsonObject
+                val media = obj.getAsJsonObject("media") ?: return@forEachIndexed
+                if (media.get("isAdult")?.takeIf { !it.isJsonNull }?.asBoolean == true) return@forEachIndexed
+                val mediaId = media.get("id")?.asInt ?: return@forEachIndexed
+                val epNum = obj.get("episode")?.takeIf { !it.isJsonNull }?.asInt ?: 1
+                val airingAt = obj.get("airingAt")?.takeIf { !it.isJsonNull }?.asLong ?: 0L
+
+                val titleObj = media.getAsJsonObject("title")
+                val english = titleObj?.get("english")?.takeIf { !it.isJsonNull }?.asString?.trim().orEmpty()
+                val romaji = titleObj?.get("romaji")?.takeIf { !it.isJsonNull }?.asString?.trim().orEmpty()
+                val nativeTitle = titleObj?.get("native")?.takeIf { !it.isJsonNull }?.asString?.trim().orEmpty()
+                val displayTitle = english.ifEmpty { romaji }.ifEmpty { nativeTitle }.ifEmpty { "Anime #$mediaId" }
+                val slugBase = (romaji.ifEmpty { displayTitle })
+                    .lowercase()
+                    .replace(Regex("[^a-z0-9]+"), "-")
+                    .trim('-')
+                    .take(56)
+                    .ifEmpty { "anime" }
+                val slug = "$slugBase-$mediaId"
+                if (results.containsKey(slug)) return@forEachIndexed
+
+                val coverObj = media.getAsJsonObject("coverImage")
+                val poster = coverObj?.get("large")?.takeIf { !it.isJsonNull }?.asString
+                    ?: coverObj?.get("extraLarge")?.takeIf { !it.isJsonNull }?.asString
+                    ?: ""
+                val banner = media.get("bannerImage")?.takeIf { !it.isJsonNull }?.asString ?: poster
+                val rawDesc = media.get("description")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                val synopsis = rawDesc
+                    .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+                    .replace(Regex("<[^>]+>"), "")
+                    .replace("&quot;", "\"")
+                    .replace("&#039;", "'")
+                    .replace("&amp;", "&")
+                    .trim()
+                    .ifEmpty { "Episode $epNum baru dirilis. Ketuk untuk memuat daftar episode lengkap." }
+
+                val scoreRaw = media.get("averageScore")?.takeIf { !it.isJsonNull }?.asInt
+                val rating = if (scoreRaw != null && scoreRaw > 0) ((scoreRaw / 10.0) * 10).toInt() / 10.0 else 8.2
+                val totalEps = maxOf(media.get("episodes")?.takeIf { !it.isJsonNull }?.asInt ?: 12, epNum)
+                val durationMin = media.get("duration")?.takeIf { !it.isJsonNull }?.asInt ?: 24
+                val year = media.get("seasonYear")?.takeIf { !it.isJsonNull }?.asInt ?: 2026
+                val genresArr = media.getAsJsonArray("genres")
+                val genres = genresArr?.mapNotNull { g -> g.takeIf { !it.isJsonNull }?.asString }
+                    ?.ifEmpty { listOf("Anime") } ?: listOf("Anime")
+                val studio = media.getAsJsonObject("studios")
+                    ?.getAsJsonArray("nodes")
+                    ?.firstOrNull()
+                    ?.asJsonObject
+                    ?.get("name")
+                    ?.takeIf { !it.isJsonNull }
+                    ?.asString
+                    ?: "Studio Anime"
+                val formatStr = media.get("format")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                val type = when (formatStr.uppercase()) {
+                    "MOVIE" -> AnimeType.MOVIE
+                    "OVA", "SPECIAL" -> AnimeType.OVA
+                    "ONA" -> AnimeType.ONA
+                    else -> AnimeType.TV_SERIES
+                }
+
+                val wibZoned = Instant.ofEpochSecond(airingAt).atZone(ZoneOffset.ofHours(7))
+                val releaseDay = when (wibZoned.dayOfWeek) {
+                    DayOfWeek.MONDAY -> ReleaseDay.SENIN
+                    DayOfWeek.TUESDAY -> ReleaseDay.SELASA
+                    DayOfWeek.WEDNESDAY -> ReleaseDay.RABU
+                    DayOfWeek.THURSDAY -> ReleaseDay.KAMIS
+                    DayOfWeek.FRIDAY -> ReleaseDay.JUMAT
+                    DayOfWeek.SATURDAY -> ReleaseDay.SABTU
+                    DayOfWeek.SUNDAY -> ReleaseDay.MINGGU
+                }
+                val releaseTimeWib = "%02d:%02d WIB".format(wibZoned.hour, wibZoned.minute)
+
+                val ep = Episode(
+                    id = "remote_ep_ep-$mediaId-$epNum",
+                    animeId = slug,
+                    number = epNum,
+                    title = "Episode $epNum",
+                    durationSeconds = durationMin * 60,
+                    releaseDate = releaseTimeWib,
+                    synopsis = synopsis,
+                    slug = "ep-$mediaId-$epNum",
+                    streamUrl = "",
+                    streamType = "info_only"
+                )
+
+                val themes = AnimeArtTheme.entries
+                results[slug] = Anime(
+                    id = slug,
+                    slug = slug,
+                    title = displayTitle,
+                    japaneseTitle = nativeTitle.ifEmpty { romaji.ifEmpty { displayTitle } },
+                    synopsis = synopsis,
+                    rating = rating,
+                    ratingCountLabel = "Live",
+                    totalEpisodes = totalEps,
+                    releasedEpisodes = epNum,
+                    durationMinutes = durationMin,
+                    year = year,
+                    season = "Rilis Terbaru",
+                    studio = studio,
+                    status = AnimeStatus.ONGOING,
+                    type = type,
+                    ageRating = "13+",
+                    genres = genres,
+                    releaseDay = releaseDay,
+                    releaseTimeWib = releaseTimeWib,
+                    viewsLabel = "Terbaru",
+                    popularityRank = idx + 1,
+                    isFeatured = false,
+                    isTrending = idx < 8,
+                    isNewRelease = true,
+                    artTheme = themes[abs(slug.hashCode()) % themes.size],
+                    posterTag = "Ep $epNum Baru",
+                    posterUrl = poster,
+                    bannerUrl = banner,
+                    isRemote = true,
+                    isEpisodeEntry = false,
+                    latestEpisodeSlug = "ep-$mediaId-$epNum",
+                    lastAiredAtEpochSec = airingAt,
+                    episodes = listOf(ep)
+                )
+            }
+            return results.values.toList()
         }
     }
 

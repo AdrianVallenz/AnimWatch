@@ -80,14 +80,23 @@ fun CatalogListScreen(
     onLoadMore: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var sortOption by remember { mutableStateOf(SortOption.POPULAR) }
+    var sortOption by remember(title) {
+        mutableStateOf(
+            if (title.contains("Terbaru", ignoreCase = true)) SortOption.LATEST else SortOption.POPULAR
+        )
+    }
     var isGridView by remember { mutableStateOf(true) }
 
     val sortedAnime = remember(animeList, sortOption) {
         when (sortOption) {
             SortOption.POPULAR -> animeList.sortedBy { it.popularityRank }
             SortOption.TOP_RATING -> animeList.sortedByDescending { it.rating }
-            SortOption.LATEST -> animeList.sortedByDescending { it.year }
+            SortOption.LATEST -> animeList.sortedWith(
+                compareByDescending<Anime> { it.lastAiredAtEpochSec }
+                    .thenByDescending { it.isNewRelease }
+                    .thenByDescending { it.year }
+                    .thenBy { it.popularityRank }
+            )
             SortOption.TITLE_AZ -> animeList.sortedBy { it.title }
         }
     }

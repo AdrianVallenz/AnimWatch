@@ -199,5 +199,13 @@ class AnimWatchRepositoryAndViewModelTest {
         assertEquals(2, FranchiseSeasonHelper.extractSeasonNumber(s2))
         assertEquals(3, FranchiseSeasonHelper.extractSeasonNumber(s3))
         assertEquals("cote-s2", FranchiseSeasonHelper.findNextSeason(s1, listOf(s3, s1, s2))?.id)
+
+        // Reminders & notification read/mark-all-read flow works cleanly
+        assertFalse(vm.uiState.value.notifications.any { it.tag.equals("OFFLINE", ignoreCase = true) })
+        val firstNotif = vm.uiState.value.notifications.first()
+        vm.markNotificationRead(firstNotif.id)
+        assertTrue(vm.uiState.value.notifications.first { it.id == firstNotif.id }.isRead)
+        vm.markAllNotificationsRead()
+        assertEquals(0, vm.uiState.value.unreadNotificationCount)
     }
 }
