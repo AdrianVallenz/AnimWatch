@@ -108,6 +108,13 @@ object KumanimeMapper {
             slug.startsWith("dub-PL", ignoreCase = true)
     }
 
+    private fun parseIsSubEng(flag: Boolean?, audioLang: String?, slug: String = ""): Boolean {
+        if (parseIsDubIndo(false, audioLang, slug)) return false
+        return flag == true ||
+            audioLang.equals("SUB_EN", ignoreCase = true) ||
+            slug.startsWith("suben-", ignoreCase = true)
+    }
+
     private fun parseReleaseDay(rawDay: String?): ReleaseDay? {
         return when (rawDay?.trim()?.uppercase()) {
             "MONDAY", "SENIN" -> ReleaseDay.SENIN
@@ -188,6 +195,7 @@ object KumanimeMapper {
             isNewRelease = true,
             isOfficialFree = dto.isOfficialFree == true,
             isDubIndo = parseIsDubIndo(dto.isDubIndo, dto.audioLang, slug),
+            isSubEng = parseIsSubEng(dto.isSubEng, dto.audioLang, slug),
             officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() },
             artTheme = pickArtTheme(slug),
             posterTag = "Ep $epNumber Baru",
@@ -227,6 +235,7 @@ object KumanimeMapper {
             ?: (9.3 - (index * 0.08)).coerceAtLeast(8.0).let { Math.round(it * 10.0) / 10.0 }
         val isOfficialFree = dto.isOfficialFree == true
         val isDubIndo = parseIsDubIndo(dto.isDubIndo, dto.audioLang, slug)
+        val isSubEng = !isDubIndo && parseIsSubEng(dto.isSubEng, dto.audioLang, slug)
         val officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() }
         val mappedLinks = dto.externalLinks.orEmpty().mapNotNull { link ->
             val site = link.site?.trim().orEmpty()
@@ -288,10 +297,12 @@ object KumanimeMapper {
             isNewRelease = status == AnimeStatus.ONGOING && index < 6,
             isOfficialFree = isOfficialFree,
             isDubIndo = isDubIndo,
+            isSubEng = isSubEng,
             officialChannel = officialChannel,
             artTheme = pickArtTheme(slug),
             posterTag = when {
                 isDubIndo -> "Dub Indo"
+                isSubEng -> "Sub Eng"
                 isOfficialFree -> officialChannel ?: "Pilihan"
                 status == AnimeStatus.COMPLETED -> "Tamat • $computedRating"
                 else -> "Populer #${index + 1}"
@@ -329,6 +340,7 @@ object KumanimeMapper {
         val releasedEpisodes = dto.releasedEpisodes?.takeIf { it > 0 } ?: totalEpisodes
 
         val isDubIndo = parseIsDubIndo(dto.isDubIndo, dto.audioLang, slug)
+        val isSubEng = !isDubIndo && parseIsSubEng(dto.isSubEng, dto.audioLang, slug)
         val isOfficialFree = dto.isOfficialFree == true
         val officialChannel = dto.officialChannel?.trim()?.takeIf { it.isNotEmpty() }
         val mappedLinks = dto.externalLinks.orEmpty().mapNotNull { link ->
@@ -370,10 +382,12 @@ object KumanimeMapper {
             isNewRelease = false,
             isOfficialFree = isOfficialFree,
             isDubIndo = isDubIndo,
+            isSubEng = isSubEng,
             officialChannel = officialChannel,
             artTheme = pickArtTheme(slug),
             posterTag = when {
                 isDubIndo -> "Dub Indo"
+                isSubEng -> "Sub Eng"
                 isOfficialFree -> officialChannel ?: "Siap Putar"
                 type == AnimeType.MOVIE -> "Movie"
                 else -> "Populer"
@@ -462,6 +476,7 @@ object KumanimeMapper {
         val resolvedType = if (!detail.type.isNullOrBlank()) parseAnimeType(detail.type) else existing?.type ?: AnimeType.TV_SERIES
         val resolvedViews = detail.viewsLabel?.trim()?.takeIf { it.isNotEmpty() } ?: existing?.viewsLabel ?: "Live"
         val resolvedIsDub = parseIsDubIndo(detail.isDubIndo, detail.audioLang, slug) || (existing?.isDubIndo == true)
+        val resolvedIsSubEng = !resolvedIsDub && (parseIsSubEng(detail.isSubEng, detail.audioLang, slug) || (existing?.isSubEng == true))
         val resolvedIsOfficialFree = (detail.isOfficialFree == true) || (existing?.isOfficialFree == true)
 
         return (existing ?: Anime(
@@ -487,7 +502,11 @@ object KumanimeMapper {
             viewsLabel = resolvedViews,
             popularityRank = 99,
             artTheme = pickArtTheme(slug),
-            posterTag = if (resolvedIsDub) "Dub Indo" else "Populer",
+            posterTag = when {
+                resolvedIsDub -> "Dub Indo"
+                resolvedIsSubEng -> "Sub Eng"
+                else -> "Populer"
+            },
             posterUrl = poster,
             bannerUrl = banner,
             isRemote = true
@@ -515,6 +534,7 @@ object KumanimeMapper {
             releasedEpisodes = epCount,
             posterTag = when {
                 resolvedIsDub -> "Dub Indo"
+                resolvedIsSubEng -> "Sub Eng"
                 resolvedIsOfficialFree -> channelLabel ?: existing?.posterTag ?: "Pilihan"
                 else -> existing?.posterTag ?: "Populer"
             },
@@ -523,6 +543,7 @@ object KumanimeMapper {
             latestEpisodeSlug = finalEpisodes.lastOrNull()?.slug ?: existing?.latestEpisodeSlug,
             isOfficialFree = resolvedIsOfficialFree,
             isDubIndo = resolvedIsDub,
+            isSubEng = resolvedIsSubEng,
             officialChannel = channelLabel,
             episodes = finalEpisodes,
             characters = mappedCharacters.ifEmpty { existing?.characters.orEmpty() },

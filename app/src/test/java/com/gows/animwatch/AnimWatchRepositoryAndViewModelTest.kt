@@ -7,6 +7,7 @@ import com.gows.animwatch.data.model.FranchiseSeasonHelper
 import com.gows.animwatch.data.model.ReleaseDay
 import com.gows.animwatch.data.model.SortOption
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.data.model.formatWatchDuration
 import com.gows.animwatch.data.repository.MockAnimeRepository
 import com.gows.animwatch.ui.state.AnimWatchViewModel
 import com.gows.animwatch.ui.state.AppRoute
@@ -154,14 +155,21 @@ class AnimWatchRepositoryAndViewModelTest {
         assertTrue(vm.uiState.value.isAuthenticated)
         assertTrue(vm.uiState.value.isGuestSession)
 
-        // Google Profile Sign-In works directly and Custom Profile editor updates user profile + comments
+        // Empty Google token & unconfigured OAuth callback are rejected cleanly without backdoor bypasses
         vm.logout()
         assertFalse(vm.uiState.value.isAuthenticated)
-        vm.loginWithGoogleProfile("adrian.google@gmail.com", "Adrian Google", "https://example.com/avatar.png")
+        vm.loginWithGoogleIdToken("   ")
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertTrue(vm.uiState.value.authError != null)
+        vm.completeGoogleOAuthCallback(null, "Google OAuth belum dikonfigurasi")
+        assertFalse(vm.uiState.value.isAuthenticated)
+        assertTrue(vm.uiState.value.authError != null)
+
+        // Registered user logs in cleanly and Custom Profile editor updates user profile + comments
+        vm.login("rina@animwatch.id", "secret123")
         assertTrue(vm.uiState.value.isAuthenticated)
         assertFalse(vm.uiState.value.isGuestSession)
-        assertEquals("Adrian Google", vm.uiState.value.userProfile.displayName)
-        assertEquals("Google Member", vm.uiState.value.userProfile.memberTier)
+        assertEquals("Rina Takahashi", vm.uiState.value.userProfile.displayName)
 
         vm.updateProfile(
             displayName = "Adrian Custom",
@@ -235,7 +243,7 @@ class AnimWatchRepositoryAndViewModelTest {
         val vm = AnimWatchViewModel()
 
         // 1. Login & customize user data, then verify logout wipes user-scoped data completely
-        vm.loginWithGoogleProfile("user.one@gmail.com", "User One", "https://example.com/u1.png")
+        vm.register("User One", "user.one@gmail.com", "secret123")
         vm.setWatchlistCategory("kage-no-ou", WatchlistCategory.WATCHING)
         vm.rateAnime("kage-no-ou", 9)
         vm.logout()
@@ -303,5 +311,49 @@ class AnimWatchRepositoryAndViewModelTest {
         assertTrue(vm.uiState.value.currentRoute is AppRoute.TabsRoot)
         vm.logout()
         assertFalse(vm.uiState.value.isAdmin)
+    }
+
+    @Test
+    fun realWatchDurationAndSubEngSeparationWorkCorrectly() {
+        val vm = AnimWatchViewModel()
+        vm.logout()
+        vm.register("Watcher Test", "watcher.dur@gmail.com", "secret123")
+        assertEquals(0, vm.uiState.value.userProfile.watchedSecondsTotal)
+        assertEquals("0 mnt", formatWatchDuration(0))
+        assertEquals("45 dtk", formatWatchDuration(45))
+        assertEquals("23 mnt", formatWatchDuration(1380))
+        assertEquals("1 j 5 m", formatWatchDuration(3900))
+        assertEquals("2 jam", formatWatchDuration(7200))
+
+        // 1. Watching partial episode updates real YouTube duration and watch time without double counting
+        val targetAnime = vm.uiState.value.allAnime.first { it.episodes.size >= 2 }
+        val ep1 = targetAnime.episodes[0]
+        vm.playAnime(targetAnime.id, ep1.id, startFromZero = true)
+        vm.updateWebPlaybackProgress(positionSeconds = 300, durationSeconds = 1380)
+        assertEquals(300, vm.uiState.value.userProfile.watchedSecondsTotal)
+        assertEquals(1380, vm.uiState.value.allAnime.first { it.id == targetAnime.id }.episodes[0].durationSeconds)
+
+        // Completing episode 1 expands watched seconds to full 1380s (not 300 + 1380)
+        vm.markEpisodeCompleted(targetAnime.id, ep1.number)
+        assertEquals(1380, vm.uiState.value.userProfile.watchedSecondsTotal)
+
+        // Watching 600s of episode 2 adds 600s -> 1980s total
+        val ep2 = targetAnime.episodes[1]
+        vm.playAnime(targetAnime.id, ep2.id, startFromZero = true)
+        vm.updateWebPlaybackProgress(positionSeconds = 600, durationSeconds = 1440)
+        assertEquals(1980, vm.uiState.value.userProfile.watchedSecondsTotal)
+
+        // 2. Sub Eng, Sub Indo, and Dub Indo remain strictly separated in Season Switcher & Explore filters
+        val template = vm.uiState.value.allAnime.first()
+        val subIndoS1 = template.copy(id = "frieren-154587", slug = "frieren-154587", title = "Frieren S1", isDubIndo = false, isSubEng = false)
+        val subEngS1 = template.copy(id = "suben-PL123--s1", slug = "suben-PL123--s1", title = "Frieren S1 (Sub Eng)", isDubIndo = false, isSubEng = true)
+        val subEngS2 = template.copy(id = "suben-PL456--s2", slug = "suben-PL456--s2", title = "Frieren S2 (Sub Eng)", isDubIndo = false, isSubEng = true)
+        val dubS1 = template.copy(id = "dub-PL789", slug = "dub-PL789", title = "Frieren S1 (Dub Indo)", isDubIndo = true, isSubEng = false)
+        val mixedPool = listOf(subIndoS1, subEngS1, subEngS2, dubS1)
+        assertEquals(listOf("suben-PL123--s1", "suben-PL456--s2"), FranchiseSeasonHelper.findFranchiseSeasons(subEngS1, mixedPool).map { it.id })
+        assertEquals(listOf("frieren-154587"), FranchiseSeasonHelper.findFranchiseSeasons(subIndoS1, mixedPool).map { it.id })
+
+        vm.openExploreWithGenre("Sub Eng")
+        assertEquals(AudioFilter.SUB_ENG, vm.uiState.value.exploreFilter.audioFilter)
     }
 }

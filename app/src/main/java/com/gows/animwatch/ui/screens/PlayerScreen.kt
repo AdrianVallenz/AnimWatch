@@ -2074,22 +2074,45 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
           var notified = false;
           var lastSentAt = 0;
           var knownDuration = 0;
+          var lastReportedPos = 0;
+          var ytState = -1;
           var frame = document.getElementById('ytplayer');
           window.__animWatchCommand = function(funcName) {
             try {
               frame.contentWindow.postMessage(JSON.stringify({event:'command',func:funcName,args:[]}),'*');
             } catch(e){}
           };
+          function reportProgress(posSec, durSec) {
+            var now = Date.now();
+            if (now - lastSentAt < 1800) return;
+            lastSentAt = now;
+            if (window.AnimWatchPlayer && window.AnimWatchPlayer.onProgress) {
+              window.AnimWatchPlayer.onProgress(Math.floor(posSec), Math.floor(durSec));
+            }
+          }
           function sendListen(){
             try {
-              frame.contentWindow.postMessage(JSON.stringify({event:'listening',id:1}),'*');
+              frame.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*');
               frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'addEventListener',args:['onStateChange']}),'*');
+              frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'getDuration',args:[]}),'*');
             } catch(e){}
           }
           frame.addEventListener('load', function(){
             sendListen();
-            setTimeout(sendListen, 1000);
+            setTimeout(sendListen, 800);
+            setTimeout(sendListen, 2200);
           });
+          setInterval(function(){
+            try {
+              if (knownDuration <= 0) sendListen();
+              frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'getCurrentTime',args:[]}),'*');
+              frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'getDuration',args:[]}),'*');
+              if (ytState === 1) {
+                lastReportedPos += 2;
+                reportProgress(lastReportedPos, knownDuration);
+              }
+            } catch(e){}
+          }, 2000);
           window.addEventListener('message', function(ev){
             if(typeof ev.data !== 'string') return;
             try {
@@ -2098,20 +2121,24 @@ private fun buildYoutubeEmbedHtml(videoId: String): String = """
                 if(typeof d.info.duration === 'number' && d.info.duration > 0) {
                   knownDuration = Math.floor(d.info.duration);
                 }
-                if(typeof d.info.currentTime === 'number' && d.info.currentTime >= 0) {
-                  var now = Date.now();
-                  if(now - lastSentAt >= 2000) {
-                    lastSentAt = now;
-                    if(window.AnimWatchPlayer && window.AnimWatchPlayer.onProgress){
-                      window.AnimWatchPlayer.onProgress(Math.floor(d.info.currentTime), knownDuration);
-                    }
-                  }
+                if(typeof d.info.playerState === 'number') {
+                  ytState = d.info.playerState;
                 }
+                if(typeof d.info.currentTime === 'number' && d.info.currentTime >= 0) {
+                  lastReportedPos = Math.floor(d.info.currentTime);
+                  reportProgress(lastReportedPos, knownDuration);
+                }
+              }
+              if(d.event === 'onStateChange' && typeof d.info === 'number') {
+                ytState = d.info;
               }
               var ended = (d.event === 'onStateChange' && d.info === 0) ||
                           (d.event === 'infoDelivery' && d.info && d.info.playerState === 0);
               if(!notified && ended){
                 notified = true;
+                if(knownDuration > 0 && window.AnimWatchPlayer && window.AnimWatchPlayer.onProgress){
+                  window.AnimWatchPlayer.onProgress(knownDuration, knownDuration);
+                }
                 if(window.AnimWatchPlayer && window.AnimWatchPlayer.onVideoEnded){
                   window.AnimWatchPlayer.onVideoEnded();
                 }

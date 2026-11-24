@@ -437,6 +437,17 @@ private fun CatalogExploreContent(
             }
             item {
                 GenrePillChip(
+                    label = "Sub Eng",
+                    selected = filter.audioFilter == AudioFilter.SUB_ENG,
+                    onClick = {
+                        onSelectAudioFilter(
+                            if (filter.audioFilter == AudioFilter.SUB_ENG) AudioFilter.ALL else AudioFilter.SUB_ENG
+                        )
+                    }
+                )
+            }
+            item {
+                GenrePillChip(
                     label = "Dub Indo",
                     selected = filter.audioFilter == AudioFilter.DUB_INDO,
                     onClick = {
@@ -455,7 +466,11 @@ private fun CatalogExploreContent(
             }
             val topGenres = listOf("Action", "Fantasy", "Adventure", "Comedy", "Romance", "Sci-Fi")
                 .filter { g -> uiState.genres.any { it.equals(g, ignoreCase = true) } }
-                .ifEmpty { uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }.take(6) }
+                .ifEmpty {
+                    uiState.genres.filterNot {
+                        it.equals("Dub Indo", ignoreCase = true) || it.equals("Sub Eng", ignoreCase = true)
+                    }.take(6)
+                }
             items(topGenres) { genre ->
                 GenrePillChip(
                     label = genre,
@@ -781,7 +796,7 @@ private fun ScheduleExploreContent(
     onPlayAnime: (String) -> Unit
 ) {
     val today = remember { AnimWatchUiState.currentReleaseDay() }
-    val subOnly = remember(allAnime) { allAnime.filterNot { it.isDubIndo } }
+    val subOnly = remember(allAnime) { allAnime.filter { !it.isDubIndo && !it.isSubEng } }
     val dayAnime = remember(subOnly, selectedDay) {
         subOnly.filter { it.releaseDay == selectedDay }
             .sortedBy { it.releaseTimeWib ?: "23:59" }
@@ -1023,7 +1038,7 @@ private fun RankingExploreContent(
     onBookmarkClick: (String) -> Unit
 ) {
     val ranked = remember(allAnime) {
-        allAnime.filterNot { it.isDubIndo }.sortedByDescending { it.rating }
+        allAnime.filter { !it.isDubIndo && !it.isSubEng }.sortedByDescending { it.rating }
     }
 
     LazyColumn(

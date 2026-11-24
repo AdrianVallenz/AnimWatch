@@ -229,41 +229,107 @@ fun AnimWatchApp(
                     localContext.getString(R.string.google_web_client_id).trim()
                 }.getOrDefault("")
                 val resolvedClientId = uiState.googleWebClientId.ifBlank { localClientId }
-                val hasCloudOAuthConfigured = resolvedClientId.isNotBlank()
+                val hasGoogleClientConfigured = resolvedClientId.isNotBlank() || uiState.googleWebOAuthEnabled
 
-                var triggerManualGooglePrompt by remember { mutableStateOf(false) }
+                var pendingConsentAccount by remember { mutableStateOf<android.accounts.Account?>(null) }
 
-                val googleAccountPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                val googleConsentLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                     contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-                ) { result ->
-                    if (result.resultCode == android.app.Activity.RESULT_OK) {
-                        val selectedEmail = result.data
-                            ?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)
-                            ?.trim()
-                            .orEmpty()
-                        if (selectedEmail.isNotBlank()) {
-                            val derivedName = selectedEmail
-                                .substringBefore("@")
-                                .replace(Regex("[._-]+"), " ")
-                                .split(" ")
-                                .filter { it.isNotBlank() }
-                                .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
-                                .ifEmpty { "Google User" }
-                            viewModel.loginWithGoogleProfile(selectedEmail, derivedName)
-                        } else {
-                            triggerManualGooglePrompt = true
+                ) { consentResult ->
+                    val acct = pendingConsentAccount
+                    pendingConsentAccount = null
+                    if (consentResult.resultCode == android.app.Activity.RESULT_OK && acct != null) {
+                        coroutineScope.launch {
+                            when (val tokenRes = GoogleAuthManager.fetchAccessTokenForAccount(localContext, acct)) {
+                                is GoogleSignInOutcome.AccessToken -> {
+                                    viewModel.loginWithGoogleIdToken(idToken = "", accessToken = tokenRes.accessToken)
+                                }
+                                is GoogleSignInOutcome.IdToken -> {
+                                    viewModel.loginWithGoogleIdToken(idToken = tokenRes.idToken)
+                                }
+                                GoogleSignInOutcome.Cancelled -> viewModel.setGoogleAuthLoading(false)
+                                is GoogleSignInOutcome.Failure -> viewModel.onGoogleAuthError(tokenRes.message)
+                                else -> viewModel.setGoogleAuthLoading(false)
+                            }
                         }
                     } else {
                         viewModel.setGoogleAuthLoading(false)
                     }
                 }
 
+                val handleAuthOutcome: (GoogleSignInOutcome) -> Unit = { outcome ->
+                    when (outcome) {
+                        is GoogleSignInOutcome.IdToken -> {
+                            viewModel.loginWithGoogleIdToken(idToken = outcome.idToken)
+                        }
+                        is GoogleSignInOutcome.AccessToken -> {
+                            viewModel.loginWithGoogleIdToken(idToken = "", accessToken = outcome.accessToken)
+                        }
+                        is GoogleSignInOutcome.NeedsUserConsent -> {
+                            pendingConsentAccount = outcome.account
+                            runCatching {
+                                googleConsentLauncher.launch(outcome.consentIntent)
+                            }.onFailure {
+                                pendingConsentAccount = null
+                                viewModel.onGoogleAuthError("Gagal membuka konfirmasi izin akun Google.")
+                            }
+                        }
+                        GoogleSignInOutcome.LaunchedBrowserOAuth -> {
+                            viewModel.setGoogleAuthLoading(false)
+                            viewModel.emitMessage("Pilih akun Google kamu di halaman yang terbuka...")
+                        }
+                        GoogleSignInOutcome.Cancelled -> {
+                            viewModel.setGoogleAuthLoading(false)
+                        }
+                        is GoogleSignInOutcome.NeedsFallback -> {
+                            val act = localContext.findHostActivity()
+                            if (act != null) {
+                                coroutineScope.launch {
+                                    val fb = GoogleAuthManager.signInFallback(
+                                        activity = act,
+                                        webClientId = resolvedClientId,
+                                        webOAuthEnabled = uiState.googleWebOAuthEnabled,
+                                        apiBaseUrl = uiState.apiConfig.baseUrl
+                                    )
+                                    when (fb) {
+                                        is GoogleSignInOutcome.IdToken -> viewModel.loginWithGoogleIdToken(idToken = fb.idToken)
+                                        is GoogleSignInOutcome.AccessToken -> viewModel.loginWithGoogleIdToken(idToken = "", accessToken = fb.accessToken)
+                                        GoogleSignInOutcome.LaunchedBrowserOAuth -> {
+                                            viewModel.setGoogleAuthLoading(false)
+                                            viewModel.emitMessage("Pilih akun Google kamu di halaman yang terbuka...")
+                                        }
+                                        GoogleSignInOutcome.Cancelled -> viewModel.setGoogleAuthLoading(false)
+                                        is GoogleSignInOutcome.Failure -> viewModel.onGoogleAuthError(outcome.reason)
+                                        else -> viewModel.onGoogleAuthError(outcome.reason)
+                                    }
+                                }
+                            } else {
+                                viewModel.onGoogleAuthError(outcome.reason)
+                            }
+                        }
+                        is GoogleSignInOutcome.Failure -> {
+                            viewModel.onGoogleAuthError(outcome.message)
+                        }
+                    }
+                }
+
+                val googleAccountChooserLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+                ) { activityResult ->
+                    coroutineScope.launch {
+                        val parsed = GoogleAuthManager.completeAccountChooserResult(
+                            context = localContext,
+                            resultCode = activityResult.resultCode,
+                            data = activityResult.data
+                        )
+                        handleAuthOutcome(parsed)
+                    }
+                }
+
                 AuthScreen(
                     authError = uiState.authError,
                     isGoogleLoading = uiState.isGoogleAuthLoading,
-                    hasNativeGoogleOAuth = hasCloudOAuthConfigured,
-                    forceOpenManualDialog = triggerManualGooglePrompt,
-                    onConsumeForceOpenManualDialog = { triggerManualGooglePrompt = false },
+                    hasGoogleClientConfigured = hasGoogleClientConfigured,
                     onClearAuthError = viewModel::clearAuthError,
                     onGoogleSignIn = {
                         val activity = localContext.findHostActivity()
@@ -272,56 +338,33 @@ fun AnimWatchApp(
                         } else {
                             coroutineScope.launch {
                                 viewModel.setGoogleAuthLoading(true)
-                                when (
-                                    val outcome = GoogleAuthManager.signIn(
+                                val chooserIntent = GoogleAuthManager.prepareAccountChooserIntent(
+                                    activity = activity,
+                                    clientId = resolvedClientId
+                                )
+                                if (chooserIntent != null) {
+                                    runCatching {
+                                        googleAccountChooserLauncher.launch(chooserIntent)
+                                    }.onFailure {
+                                        val fb = GoogleAuthManager.signInFallback(
+                                            activity = activity,
+                                            webClientId = resolvedClientId,
+                                            webOAuthEnabled = uiState.googleWebOAuthEnabled,
+                                            apiBaseUrl = uiState.apiConfig.baseUrl
+                                        )
+                                        handleAuthOutcome(fb)
+                                    }
+                                } else {
+                                    val fb = GoogleAuthManager.signInFallback(
                                         activity = activity,
                                         webClientId = resolvedClientId,
                                         webOAuthEnabled = uiState.googleWebOAuthEnabled,
                                         apiBaseUrl = uiState.apiConfig.baseUrl
                                     )
-                                ) {
-                                    is GoogleSignInOutcome.IdToken -> {
-                                        viewModel.loginWithGoogleIdToken(outcome.idToken)
-                                    }
-                                    GoogleSignInOutcome.LaunchedBrowserOAuth -> {
-                                        viewModel.setGoogleAuthLoading(false)
-                                        viewModel.emitMessage("Selesaikan login Google di browser...")
-                                    }
-                                    GoogleSignInOutcome.OpenInAppGooglePrompt -> {
-                                        viewModel.setGoogleAuthLoading(false)
-                                        runCatching {
-                                            @Suppress("DEPRECATION")
-                                            val pickerIntent = android.accounts.AccountManager.newChooseAccountIntent(
-                                                null,
-                                                null,
-                                                arrayOf("com.google"),
-                                                true,
-                                                null,
-                                                null,
-                                                null,
-                                                null
-                                            )
-                                            if (pickerIntent.resolveActivity(localContext.packageManager) != null) {
-                                                googleAccountPickerLauncher.launch(pickerIntent)
-                                            } else {
-                                                triggerManualGooglePrompt = true
-                                            }
-                                        }.onFailure {
-                                            triggerManualGooglePrompt = true
-                                        }
-                                    }
-                                    GoogleSignInOutcome.Cancelled -> {
-                                        viewModel.setGoogleAuthLoading(false)
-                                    }
-                                    is GoogleSignInOutcome.Failure -> {
-                                        viewModel.onGoogleAuthError(outcome.message)
-                                    }
+                                    handleAuthOutcome(fb)
                                 }
                             }
                         }
-                    },
-                    onGoogleDirectSignIn = { email, displayName ->
-                        viewModel.loginWithGoogleProfile(email, displayName)
                     }
                 )
             } else if (!uiState.hasCompletedThemeSetup || uiState.isEditingTheme) {
@@ -555,11 +598,13 @@ fun AnimWatchApp(
                         onBookmarkClick = viewModel::toggleQuickBookmark,
                         hasMore = uiState.hasMoreCatalog &&
                             route.preset != CatalogPreset.DUB_INDO &&
+                            route.preset != CatalogPreset.SUB_ENG &&
                             route.preset != CatalogPreset.TOP_RATED,
                         isLoadingMore = uiState.isLoadingMoreCatalog,
                         catalogPageLoaded = uiState.catalogPageLoaded,
                         hasLoadError = uiState.catalogLoadError &&
                             route.preset != CatalogPreset.DUB_INDO &&
+                            route.preset != CatalogPreset.SUB_ENG &&
                             route.preset != CatalogPreset.TOP_RATED,
                         onLoadMore = { viewModel.loadMoreCatalog(silent = true) },
                         onRetryLoadMore = viewModel::retryLoadMoreCatalog

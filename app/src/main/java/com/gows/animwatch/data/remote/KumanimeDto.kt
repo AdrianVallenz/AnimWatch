@@ -34,6 +34,7 @@ data class LatestItemDto(
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("is_sub_eng") val isSubEng: Boolean? = null,
     @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("stream_type") val streamType: String? = null,
@@ -70,6 +71,7 @@ data class PopularItemDto(
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("is_sub_eng") val isSubEng: Boolean? = null,
     @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("stream_type") val streamType: String? = null,
@@ -122,6 +124,7 @@ data class CatalogCardDto(
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("is_sub_eng") val isSubEng: Boolean? = null,
     @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("stream_type") val streamType: String? = null,
@@ -165,6 +168,7 @@ data class AnimeDetailDataDto(
     @SerializedName("trailer_url") val trailerUrl: String? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("is_sub_eng") val isSubEng: Boolean? = null,
     @SerializedName("audio_lang") val audioLang: String? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("episodes") val episodes: List<AnimeDetailEpisodeDto>? = null,
@@ -221,10 +225,7 @@ data class LoginRequestDto(
 
 data class GoogleAuthRequestDto(
     @SerializedName("idToken") val idToken: String = "",
-    @SerializedName("email") val email: String? = null,
-    @SerializedName("name") val name: String? = null,
-    @SerializedName("picture") val picture: String? = null,
-    @SerializedName("sub") val sub: String? = null
+    @SerializedName("accessToken") val accessToken: String? = null
 )
 
 data class AuthConfigDto(
@@ -385,6 +386,7 @@ data class AdminAnimeDto(
     @SerializedName("duration_minutes") val durationMinutes: Int = 24,
     @SerializedName("is_official_free") val isOfficialFree: Boolean = true,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean = false,
+    @SerializedName("is_sub_eng") val isSubEng: Boolean = false,
     @SerializedName("official_channel") val officialChannel: String = "AnimWatch Admin",
     @SerializedName("playlist_id") val playlistId: String = "",
     @SerializedName("anilist_id") val anilistId: Int? = null,
@@ -412,6 +414,7 @@ data class AdminSaveAnimeRequestDto(
     @SerializedName("duration_minutes") val durationMinutes: Int? = null,
     @SerializedName("is_official_free") val isOfficialFree: Boolean? = null,
     @SerializedName("is_dub_indo") val isDubIndo: Boolean? = null,
+    @SerializedName("is_sub_eng") val isSubEng: Boolean? = null,
     @SerializedName("official_channel") val officialChannel: String? = null,
     @SerializedName("playlist_id") val playlistId: String? = null,
     @SerializedName("anilist_id") val anilistId: Int? = null,

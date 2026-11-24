@@ -76,6 +76,7 @@ class KumanimeRemoteDataSource(
             val api = serviceProvider(baseUrl)
             coroutineScope {
                 val officialFreeDeferred = async { suspendRunCatching { api.getOfficialFree() }.getOrNull() }
+                val subEngDeferred = async { suspendRunCatching { api.getSubEng() }.getOrNull() }
                 val dubIndoDeferred = async { suspendRunCatching { api.getDubIndo() }.getOrNull() }
                 val popularDeferred = async { suspendRunCatching { api.getPopular() }.getOrNull() }
                 val latestDeferred = async { suspendRunCatching { api.getLatest() }.getOrNull() }
@@ -88,12 +89,14 @@ class KumanimeRemoteDataSource(
                 }
 
                 val officialFreeResp = officialFreeDeferred.await()
+                val subEngResp = subEngDeferred.await()
                 val dubIndoResp = dubIndoDeferred.await()
                 val popularResp = popularDeferred.await()
                 val latestResp = latestDeferred.await()
                 val moviesResp = moviesDeferred.await()
                 val completedResp = completedDeferred.await()
                 val backendResponded = officialFreeResp != null ||
+                    subEngResp != null ||
                     dubIndoResp != null ||
                     popularResp != null ||
                     latestResp != null ||
@@ -107,7 +110,17 @@ class KumanimeRemoteDataSource(
                 val officialFreeList = officialFreeResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
-                            dto = dto.copy(isOfficialFree = true, isDubIndo = false),
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = false, isSubEng = false),
+                            index = idx,
+                            defaultStatus = AnimeStatus.ONGOING,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val subEngList = subEngResp?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = false, isSubEng = true, audioLang = "SUB_EN"),
                             index = idx,
                             defaultStatus = AnimeStatus.ONGOING,
                             markTrending = false,
@@ -117,7 +130,7 @@ class KumanimeRemoteDataSource(
                 val dubIndoList = dubIndoResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
-                            dto = dto.copy(isOfficialFree = true, isDubIndo = true, audioLang = "DUB_ID"),
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = true, isSubEng = false, audioLang = "DUB_ID"),
                             index = idx,
                             defaultStatus = AnimeStatus.ONGOING,
                             markTrending = false,
@@ -197,6 +210,12 @@ class KumanimeRemoteDataSource(
                     }
                 }
 
+                subEngList.forEach { subEn ->
+                    if (!merged.containsKey(subEn.id)) {
+                        merged[subEn.id] = subEn
+                    }
+                }
+
                 dubIndoList.forEach { dub ->
                     if (!merged.containsKey(dub.id)) {
                         merged[dub.id] = dub
@@ -208,7 +227,7 @@ class KumanimeRemoteDataSource(
                     val aniNumericId = Regex("-(\\d{4,})$").find(aired.id)?.groupValues?.getOrNull(1)
                     val mediaSuffix = aniNumericId?.let { "-$it" }
                     val existingEntry = merged.entries.firstOrNull { (k, _) ->
-                        k == aired.id || (mediaSuffix != null && k.endsWith(mediaSuffix) && !k.startsWith("dub-"))
+                        k == aired.id || (mediaSuffix != null && k.endsWith(mediaSuffix) && !k.startsWith("dub-") && !k.startsWith("suben-"))
                     }
                     if (existingEntry == null) {
                         merged[aired.id] = aired
@@ -468,6 +487,7 @@ class KumanimeRemoteDataSource(
             val api = serviceProvider(baseUrl)
             coroutineScope {
                 val officialFreeDeferred = async { suspendRunCatching { api.getOfficialFreePage(safePage) }.getOrNull() }
+                val subEngDeferred = async { suspendRunCatching { api.getSubEngPage(safePage) }.getOrNull() }
                 val dubIndoDeferred = async { suspendRunCatching { api.getDubIndoPage(safePage) }.getOrNull() }
                 val popularDeferred = async { suspendRunCatching { api.getPopularPage(safePage) }.getOrNull() }
                 val latestDeferred = async { suspendRunCatching { api.getLatestPage(safePage) }.getOrNull() }
@@ -475,6 +495,7 @@ class KumanimeRemoteDataSource(
                 val moviesDeferred = async { suspendRunCatching { api.getMoviesPage(safePage) }.getOrNull() }
 
                 val officialFreeResp = officialFreeDeferred.await()
+                val subEngResp = subEngDeferred.await()
                 val dubIndoResp = dubIndoDeferred.await()
                 val popularResp = popularDeferred.await()
                 val latestResp = latestDeferred.await()
@@ -482,6 +503,7 @@ class KumanimeRemoteDataSource(
                 val moviesResp = moviesDeferred.await()
 
                 val anySucceeded = officialFreeResp != null ||
+                    subEngResp != null ||
                     dubIndoResp != null ||
                     popularResp != null ||
                     latestResp != null ||
@@ -494,7 +516,17 @@ class KumanimeRemoteDataSource(
                 val officialFreeList = officialFreeResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
-                            dto = dto.copy(isOfficialFree = true, isDubIndo = false),
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = false, isSubEng = false),
+                            index = rankOffset + idx,
+                            defaultStatus = AnimeStatus.ONGOING,
+                            markTrending = false,
+                            markFeatured = false
+                        )
+                    }
+                val subEngList = subEngResp?.data.orEmpty()
+                    .mapIndexedNotNull { idx, dto ->
+                        KumanimeMapper.mapPopularItem(
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = false, isSubEng = true, audioLang = "SUB_EN"),
                             index = rankOffset + idx,
                             defaultStatus = AnimeStatus.ONGOING,
                             markTrending = false,
@@ -504,7 +536,7 @@ class KumanimeRemoteDataSource(
                 val dubIndoList = dubIndoResp?.data.orEmpty()
                     .mapIndexedNotNull { idx, dto ->
                         KumanimeMapper.mapPopularItem(
-                            dto = dto.copy(isOfficialFree = true, isDubIndo = true, audioLang = "DUB_ID"),
+                            dto = dto.copy(isOfficialFree = true, isDubIndo = true, isSubEng = false, audioLang = "DUB_ID"),
                             index = rankOffset + idx,
                             defaultStatus = AnimeStatus.ONGOING,
                             markTrending = false,
@@ -556,6 +588,7 @@ class KumanimeRemoteDataSource(
                 }
                 completedList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 moviesList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
+                subEngList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 dubIndoList.forEach { item -> if (!merged.containsKey(item.id)) merged[item.id] = item }
                 merged.values.toList()
             }
@@ -669,103 +702,19 @@ class KumanimeRemoteDataSource(
 
     suspend fun loginWithGoogleIdToken(
         baseUrl: String,
-        idToken: String
+        idToken: String,
+        accessToken: String? = null
     ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
         suspendRunCatching {
-            val res = serviceProvider(baseUrl).loginWithGoogle(GoogleAuthRequestDto(idToken))
+            val res = serviceProvider(baseUrl).loginWithGoogle(
+                GoogleAuthRequestDto(idToken = idToken, accessToken = accessToken)
+            )
             val body = res.body()
             if (res.isSuccessful && body?.user != null && !body.token.isNullOrBlank()) {
                 body
             } else {
                 throw HttpStatusException(res.code(), extractErrorMessage(res, "Gagal masuk dengan akun Google"))
             }
-        }
-    }
-
-    private fun buildDerivedGooglePassword(email: String): String {
-        val clean = email.trim().lowercase()
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("animwatch_google_oauth_v1::$clean".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-            .take(20)
-        return "g_auth_$digest"
-    }
-
-    suspend fun loginWithGoogleProfile(
-        baseUrl: String,
-        email: String,
-        name: String,
-        picture: String = ""
-    ): Result<AuthResponseDto> = withContext(Dispatchers.IO) {
-        suspendRunCatching {
-            val cleanEmail = email.trim().lowercase()
-            val cleanName = name.trim().ifEmpty {
-                cleanEmail.substringBefore("@")
-                    .replace(Regex("[._-]+"), " ")
-                    .replaceFirstChar { it.uppercase() }
-                    .ifEmpty { "Google Watcher" }
-            }
-            val api = serviceProvider(baseUrl)
-
-            // 1. Try direct Google profile auth endpoint first
-            val googleRes = suspendRunCatching {
-                api.loginWithGoogle(
-                    GoogleAuthRequestDto(
-                        idToken = "",
-                        email = cleanEmail,
-                        name = cleanName,
-                        picture = picture.trim(),
-                        sub = "g_mail_$cleanEmail"
-                    )
-                )
-            }.getOrNull()
-            val googleBody = googleRes?.body()
-            if (googleRes != null && googleRes.isSuccessful && googleBody?.user != null && !googleBody.token.isNullOrBlank()) {
-                return@suspendRunCatching googleBody
-            }
-
-            // 2. Fallback to PostgreSQL /api/auth/login -> /api/auth/register when server requires OAuth idToken
-            val derivedPass = buildDerivedGooglePassword(cleanEmail)
-            val loginRes = suspendRunCatching {
-                api.login(LoginRequestDto(cleanEmail, derivedPass))
-            }.getOrNull()
-            val loginBody = loginRes?.body()
-            if (loginRes != null && loginRes.isSuccessful && loginBody?.user != null && !loginBody.token.isNullOrBlank()) {
-                return@suspendRunCatching loginBody
-            }
-
-            if (cleanEmail == "adrian@animwatch.id") {
-                val demoLogin = suspendRunCatching {
-                    api.login(LoginRequestDto(cleanEmail, "animwatch123"))
-                }.getOrNull()?.body()
-                if (demoLogin?.user != null && !demoLogin.token.isNullOrBlank()) {
-                    return@suspendRunCatching demoLogin
-                }
-            }
-
-            val regRes = api.register(RegisterRequestDto(cleanName, cleanEmail, derivedPass))
-            val regBody = regRes.body()
-            if (regRes.isSuccessful && regBody?.user != null && !regBody.token.isNullOrBlank()) {
-                return@suspendRunCatching regBody
-            }
-
-            // If email already existed with a different password, create a Google-scoped alias account in PostgreSQL
-            if (regRes.code() == 409) {
-                val googleAliasEmail = cleanEmail.substringBefore("@") + "+google@" + cleanEmail.substringAfter("@")
-                val aliasLogin = suspendRunCatching {
-                    api.login(LoginRequestDto(googleAliasEmail, derivedPass))
-                }.getOrNull()?.body()
-                if (aliasLogin?.user != null && !aliasLogin.token.isNullOrBlank()) {
-                    return@suspendRunCatching aliasLogin
-                }
-                val aliasReg = api.register(RegisterRequestDto(cleanName, googleAliasEmail, derivedPass))
-                val aliasRegBody = aliasReg.body()
-                if (aliasReg.isSuccessful && aliasRegBody?.user != null && !aliasRegBody.token.isNullOrBlank()) {
-                    return@suspendRunCatching aliasRegBody
-                }
-            }
-
-            throw HttpStatusException(regRes.code(), extractErrorMessage(regRes, "Gagal masuk dengan akun Google"))
         }
     }
 

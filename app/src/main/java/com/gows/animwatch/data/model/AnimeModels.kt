@@ -42,6 +42,7 @@ enum class SortOption(val label: String) {
 enum class CatalogPreset(val title: String, val subtitle: String) {
     ALL("Semua Katalog", "Seluruh koleksi anime"),
     OFFICIAL_FREE("Siap Tonton • Sub Indo", "Episode lengkap Sub Indo siap diputar langsung"),
+    SUB_ENG("Koleksi Sub Eng", "Koleksi anime Subtitle Bahasa Inggris resmi"),
     DUB_INDO("Kategori Dub Indo", "Koleksi anime sulih suara Bahasa Indonesia"),
     ONGOING("Sedang Tayang", "Episode baru hadir setiap minggu"),
     TRENDING("Sedang Hangat", "Paling banyak ditonton minggu ini"),
@@ -223,6 +224,7 @@ data class Anime(
     val isNewRelease: Boolean = false,
     val isOfficialFree: Boolean = false,
     val isDubIndo: Boolean = false,
+    val isSubEng: Boolean = false,
     val officialChannel: String? = null,
     val artTheme: AnimeArtTheme,
     val posterTag: String,
@@ -447,6 +449,7 @@ object FranchiseSeasonHelper {
 
         val matches = allAnime.filter { candidate ->
             if (candidate.isDubIndo != current.isDubIndo) return@filter false
+            if (candidate.isSubEng != current.isSubEng) return@filter false
             if (candidate.id == current.id) return@filter true
             if (candidate.id in current.relatedIds || current.id in candidate.relatedIds) return@filter true
             val candNum = extractTrailingNumericId(candidate.id)
@@ -605,8 +608,23 @@ data class UserProfile(
     val memberTier: String,
     val watchedHours: Int,
     val completedAnimeCount: Int,
-    val favoriteGenre: String
+    val favoriteGenre: String,
+    val watchedSecondsTotal: Int = watchedHours * 3600
 )
+
+fun formatWatchDuration(totalSeconds: Int): String {
+    val safe = totalSeconds.coerceAtLeast(0)
+    val totalMinutes = safe / 60
+    val hours = totalMinutes / 60
+    val mins = totalMinutes % 60
+    return when {
+        safe == 0 -> "0 mnt"
+        safe < 60 -> "$safe dtk"
+        hours == 0 -> "$totalMinutes mnt"
+        mins == 0 -> "$hours jam"
+        else -> "$hours j $mins m"
+    }
+}
 
 data class PlaybackSettings(
     val defaultQuality: String = "1080p",

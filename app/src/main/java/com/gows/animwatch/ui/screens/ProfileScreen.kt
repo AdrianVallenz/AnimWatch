@@ -87,6 +87,7 @@ import com.gows.animwatch.data.local.DeviceStorageInfo
 import com.gows.animwatch.data.model.PlaybackSettings
 import com.gows.animwatch.data.model.SubtitleSizeOption
 import com.gows.animwatch.data.model.WatchlistCategory
+import com.gows.animwatch.data.model.formatWatchDuration
 import com.gows.animwatch.ui.components.AnalogMeterGauge
 import com.gows.animwatch.ui.components.GoldGradientButton
 import com.gows.animwatch.ui.components.GoldOutlinedButton
@@ -280,6 +281,15 @@ fun ProfileScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        GoldOutlinedButton(
+                            text = "Edit",
+                            icon = Icons.Rounded.Edit,
+                            onClick = { showEditProfileSheet = true },
+                            height = 38.dp
+                        )
                     }
 
                     if (profile.bio.isNotBlank()) {
@@ -295,36 +305,25 @@ fun ProfileScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
+                    val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
+                    val totalTrackedEps = uiState.watchedEpisodes.values.sum()
+                    val visibleSavedCount = uiState.watchlist.keys.count { it in animeById }
+                    val completedCount = uiState.watchlist.entries.count { (id, cat) ->
+                        id in animeById && cat == WatchlistCategory.COMPLETED
+                    }
+
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(ObsidianCard.copy(alpha = 0.65f))
+                            .padding(vertical = 10.dp, horizontal = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        val animeById = remember(uiState.allAnime) { uiState.allAnime.associateBy { it.id } }
-                        val totalTrackedEps = uiState.watchedEpisodes.values.sum()
-                        val visibleSavedCount = uiState.watchlist.keys.count { it in animeById }
-                        val completedCount = uiState.watchlist.entries.count { (id, cat) ->
-                            id in animeById && cat == WatchlistCategory.COMPLETED
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(ObsidianCard.copy(alpha = 0.65f))
-                                .padding(vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            ProfileStatItem("$totalTrackedEps", "Episode")
-                            ProfileStatItem("$visibleSavedCount", "Disimpan")
-                            ProfileStatItem("$completedCount", "Tamat")
-                        }
-
-                        GoldOutlinedButton(
-                            text = "Edit Profil",
-                            onClick = { showEditProfileSheet = true },
-                            height = 46.dp
-                        )
+                        ProfileStatItem(formatWatchDuration(profile.watchedSecondsTotal), "Durasi")
+                        ProfileStatItem("$totalTrackedEps", "Episode")
+                        ProfileStatItem("$visibleSavedCount", "Disimpan")
+                        ProfileStatItem("$completedCount", "Tamat")
                     }
                 }
             }
@@ -608,7 +607,7 @@ fun ProfileScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Aplikasi streaming anime Sub Indo & Dub Indo resmi dengan sinkronisasi Akun Google, Custom Profile, multi-season switcher, dan diskusi komunitas.",
+                        "Aplikasi streaming anime Sub Indo, Sub Eng & Dub Indo resmi dengan Google Sign-In, Custom Profile, multi-season switcher, dan diskusi komunitas.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(

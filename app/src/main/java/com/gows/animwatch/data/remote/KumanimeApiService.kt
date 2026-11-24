@@ -31,6 +31,12 @@ interface KumanimeApiService {
     @GET("dub-indo/page/{page}")
     suspend fun getDubIndoPage(@Path("page") page: Int): PopularResponseDto
 
+    @GET("sub-eng")
+    suspend fun getSubEng(): PopularResponseDto
+
+    @GET("sub-eng/page/{page}")
+    suspend fun getSubEngPage(@Path("page") page: Int): PopularResponseDto
+
     @GET("latest")
     suspend fun getLatest(): LatestResponseDto
 

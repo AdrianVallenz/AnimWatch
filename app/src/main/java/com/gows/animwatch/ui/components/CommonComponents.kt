@@ -444,16 +444,16 @@ fun AnimePosterCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (anime.isDubIndo) {
+                    if (anime.isDubIndo || anime.isSubEng) {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .background(GoldPrimary)
+                                .background(if (anime.isDubIndo) GoldPrimary else MediaScrimDark.copy(alpha = 0.85f))
                                 .padding(horizontal = 5.dp, vertical = 1.5.dp)
                         ) {
                             Text(
-                                text = "DUB",
-                                color = TextOnGold,
+                                text = if (anime.isDubIndo) "DUB" else "ENG",
+                                color = if (anime.isDubIndo) TextOnGold else GoldPrimary,
                                 fontSize = 8.5.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )

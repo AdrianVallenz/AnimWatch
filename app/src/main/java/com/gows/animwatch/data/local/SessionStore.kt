@@ -20,6 +20,8 @@ interface SessionStore {
     fun saveReminderAnimeIds(ids: Set<String>) {}
     fun getKnownLatestEpisodes(): Map<String, Int> = emptyMap()
     fun saveKnownLatestEpisodes(episodes: Map<String, Int>) {}
+    fun getEpisodeWatchSeconds(): Map<String, Int> = emptyMap()
+    fun saveEpisodeWatchSeconds(watchSeconds: Map<String, Int>) {}
     fun getLastSystemNotifiedSignature(): String? = null
     fun saveLastSystemNotifiedSignature(signature: String) {}
 }
@@ -33,6 +35,7 @@ class InMemorySessionStore : SessionStore {
     private var reminderAnimeIds: Set<String> = emptySet()
     private var remindersSaved: Boolean = false
     private var knownLatestEpisodes: Map<String, Int> = emptyMap()
+    private var episodeWatchSeconds: Map<String, Int> = emptyMap()
     private var lastSystemSignature: String? = null
 
     override fun getAuthToken(): String? = token
@@ -53,6 +56,8 @@ class InMemorySessionStore : SessionStore {
     }
     override fun getKnownLatestEpisodes(): Map<String, Int> = knownLatestEpisodes
     override fun saveKnownLatestEpisodes(episodes: Map<String, Int>) { this.knownLatestEpisodes = episodes }
+    override fun getEpisodeWatchSeconds(): Map<String, Int> = episodeWatchSeconds
+    override fun saveEpisodeWatchSeconds(watchSeconds: Map<String, Int>) { this.episodeWatchSeconds = watchSeconds }
     override fun getLastSystemNotifiedSignature(): String? = lastSystemSignature
     override fun saveLastSystemNotifiedSignature(signature: String) { this.lastSystemSignature = signature }
 }
@@ -120,6 +125,18 @@ class SharedPreferencesSessionStore(context: Context) : SessionStore {
         prefs.edit().putString(KEY_KNOWN_LATEST_EPISODES, gson.toJson(episodes)).apply()
     }
 
+    override fun getEpisodeWatchSeconds(): Map<String, Int> {
+        val raw = prefs.getString(KEY_EPISODE_WATCH_SECONDS, null) ?: return emptyMap()
+        return runCatching {
+            val type = object : TypeToken<Map<String, Int>>() {}.type
+            gson.fromJson<Map<String, Int>>(raw, type).orEmpty()
+        }.getOrDefault(emptyMap())
+    }
+
+    override fun saveEpisodeWatchSeconds(watchSeconds: Map<String, Int>) {
+        prefs.edit().putString(KEY_EPISODE_WATCH_SECONDS, gson.toJson(watchSeconds)).apply()
+    }
+
     override fun getLastSystemNotifiedSignature(): String? =
         prefs.getString(KEY_LAST_SYSTEM_SIGNATURE, null)?.takeIf { it.isNotBlank() }
 
@@ -137,6 +154,7 @@ class SharedPreferencesSessionStore(context: Context) : SessionStore {
         private const val KEY_REMINDER_ANIME_IDS = "reminder_anime_ids"
         private const val KEY_REMINDERS_INITIALIZED = "reminders_initialized"
         private const val KEY_KNOWN_LATEST_EPISODES = "known_latest_episodes"
+        private const val KEY_EPISODE_WATCH_SECONDS = "episode_watch_seconds"
         private const val KEY_LAST_SYSTEM_SIGNATURE = "last_system_notified_signature"
     }
 }

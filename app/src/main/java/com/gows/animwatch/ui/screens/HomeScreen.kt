@@ -125,19 +125,24 @@ fun HomeScreen(
     val visibleHistory = remember(uiState.watchHistory, animeById) {
         uiState.watchHistory.filter { it.animeId in animeById }.distinctBy { it.animeId }
     }
-    val subAnime = remember(uiState.allAnime) { uiState.allAnime.filterNot { it.isDubIndo } }
+    val subIndoAnime = remember(uiState.allAnime) { uiState.allAnime.filter { !it.isDubIndo && !it.isSubEng } }
+    val subEngList = remember(uiState.allAnime) {
+        uiState.allAnime
+            .filter { it.isSubEng }
+            .sortedWith(compareByDescending<Anime> { it.rating }.thenBy { it.popularityRank })
+    }
     val dubIndoList = remember(uiState.allAnime) {
         uiState.allAnime
             .filter { it.isDubIndo }
             .sortedWith(compareByDescending<Anime> { it.rating }.thenBy { it.popularityRank })
     }
-    val playableList = remember(subAnime) {
-        subAnime
+    val playableList = remember(subIndoAnime) {
+        subIndoAnime
             .filter { it.isOfficialFree }
             .sortedWith(compareByDescending<Anime> { it.rating }.thenBy { it.popularityRank })
     }
-    val featuredList = remember(subAnime) {
-        subAnime
+    val featuredList = remember(subIndoAnime) {
+        subIndoAnime
             .sortedWith(
                 compareByDescending<Anime> { it.isOfficialFree && it.rating >= 8.3 }
                     .thenByDescending { it.isFeatured }
@@ -146,8 +151,8 @@ fun HomeScreen(
             .take(7)
     }
     val todayReleaseDay = remember { AnimWatchUiState.currentReleaseDay() }
-    val latestReleases = remember(subAnime, todayReleaseDay) {
-        subAnime
+    val latestReleases = remember(subIndoAnime, todayReleaseDay) {
+        subIndoAnime
             .filter { it.isNewRelease || it.status == AnimeStatus.ONGOING || it.lastAiredAtEpochSec > 0L }
             .sortedWith(
                 compareByDescending<Anime> { it.lastAiredAtEpochSec }
@@ -157,35 +162,35 @@ fun HomeScreen(
             )
             .take(24)
     }
-    val top10List = remember(subAnime) {
-        subAnime.sortedByDescending { it.rating }.take(10)
+    val top10List = remember(subIndoAnime) {
+        subIndoAnime.sortedByDescending { it.rating }.take(10)
     }
-    val trendingList = remember(subAnime) {
-        subAnime
+    val trendingList = remember(subIndoAnime) {
+        subIndoAnime
             .filter { it.isTrending || it.isOfficialFree }
             .sortedWith(compareByDescending<Anime> { it.isTrending }.thenBy { it.popularityRank })
             .take(24)
     }
-    val actionList = remember(subAnime) {
-        subAnime
+    val actionList = remember(subIndoAnime) {
+        subIndoAnime
             .filter { a -> a.genres.any { it.equals("Action", ignoreCase = true) } }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
             .take(20)
     }
-    val fantasyList = remember(subAnime) {
-        subAnime
+    val fantasyList = remember(subIndoAnime) {
+        subIndoAnime
             .filter { a -> a.genres.any { it.equals("Fantasy", ignoreCase = true) } }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
             .take(20)
     }
-    val completedMarathon = remember(subAnime) {
-        subAnime
+    val completedMarathon = remember(subIndoAnime) {
+        subIndoAnime
             .filter { it.status == AnimeStatus.COMPLETED && it.type == AnimeType.TV_SERIES }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
             .take(24)
     }
-    val moviesList = remember(subAnime) {
-        subAnime
+    val moviesList = remember(subIndoAnime) {
+        subIndoAnime
             .filter { it.type == AnimeType.MOVIE || it.type == AnimeType.OVA }
             .sortedByDescending { it.rating }
             .take(24)
@@ -196,11 +201,15 @@ fun HomeScreen(
             "Sci-Fi", "Drama", "Sports", "Supernatural", "Slice of Life"
         )
         preferredOrder.filter { p -> uiState.genres.any { it.equals(p, ignoreCase = true) } }
-            .ifEmpty { uiState.genres.filterNot { it.equals("Dub Indo", ignoreCase = true) }.take(8) }
+            .ifEmpty {
+                uiState.genres.filterNot {
+                    it.equals("Dub Indo", ignoreCase = true) || it.equals("Sub Eng", ignoreCase = true)
+                }.take(8)
+            }
     }
-    val genreFilteredAnime = remember(subAnime, selectedHomeGenre) {
+    val genreFilteredAnime = remember(subIndoAnime, selectedHomeGenre) {
         val g = selectedHomeGenre ?: return@remember emptyList()
-        subAnime
+        subIndoAnime
             .filter { a -> a.genres.any { it.equals(g, ignoreCase = true) } }
             .sortedWith(compareByDescending<Anime> { it.isOfficialFree }.thenByDescending { it.rating })
     }
@@ -401,7 +410,33 @@ fun HomeScreen(
                 }
             }
 
-            // 5b. Kategori Tersendiri: Dub Indo (Sulih Suara Bahasa Indonesia)
+            // 5b. Kategori Tersendiri: Sub Eng (Subtitle Bahasa Inggris Resmi)
+            if (subEngList.isNotEmpty()) {
+                item(key = "home_sub_eng") {
+                    Spacer(modifier = Modifier.height(26.dp))
+                    SectionHeader(
+                        title = "Koleksi Sub Eng",
+                        subtitle = "${subEngList.size} playlist subtitle Bahasa Inggris (Muse Asia)",
+                        onActionClick = { onOpenCatalog(CatalogPreset.SUB_ENG, "Koleksi Sub Eng") }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(subEngList.take(24), key = { "suben_${it.id}" }) { anime ->
+                            AnimePosterCard(
+                                anime = anime,
+                                isBookmarked = anime.id in uiState.watchlist,
+                                onClick = { onAnimeClick(anime.id) },
+                                onBookmarkClick = { onBookmarkClick(anime.id) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5c. Kategori Tersendiri: Dub Indo (Sulih Suara Bahasa Indonesia)
             if (dubIndoList.isNotEmpty()) {
                 item(key = "home_dub_indo") {
                     Spacer(modifier = Modifier.height(26.dp))
@@ -618,7 +653,7 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "${subAnime.size} Sub Indo • ${dubIndoList.size} Dub Indo tersedia",
+                    text = "${subIndoAnime.size} Sub Indo • ${subEngList.size} Sub Eng • ${dubIndoList.size} Dub Indo",
                     style = MaterialTheme.typography.titleSmall,
                     color = TextPrimary
                 )

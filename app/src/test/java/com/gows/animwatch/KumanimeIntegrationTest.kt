@@ -162,6 +162,30 @@ class KumanimeIntegrationTest {
 
         override suspend fun getDubIndoPage(page: Int): PopularResponseDto = getDubIndo()
 
+        override suspend fun getSubEng(): PopularResponseDto = PopularResponseDto(
+            status = "success",
+            data = listOf(
+                PopularItemDto(
+                    title = "Mushoku Tensei: Jobless Reincarnation (Sub Eng)",
+                    poster = "https://cdn.example.com/mushoku-en.jpg",
+                    slug = "suben-PLwLSw1_eDZl2-3IJvnbF-_aRL-chrwcEh--s1p1",
+                    genres = listOf("Fantasy", "Sub Eng"),
+                    studio = "Muse Asia",
+                    status = "COMPLETED",
+                    totalEpisodes = 11,
+                    releasedEpisodes = 11,
+                    isOfficialFree = true,
+                    isDubIndo = false,
+                    isSubEng = true,
+                    audioLang = "SUB_EN",
+                    officialChannel = "Muse Asia",
+                    streamType = "official_episode"
+                )
+            )
+        )
+
+        override suspend fun getSubEngPage(page: Int): PopularResponseDto = getSubEng()
+
         override suspend fun searchAnime(query: String): SearchResponseDto = SearchResponseDto(
             status = "success",
             query = query,
@@ -480,11 +504,12 @@ class KumanimeIntegrationTest {
         val catalogResult = dataSource.fetchInitialCatalog("https://kumanime-api-production.up.railway.app/api/")
         assertTrue(catalogResult.isSuccess)
         val catalog = catalogResult.getOrThrow()
-        assertEquals(6, catalog.size)
+        assertEquals(7, catalog.size)
         assertTrue(catalog.any { it.isDubIndo && it.slug.startsWith("dub-") })
-        assertEquals(5, catalog.count { !it.isDubIndo })
+        assertTrue(catalog.any { it.isSubEng && it.slug.startsWith("suben-") })
+        assertEquals(5, catalog.count { !it.isDubIndo && !it.isSubEng })
 
-        val officialFree = catalog.first { it.isOfficialFree && !it.isDubIndo }
+        val officialFree = catalog.first { it.isOfficialFree && !it.isDubIndo && !it.isSubEng }
         assertEquals("Muse Indonesia", officialFree.officialChannel)
         assertEquals(1, officialFree.episodes.size)
         assertEquals("official_episode", officialFree.episodes.first().streamType)
@@ -558,6 +583,10 @@ class KumanimeIntegrationTest {
         assertTrue(googleRes.isSuccess)
         assertEquals("tok_google_789", googleRes.getOrThrow().token)
         assertEquals("Google Watcher", googleRes.getOrThrow().user?.displayName)
+
+        val googleAccessRes = dataSource.loginWithGoogleIdToken(base, idToken = "", accessToken = "ya29.fake_android_oauth")
+        assertTrue(googleAccessRes.isSuccess)
+        assertEquals("tok_google_789", googleAccessRes.getOrThrow().token)
     }
 
     @Test

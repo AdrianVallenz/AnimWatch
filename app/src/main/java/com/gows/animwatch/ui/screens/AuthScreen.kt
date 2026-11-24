@@ -1,10 +1,5 @@
 package com.gows.animwatch.ui.screens
 
-import android.accounts.AccountManager
-import android.app.Activity
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,27 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Badge
-import androidx.compose.material.icons.rounded.Email
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,16 +38,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gows.animwatch.ui.components.AnimWatchCrestLogo
-import com.gows.animwatch.ui.components.GoldGradientButton
-import com.gows.animwatch.ui.components.TactileInputField
 import com.gows.animwatch.ui.theme.AnimWatchTheme
 import com.gows.animwatch.ui.theme.GoldPrimary
 import com.gows.animwatch.ui.theme.GoldSubtleBorder
@@ -77,88 +54,22 @@ import com.gows.animwatch.ui.theme.ObsidianGoldCardBrush
 import com.gows.animwatch.ui.theme.ObsidianVoid
 import com.gows.animwatch.ui.theme.StatusLive
 import com.gows.animwatch.ui.theme.TextPrimary
-import com.gows.animwatch.ui.theme.TextSecondary
+import com.gows.animwatch.ui.theme.TextTertiary
 
 @Composable
 fun AuthScreen(
     authError: String?,
     isGoogleLoading: Boolean = false,
-    hasNativeGoogleOAuth: Boolean = false,
-    forceOpenManualDialog: Boolean = false,
-    onConsumeForceOpenManualDialog: () -> Unit = {},
+    hasGoogleClientConfigured: Boolean = false,
     onClearAuthError: () -> Unit,
     onGoogleSignIn: () -> Unit = {},
-    onGoogleDirectSignIn: (email: String, displayName: String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    var showDirectGoogleDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(forceOpenManualDialog) {
-        if (forceOpenManualDialog) {
-            showDirectGoogleDialog = true
-            onConsumeForceOpenManualDialog()
-        }
-    }
-
-    // Native Android System Google Account Picker ("Pilih akun untuk AnimWatch")
-    val googleAccountPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val selectedEmail = result.data
-                ?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
-                ?.trim()
-                .orEmpty()
-            if (selectedEmail.isNotBlank()) {
-                val derivedName = selectedEmail
-                    .substringBefore("@")
-                    .replace(Regex("[._-]+"), " ")
-                    .split(" ")
-                    .filter { it.isNotBlank() }
-                    .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
-                    .ifEmpty { "Google User" }
-                onGoogleDirectSignIn(selectedEmail, derivedName)
-            } else {
-                showDirectGoogleDialog = true
-            }
-        }
-    }
-
-    val hostContext = androidx.compose.ui.platform.LocalContext.current
-
-    val launchSystemGoogleAccountPicker = {
-        if (hasNativeGoogleOAuth) {
-            onGoogleSignIn()
-        } else {
-            runCatching {
-                @Suppress("DEPRECATION")
-                val pickerIntent: Intent = AccountManager.newChooseAccountIntent(
-                    null,
-                    null,
-                    arrayOf("com.google"),
-                    true,
-                    null,
-                    null,
-                    null,
-                    null
-                )
-                if (pickerIntent.resolveActivity(hostContext.packageManager) != null) {
-                    googleAccountPickerLauncher.launch(pickerIntent)
-                } else {
-                    showDirectGoogleDialog = true
-                }
-            }.onFailure {
-                showDirectGoogleDialog = true
-            }
-        }
-    }
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(ObsidianVoid)
     ) {
-        // Ambient header glow
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -202,7 +113,6 @@ fun AuthScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Main Google Auth Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(26.dp),
@@ -246,7 +156,6 @@ fun AuthScreen(
                         }
                     }
 
-                    // Primary Google Sign-In Button
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -254,7 +163,7 @@ fun AuthScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .clickable(enabled = !isGoogleLoading) {
                                 onClearAuthError()
-                                launchSystemGoogleAccountPicker()
+                                onGoogleSignIn()
                             },
                         shape = RoundedCornerShape(18.dp),
                         color = if (IsDarkTheme) Color.White else ObsidianElevated,
@@ -275,7 +184,7 @@ fun AuthScreen(
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "Menghubungkan Akun Google...",
+                                    text = "Memilih Akun Google...",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = if (IsDarkTheme) Color(0xFF111827) else TextPrimary
@@ -293,159 +202,19 @@ fun AuthScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Instant in-app Google Account entry option
-                    Text(
-                        text = "Masuk cepat dengan alamat Gmail",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = GoldPrimary,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable(enabled = !isGoogleLoading) {
-                                onClearAuthError()
-                                showDirectGoogleDialog = true
-                            }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
+                    if (!hasGoogleClientConfigured) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Menunggu konfigurasi Google Client ID.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
     }
-
-    if (showDirectGoogleDialog) {
-        GoogleAccountQuickInputDialog(
-            onConfirm = { email, name ->
-                showDirectGoogleDialog = false
-                onGoogleDirectSignIn(email, name)
-            },
-            onDismiss = { showDirectGoogleDialog = false }
-        )
-    }
-}
-
-@Composable
-private fun GoogleAccountQuickInputDialog(
-    onConfirm: (email: String, displayName: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var email by remember { mutableStateOf("") }
-    var displayName by remember { mutableStateOf("") }
-    var emailError by remember { mutableStateOf<String?>(null) }
-    var nameError by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = ObsidianElevated,
-        shape = RoundedCornerShape(24.dp),
-        titleContentColor = TextPrimary,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GoogleLogoMark(modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "Akun Google",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Masukkan alamat Gmail dan nama tampilan Google kamu untuk masuk langsung ke AnimWatch.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-                TactileInputField(
-                    label = "Email Google (Gmail)",
-                    value = email,
-                    onValueChange = {
-                        email = it
-                        emailError = null
-                    },
-                    placeholder = "nama@gmail.com",
-                    errorText = emailError,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Email,
-                            contentDescription = null,
-                            tint = GoldPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Next
-                    )
-                )
-                TactileInputField(
-                    label = "Nama Tampilan Google",
-                    value = displayName,
-                    onValueChange = {
-                        displayName = it
-                        nameError = null
-                    },
-                    placeholder = "Nama profil kamu",
-                    errorText = nameError,
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Rounded.Badge,
-                            contentDescription = null,
-                            tint = GoldPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onDone = {
-                            val cleanEmail = email.trim().lowercase()
-                            val cleanName = displayName.trim().ifEmpty {
-                                cleanEmail.substringBefore("@")
-                                    .replace(Regex("[._-]+"), " ")
-                                    .replaceFirstChar { it.uppercase() }
-                            }
-                            emailError = if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
-                                "Masukkan alamat email Google yang valid"
-                            } else null
-                            nameError = if (cleanName.length < 2) "Nama minimal 2 karakter" else null
-                            if (emailError == null && nameError == null) {
-                                onConfirm(cleanEmail, cleanName)
-                            }
-                        }
-                    )
-                )
-            }
-        },
-        confirmButton = {
-            GoldGradientButton(
-                text = "Masuk dengan Google",
-                icon = Icons.Rounded.AutoAwesome,
-                onClick = {
-                    val cleanEmail = email.trim().lowercase()
-                    val cleanName = displayName.trim().ifEmpty {
-                        cleanEmail.substringBefore("@")
-                            .replace(Regex("[._-]+"), " ")
-                            .replaceFirstChar { it.uppercase() }
-                    }
-                    emailError = if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
-                        "Masukkan alamat email Google yang valid"
-                    } else null
-                    nameError = if (cleanName.length < 2) "Nama minimal 2 karakter" else null
-                    if (emailError == null && nameError == null) {
-                        onConfirm(cleanEmail, cleanName)
-                    }
-                },
-                height = 42.dp
-            )
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal", color = TextSecondary)
-            }
-        }
-    )
 }
 
 @Composable
@@ -456,7 +225,6 @@ fun GoogleLogoMark(modifier: Modifier = Modifier) {
         val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
         val topLeft = Offset(inset, inset)
 
-        // Red (top)
         drawArc(
             color = Color(0xFFEA4335),
             startAngle = 215f,
@@ -466,7 +234,6 @@ fun GoogleLogoMark(modifier: Modifier = Modifier) {
             size = arcSize,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
         )
-        // Yellow (left)
         drawArc(
             color = Color(0xFFFBBC05),
             startAngle = 135f,
@@ -476,7 +243,6 @@ fun GoogleLogoMark(modifier: Modifier = Modifier) {
             size = arcSize,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
         )
-        // Green (bottom)
         drawArc(
             color = Color(0xFF34A853),
             startAngle = 35f,
@@ -486,7 +252,6 @@ fun GoogleLogoMark(modifier: Modifier = Modifier) {
             size = arcSize,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
         )
-        // Blue (right)
         drawArc(
             color = Color(0xFF4285F4),
             startAngle = -5f,
@@ -496,7 +261,6 @@ fun GoogleLogoMark(modifier: Modifier = Modifier) {
             size = arcSize,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Butt)
         )
-        // Blue horizontal bar
         drawLine(
             color = Color(0xFF4285F4),
             start = Offset(size.width * 0.50f, size.height * 0.50f),
@@ -514,9 +278,9 @@ private fun AuthScreenPreview() {
         AuthScreen(
             authError = null,
             isGoogleLoading = false,
+            hasGoogleClientConfigured = true,
             onClearAuthError = {},
-            onGoogleSignIn = {},
-            onGoogleDirectSignIn = { _, _ -> }
+            onGoogleSignIn = {}
         )
     }
 }

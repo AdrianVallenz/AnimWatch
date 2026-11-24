@@ -102,6 +102,7 @@ sealed interface AppRoute {
 enum class AudioFilter(val label: String) {
     ALL("Semua"),
     SUB_INDO("Sub Indo"),
+    SUB_ENG("Sub Eng"),
     DUB_INDO("Dub Indo")
 }
 
@@ -288,6 +289,8 @@ class AnimWatchViewModel(
     private var lastHistorySyncAtMs: Long = 0L
     private val readNotificationIds = mutableSetOf<String>()
     private var knownLatestEpisodes: MutableMap<String, Int> = mutableMapOf()
+    private var episodeWatchSeconds: MutableMap<String, Int> = mutableMapOf()
+    private var lastWatchPrefsSyncAtMs: Long = 0L
 
     private var playerTickerJob: Job? = null
     private var apiSyncJob: Job? = null
@@ -352,7 +355,9 @@ class AnimWatchViewModel(
         readNotificationIds.clear()
         readNotificationIds.addAll(store.getReadNotificationIds())
         knownLatestEpisodes = store.getKnownLatestEpisodes().toMutableMap()
+        episodeWatchSeconds = store.getEpisodeWatchSeconds().toMutableMap()
         val persistedReminders = store.getReminderAnimeIds()
+        recomputeWatchStats()
 
         // Restore saved theme & API URL immediately
         val savedUrl = store.getApiBaseUrl()
@@ -464,6 +469,22 @@ class AnimWatchViewModel(
 
         val restoredRatings = dto.ratings.orEmpty()
         val restoredWatchedEpisodes = dto.watchedEpisodes.orEmpty()
+        val cloudWatchSec = (rawSettings["episodeWatchSeconds"] as? Map<*, *>)
+            ?.mapNotNull { (k, v) ->
+                val epKey = k?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val sec = (v as? Number)?.toInt()?.takeIf { it > 0 } ?: return@mapNotNull null
+                epKey to sec
+            }
+            ?.toMap()
+            .orEmpty()
+        episodeWatchSeconds.clear()
+        sessionStore.getEpisodeWatchSeconds().forEach { (k, v) ->
+            if (v > 0) episodeWatchSeconds[k] = v
+        }
+        cloudWatchSec.forEach { (k, v) ->
+            episodeWatchSeconds[k] = maxOf(episodeWatchSeconds[k] ?: 0, v)
+        }
+        sessionStore.saveEpisodeWatchSeconds(episodeWatchSeconds)
         val completedSetup = u.hasCompletedThemeSetup ?: false
 
         val resolvedIsAdmin = u.role.equals("admin", ignoreCase = true) ||
@@ -501,6 +522,7 @@ class AnimWatchViewModel(
                 )
             )
         }
+        recomputeWatchStats()
 
         if (showWelcomeToast) {
             val name = u.displayName ?: "Member"
@@ -534,7 +556,8 @@ class AnimWatchViewModel(
                 "customHandle" to state.userProfile.handle,
                 "customAvatarUrl" to state.userProfile.avatarUrl,
                 "customMemberTier" to state.userProfile.memberTier,
-                "customFavoriteGenre" to state.userProfile.favoriteGenre
+                "customFavoriteGenre" to state.userProfile.favoriteGenre,
+                "episodeWatchSeconds" to episodeWatchSeconds.entries.take(250).associate { it.key to it.value }
             )
         )
         viewModelScope.launch {
@@ -614,72 +637,10 @@ class AnimWatchViewModel(
         _uiState.update { it.copy(isGoogleAuthLoading = false, authError = message) }
     }
 
-    fun loginWithGoogleProfile(email: String, displayName: String, pictureUrl: String = "") {
-        val cleanEmail = email.trim().lowercase()
-        val cleanName = displayName.trim().ifEmpty {
-            cleanEmail.substringBefore("@")
-                .replace(Regex("[._-]+"), " ")
-                .replaceFirstChar { it.uppercase() }
-                .ifEmpty { "Google User" }
-        }
-        if (!Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$").matches(cleanEmail)) {
-            onGoogleAuthError("Format alamat email Google tidak valid")
-            return
-        }
-        if (cloudSyncEnabled) {
-            val baseUrl = _uiState.value.apiConfig.baseUrl
-            _uiState.update { it.copy(isGoogleAuthLoading = true, authError = null) }
-            authJob?.cancel()
-            authJob = viewModelScope.launch {
-                val res = remoteDataSource.loginWithGoogleProfile(baseUrl, cleanEmail, cleanName, pictureUrl)
-                res.onSuccess { snapshot ->
-                    _uiState.update { it.copy(isGoogleAuthLoading = false) }
-                    applyCloudAuthSnapshot(snapshot, showWelcomeToast = true)
-                    if (pictureUrl.isNotBlank() && _uiState.value.userProfile.avatarUrl.isBlank()) {
-                        _uiState.update { state ->
-                            state.copy(userProfile = state.userProfile.copy(avatarUrl = pictureUrl))
-                        }
-                        pushPreferencesToCloud()
-                    }
-                }.onFailure { err ->
-                    _uiState.update {
-                        it.copy(
-                            isGoogleAuthLoading = false,
-                            authError = err.message ?: "Gagal masuk dengan akun Google"
-                        )
-                    }
-                }
-            }
-            return
-        }
-        val emblem = buildEmblem(cleanName)
-        val handle = buildHandle(cleanName)
-        _uiState.update { state ->
-            state.copy(
-                isAuthenticated = true,
-                isGuestSession = false,
-                isGoogleAuthLoading = false,
-                hasCompletedThemeSetup = false,
-                isEditingTheme = false,
-                authError = null,
-                currentTab = MainTab.HOME,
-                backStack = listOf(AppRoute.TabsRoot),
-                userProfile = state.userProfile.copy(
-                    displayName = cleanName,
-                    handle = handle,
-                    avatarEmblem = emblem,
-                    avatarUrl = pictureUrl,
-                    memberTier = "Google Member",
-                    bio = "Terhubung melalui akun Google ($cleanEmail)."
-                )
-            )
-        }
-        emitMessage("Berhasil masuk sebagai $cleanName. Pilih temamu!")
-    }
-
-    fun loginWithGoogleIdToken(idToken: String) {
-        val cleanToken = idToken.trim()
-        if (cleanToken.isEmpty()) {
+    fun loginWithGoogleIdToken(idToken: String, accessToken: String? = null) {
+        val cleanIdToken = idToken.trim()
+        val cleanAccessToken = accessToken?.trim().orEmpty()
+        if (cleanIdToken.isEmpty() && cleanAccessToken.isEmpty()) {
             onGoogleAuthError("Token autentikasi Google kosong")
             return
         }
@@ -687,7 +648,11 @@ class AnimWatchViewModel(
         _uiState.update { it.copy(isGoogleAuthLoading = true, authError = null) }
         authJob?.cancel()
         authJob = viewModelScope.launch {
-            val res = remoteDataSource.loginWithGoogleIdToken(baseUrl, cleanToken)
+            val res = remoteDataSource.loginWithGoogleIdToken(
+                baseUrl = baseUrl,
+                idToken = cleanIdToken,
+                accessToken = cleanAccessToken.ifEmpty { null }
+            )
             res.onSuccess { snapshot ->
                 _uiState.update { it.copy(isGoogleAuthLoading = false) }
                 applyCloudAuthSnapshot(snapshot, showWelcomeToast = true)
@@ -707,8 +672,7 @@ class AnimWatchViewModel(
             if (error.contains("belum dikonfigurasi", ignoreCase = true) ||
                 error.contains("not configured", ignoreCase = true)
             ) {
-                _uiState.update { it.copy(isGoogleAuthLoading = false, authError = null) }
-                emitMessage("Silakan masukkan akun Google kamu untuk melanjutkan")
+                onGoogleAuthError("Google Client ID belum terpasang di server.")
                 return
             }
             onGoogleAuthError(error)
@@ -895,7 +859,9 @@ class AnimWatchViewModel(
     fun continueAsGuest() {
         authJob?.cancel()
         authToken = null
+        episodeWatchSeconds.clear()
         sessionStore.saveAuthToken(null)
+        sessionStore.saveEpisodeWatchSeconds(emptyMap())
         _uiState.update { state ->
             state.copy(
                 isAuthenticated = true,
@@ -955,9 +921,11 @@ class AnimWatchViewModel(
 
         readNotificationIds.clear()
         knownLatestEpisodes.clear()
+        episodeWatchSeconds.clear()
         sessionStore.saveAuthToken(null)
         sessionStore.saveReadNotificationIds(emptySet())
         sessionStore.saveKnownLatestEpisodes(emptyMap())
+        sessionStore.saveEpisodeWatchSeconds(emptyMap())
         sessionStore.saveReminderAnimeIds(emptySet())
         sessionStore.saveLastSystemNotifiedSignature("")
         _systemNotificationCancelEvent.tryEmit(Unit)
@@ -1203,6 +1171,7 @@ class AnimWatchViewModel(
                 if (cleanedReminders != _uiState.value.reminders) {
                     sessionStore.saveReminderAnimeIds(_uiState.value.reminders)
                 }
+                recomputeWatchStats()
                 rebuildLiveNotifications(triggerSystemPush = true)
                 if (!silentIfOffline) {
                     emitMessage("Katalog & update anime terbaru dimuat (${remoteItems.size} judul)")
@@ -1544,14 +1513,19 @@ class AnimWatchViewModel(
     }
 
     fun openExploreWithGenre(genre: String) {
-        val isDubGenre = genre.equals("Dub Indo", ignoreCase = true)
+        val mappedAudioFilter = when {
+            genre.equals("Dub Indo", ignoreCase = true) -> AudioFilter.DUB_INDO
+            genre.equals("Sub Eng", ignoreCase = true) -> AudioFilter.SUB_ENG
+            genre.equals("Sub Indo", ignoreCase = true) -> AudioFilter.SUB_INDO
+            else -> null
+        }
         _uiState.update { state ->
             state.copy(
                 currentTab = MainTab.EXPLORE,
                 exploreMode = ExploreMode.CATALOG,
-                exploreFilter = if (isDubGenre) {
+                exploreFilter = if (mappedAudioFilter != null) {
                     ExploreFilterState(
-                        audioFilter = AudioFilter.DUB_INDO,
+                        audioFilter = mappedAudioFilter,
                         isGridView = state.exploreFilter.isGridView
                     )
                 } else {
@@ -1902,12 +1876,26 @@ class AnimWatchViewModel(
     fun updateWebPlaybackProgress(positionSeconds: Int, durationSeconds: Int) {
         val state = _uiState.value
         val session = state.playerSession ?: return
-        val safeDur = if (durationSeconds > 0) durationSeconds else session.durationSeconds.coerceAtLeast(1)
+        val safeDur = if (durationSeconds > 10) durationSeconds else session.durationSeconds.coerceAtLeast(1)
         val safePos = positionSeconds.coerceIn(0, safeDur)
         _uiState.update { cur ->
             val ps = cur.playerSession ?: return@update cur
             if (ps.episodeId != session.episodeId) return@update cur
+            val updatedList = if (durationSeconds > 10) {
+                cur.allAnime.map { item ->
+                    if (item.id == ps.animeId) {
+                        item.copy(
+                            episodes = item.episodes.map { ep ->
+                                if (ep.id == ps.episodeId && ep.durationSeconds != durationSeconds) {
+                                    ep.copy(durationSeconds = durationSeconds)
+                                } else ep
+                            }
+                        )
+                    } else item
+                }
+            } else cur.allAnime
             cur.copy(
+                allAnime = updatedList,
                 playerSession = ps.copy(
                     positionSeconds = safePos,
                     durationSeconds = safeDur,
@@ -1915,7 +1903,8 @@ class AnimWatchViewModel(
                 )
             )
         }
-        val anime = state.allAnime.find { it.id == session.animeId } ?: return
+        val latestState = _uiState.value
+        val anime = latestState.allAnime.find { it.id == session.animeId } ?: return
         val ep = anime.episodes.find { it.id == session.episodeId } ?: return
         recordWatchProgress(anime, ep, safePos)
     }
@@ -2010,6 +1999,8 @@ class AnimWatchViewModel(
 
     fun closePlayer() {
         syncCurrentProgressToHistory(forceSync = true)
+        sessionStore.saveEpisodeWatchSeconds(episodeWatchSeconds)
+        pushPreferencesToCloud()
         playerTickerJob?.cancel()
         _uiState.update { it.copy(playerSession = null) }
     }
@@ -2189,25 +2180,92 @@ class AnimWatchViewModel(
         recordWatchProgress(anime, ep, session.positionSeconds, forceSync = forceSync)
     }
 
+    private fun recomputeWatchStats() {
+        val state = _uiState.value
+        val animeById = state.allAnime.associateBy { it.id }
+        val countedKeys = mutableSetOf<String>()
+        var totalSeconds = 0
+
+        state.watchedEpisodes.forEach { (animeId, watchedCount) ->
+            if (watchedCount <= 0) return@forEach
+            val anime = animeById[animeId]
+            val fallbackEpSec = ((anime?.durationMinutes ?: 24).coerceAtLeast(1)) * 60
+            for (epNum in 1..watchedCount) {
+                val epKey = "${animeId}::ep_${epNum}"
+                countedKeys.add(epKey)
+                val epDur = anime?.episodes?.find { it.number == epNum }?.durationSeconds?.takeIf { it > 0 }
+                    ?: fallbackEpSec
+                totalSeconds += maxOf(epDur, episodeWatchSeconds[epKey] ?: 0)
+            }
+        }
+
+        episodeWatchSeconds.forEach { (epKey, sec) ->
+            if (epKey !in countedKeys && sec > 0) {
+                countedKeys.add(epKey)
+                totalSeconds += sec
+            }
+        }
+
+        state.watchHistory.forEach { history ->
+            val epKey = "${history.animeId}::ep_${history.episodeNumber}"
+            if (epKey !in countedKeys && history.positionSeconds > 0) {
+                countedKeys.add(epKey)
+                totalSeconds += history.positionSeconds
+            }
+        }
+
+        val completedCount = state.watchlist.values.count { it == WatchlistCategory.COMPLETED }
+        val nextHours = totalSeconds / 3600
+        if (state.userProfile.watchedSecondsTotal != totalSeconds ||
+            state.userProfile.watchedHours != nextHours ||
+            state.userProfile.completedAnimeCount != completedCount
+        ) {
+            _uiState.update { cur ->
+                cur.copy(
+                    userProfile = cur.userProfile.copy(
+                        watchedSecondsTotal = totalSeconds,
+                        watchedHours = nextHours,
+                        completedAnimeCount = completedCount
+                    )
+                )
+            }
+        }
+    }
+
     private fun recordWatchProgress(
         anime: Anime,
         episode: Episode,
         positionSeconds: Int,
         forceSync: Boolean = false
     ) {
+        val safeDur = episode.durationSeconds.coerceAtLeast(1)
+        val clampedPos = positionSeconds.coerceIn(0, safeDur)
+        val epKey = "${anime.id}::ep_${episode.number}"
+        val prevSec = episodeWatchSeconds[epKey] ?: 0
+        val newSec = maxOf(prevSec, clampedPos)
+        val changedMeaningfully = newSec - prevSec >= 5 || (forceSync && newSec != prevSec)
+        if (newSec > prevSec) {
+            episodeWatchSeconds[epKey] = newSec
+        }
+
         _uiState.update { state ->
             val updatedItem = WatchProgress(
                 animeId = anime.id,
                 episodeId = episode.id,
                 episodeNumber = episode.number,
                 episodeTitle = episode.title,
-                positionSeconds = positionSeconds,
-                durationSeconds = episode.durationSeconds,
+                positionSeconds = clampedPos,
+                durationSeconds = safeDur,
                 updatedAtLabel = "Baru saja"
             )
             val filtered = state.watchHistory.filterNot { it.animeId == anime.id }
             state.copy(watchHistory = listOf(updatedItem) + filtered)
         }
+
+        if (changedMeaningfully) {
+            sessionStore.saveEpisodeWatchSeconds(episodeWatchSeconds)
+        }
+        recomputeWatchStats()
 
         val token = authToken
         val state = _uiState.value
@@ -2230,10 +2288,14 @@ class AnimWatchViewModel(
                         episodeId = episode.id,
                         episodeNumber = episode.number,
                         episodeTitle = episode.title,
-                        positionSeconds = positionSeconds,
-                        durationSeconds = episode.durationSeconds
+                        positionSeconds = clampedPos,
+                        durationSeconds = safeDur
                     )
                 )
+            }
+            if (forceSync || (now - lastWatchPrefsSyncAtMs) >= 30_000L) {
+                lastWatchPrefsSyncAtMs = now
+                pushPreferencesToCloud()
             }
         }
     }
@@ -2459,6 +2521,7 @@ class AnimWatchViewModel(
             }
             state.copy(watchlist = nextMap, watchedEpisodes = nextWatched)
         }
+        recomputeWatchStats()
         val token = authToken
         val state = _uiState.value
         if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
@@ -2486,12 +2549,20 @@ class AnimWatchViewModel(
             else -> existingCat ?: WatchlistCategory.WATCHING
         }
 
+        val epDurSec = anime.episodes.find { it.number == episodeNumber }?.durationSeconds?.takeIf { it > 0 }
+            ?: (anime.durationMinutes.coerceAtLeast(1) * 60)
+        val epKey = "${animeId}::ep_${episodeNumber}"
+        episodeWatchSeconds[epKey] = maxOf(episodeWatchSeconds[epKey] ?: 0, epDurSec)
+        sessionStore.saveEpisodeWatchSeconds(episodeWatchSeconds)
+
         _uiState.update { state ->
             state.copy(
                 watchedEpisodes = state.watchedEpisodes + (animeId to nextWatched),
                 watchlist = state.watchlist + (animeId to nextCategory)
             )
         }
+        recomputeWatchStats()
+        pushPreferencesToCloud()
 
         val token = authToken
         val state = _uiState.value
@@ -2534,6 +2605,7 @@ class AnimWatchViewModel(
                 watchlist = state.watchlist + (animeId to targetCat)
             )
         }
+        recomputeWatchStats()
         val token = authToken
         val state = _uiState.value
         if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
@@ -2566,6 +2638,7 @@ class AnimWatchViewModel(
         _uiState.update { state ->
             state.copy(watchHistory = state.watchHistory.filterNot { it.animeId == animeId })
         }
+        recomputeWatchStats()
         val token = authToken
         val state = _uiState.value
         if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
@@ -2577,7 +2650,11 @@ class AnimWatchViewModel(
     }
 
     fun clearAllHistory() {
+        episodeWatchSeconds.clear()
+        sessionStore.saveEpisodeWatchSeconds(emptyMap())
         _uiState.update { it.copy(watchHistory = emptyList()) }
+        recomputeWatchStats()
+        pushPreferencesToCloud()
         val token = authToken
         val state = _uiState.value
         if (cloudSyncEnabled && !token.isNullOrBlank() && !state.isGuestSession) {
@@ -2928,7 +3005,7 @@ class AnimWatchViewModel(
         val isRemoteLoaded = catalog.any { it.isRemote }
 
         val candidates = catalog
-            .filter { !it.isDubIndo }
+            .filter { !it.isDubIndo && !it.isSubEng }
             .filter {
                 it.lastAiredAtEpochSec > 0L ||
                     it.isNewRelease ||
@@ -3187,7 +3264,8 @@ class AnimWatchViewModel(
             val matchesPlayable = !filter.onlyPlayable || anime.isOfficialFree
             val matchesAudio = when (filter.audioFilter) {
                 AudioFilter.ALL -> true
-                AudioFilter.SUB_INDO -> !anime.isDubIndo
+                AudioFilter.SUB_INDO -> !anime.isDubIndo && !anime.isSubEng
+                AudioFilter.SUB_ENG -> anime.isSubEng
                 AudioFilter.DUB_INDO -> anime.isDubIndo
             }
 
@@ -3216,21 +3294,22 @@ class AnimWatchViewModel(
         val today = AnimWatchUiState.currentReleaseDay()
         val byPreset = when (preset) {
             CatalogPreset.ALL -> list
-            CatalogPreset.OFFICIAL_FREE -> list.filter { it.isOfficialFree && !it.isDubIndo }
+            CatalogPreset.OFFICIAL_FREE -> list.filter { it.isOfficialFree && !it.isDubIndo && !it.isSubEng }
+            CatalogPreset.SUB_ENG -> list.filter { it.isSubEng }
             CatalogPreset.DUB_INDO -> list.filter { it.isDubIndo }
-            CatalogPreset.ONGOING -> list.filter { !it.isDubIndo && it.status == AnimeStatus.ONGOING }
-            CatalogPreset.TRENDING -> list.filter { !it.isDubIndo && it.isTrending }.sortedBy { it.popularityRank }
-            CatalogPreset.TOP_RATED -> list.filterNot { it.isDubIndo }.sortedByDescending { it.rating }.take(10)
+            CatalogPreset.ONGOING -> list.filter { !it.isDubIndo && !it.isSubEng && it.status == AnimeStatus.ONGOING }
+            CatalogPreset.TRENDING -> list.filter { !it.isDubIndo && !it.isSubEng && it.isTrending }.sortedBy { it.popularityRank }
+            CatalogPreset.TOP_RATED -> list.filter { !it.isDubIndo && !it.isSubEng }.sortedByDescending { it.rating }.take(10)
             CatalogPreset.LATEST -> list
-                .filter { !it.isDubIndo && (it.isNewRelease || it.status == AnimeStatus.ONGOING || it.lastAiredAtEpochSec > 0L) }
+                .filter { !it.isDubIndo && !it.isSubEng && (it.isNewRelease || it.status == AnimeStatus.ONGOING || it.lastAiredAtEpochSec > 0L) }
                 .sortedWith(
                     compareByDescending<Anime> { it.lastAiredAtEpochSec }
                         .thenByDescending { it.releaseDay == today }
                         .thenByDescending { it.isOfficialFree }
                         .thenBy { it.popularityRank }
                 )
-            CatalogPreset.COMPLETED -> list.filter { !it.isDubIndo && it.status == AnimeStatus.COMPLETED }
-            CatalogPreset.MOVIES -> list.filter { !it.isDubIndo && (it.type == AnimeType.MOVIE || it.type == AnimeType.OVA) }
+            CatalogPreset.COMPLETED -> list.filter { !it.isDubIndo && !it.isSubEng && it.status == AnimeStatus.COMPLETED }
+            CatalogPreset.MOVIES -> list.filter { !it.isDubIndo && !it.isSubEng && (it.type == AnimeType.MOVIE || it.type == AnimeType.OVA) }
         }
         return if (genre != null) {
             byPreset.filter { a -> a.genres.any { it.equals(genre, ignoreCase = true) } }
@@ -3572,6 +3651,7 @@ class AnimWatchViewModel(
             isNewRelease = dto.isFeatured || (fallback?.isNewRelease == true),
             isOfficialFree = dto.isOfficialFree || episodes.any { it.streamUrl.isNotBlank() } || dto.playlistId.isNotBlank(),
             isDubIndo = dto.isDubIndo,
+            isSubEng = !dto.isDubIndo && (dto.isSubEng || dto.slug.startsWith("suben-") || finalGenres.any { it.equals("Sub Eng", ignoreCase = true) }),
             officialChannel = dto.officialChannel.ifBlank { "AnimWatch Admin" },
             artTheme = fallback?.artTheme ?: AnimeArtTheme.CELESTIAL_ASTRAL,
             posterTag = if (dto.isFeatured) "PILIHAN" else "KATALOG",
