@@ -7,6 +7,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.gows.animwatch.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -62,45 +65,14 @@ fun AnimWatchCrestLogo(
     size: Dp = 32.dp,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Image(
+        painter = painterResource(id = R.drawable.animwatch_logo),
+        contentDescription = "Logo AnimWatch",
+        contentScale = ContentScale.Crop,
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(GoldPrimary.copy(alpha = 0.22f), ObsidianCard, ObsidianBase)
-                )
-            )
-            .border(1.dp, GoldPrimary.copy(alpha = 0.45f), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(6.dp)) {
-            val w = this.size.width
-            val h = this.size.height
-            val diamond = Path().apply {
-                moveTo(w * 0.5f, 0f)
-                lineTo(w, h * 0.5f)
-                lineTo(w * 0.5f, h)
-                lineTo(0f, h * 0.5f)
-                close()
-            }
-            drawPath(
-                path = diamond,
-                brush = Brush.linearGradient(listOf(GoldBright, GoldPrimary, GoldDeep)),
-                style = Stroke(width = 2.2f)
-            )
-            val playTriangle = Path().apply {
-                moveTo(w * 0.40f, h * 0.30f)
-                lineTo(w * 0.70f, h * 0.50f)
-                lineTo(w * 0.40f, h * 0.70f)
-                close()
-            }
-            drawPath(
-                path = playTriangle,
-                brush = Brush.linearGradient(listOf(GoldBright, GoldPrimary))
-            )
-        }
-    }
+            .clip(RoundedCornerShape(size * 0.22f))
+    )
 }
 
 private val PosterVignetteBrush = Brush.verticalGradient(

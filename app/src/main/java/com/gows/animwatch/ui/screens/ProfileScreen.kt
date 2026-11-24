@@ -181,7 +181,6 @@ fun ProfileScreen(
     onOpenThemeEditor: () -> Unit,
     onClearCache: () -> Unit,
     onRefreshDeviceState: () -> Unit,
-    onOpenAdminPanel: () -> Unit = {},
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -276,9 +275,6 @@ fun ProfileScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 GoldTagChip(text = profile.memberTier, highlighted = true)
-                                if (uiState.isAdmin) {
-                                    GoldTagChip(text = "ADMIN", highlighted = true)
-                                }
                             }
                         }
 
@@ -354,13 +350,6 @@ fun ProfileScreen(
                         onRefreshDeviceState()
                         showStoragePermissionsSheet = true
                     }
-                )
-                SettingDivider()
-                SettingRowItem(
-                    icon = Icons.Rounded.Security,
-                    title = "Panel Admin CMS",
-                    value = if (uiState.isAdmin) "Aktif" else "Kelola",
-                    onClick = onOpenAdminPanel
                 )
                 SettingDivider()
                 SettingRowItem(

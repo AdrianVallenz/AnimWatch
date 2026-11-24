@@ -36,13 +36,6 @@ import com.gows.animwatch.data.local.NoOpOfflineStorageGateway
 import com.gows.animwatch.data.local.OfflineStorageGateway
 import com.gows.animwatch.data.local.SessionStore
 import com.gows.animwatch.data.local.formatStorageBytes
-import com.gows.animwatch.data.remote.AdminAnimeDto
-import com.gows.animwatch.data.remote.AdminCommentDto
-import com.gows.animwatch.data.remote.AdminEpisodeDto
-import com.gows.animwatch.data.remote.AdminPlaylistDto
-import com.gows.animwatch.data.remote.AdminSaveAnimeRequestDto
-import com.gows.animwatch.data.remote.AdminSavePlaylistRequestDto
-import com.gows.animwatch.data.remote.AdminStatsDto
 import com.gows.animwatch.data.remote.AuthResponseDto
 import com.gows.animwatch.data.remote.HistoryUpsertRequestDto
 import com.gows.animwatch.data.remote.HttpStatusException
@@ -96,7 +89,6 @@ sealed interface AppRoute {
         val title: String,
         val initialGenre: String? = null
     ) : AppRoute
-    data object AdminPanel : AppRoute
 }
 
 enum class AudioFilter(val label: String) {
@@ -200,15 +192,6 @@ data class AnimWatchUiState(
     val deviceStorage: DeviceStorageInfo = DeviceStorageInfo(),
     val appPermissions: List<AppPermissionStatus> = emptyList(),
     val apiConfig: ApiConfigState = ApiConfigState(),
-    val isAdmin: Boolean = false,
-    val adminSecretKey: String = "",
-    val isLoadingAdmin: Boolean = false,
-    val isSavingAdmin: Boolean = false,
-    val adminStats: AdminStatsDto? = null,
-    val adminAnimes: List<AdminAnimeDto> = emptyList(),
-    val adminPlaylists: List<AdminPlaylistDto> = emptyList(),
-    val adminComments: List<AdminCommentDto> = emptyList(),
-    val adminUsers: List<UserProfileDto> = emptyList(),
     val isLoadingDetail: Boolean = false,
     val isSearchingRemote: Boolean = false,
     val catalogPageLoaded: Int = 1,
@@ -487,14 +470,10 @@ class AnimWatchViewModel(
         sessionStore.saveEpisodeWatchSeconds(episodeWatchSeconds)
         val completedSetup = u.hasCompletedThemeSetup ?: false
 
-        val resolvedIsAdmin = u.role.equals("admin", ignoreCase = true) ||
-            u.email.orEmpty().trim().equals("adrian@animwatch.id", ignoreCase = true)
-
         _uiState.update { state ->
             state.copy(
                 isAuthenticated = true,
                 isGuestSession = false,
-                isAdmin = resolvedIsAdmin || state.isAdmin,
                 hasCompletedThemeSetup = completedSetup,
                 isEditingTheme = false,
                 appearanceMode = mode,
@@ -736,7 +715,6 @@ class AnimWatchViewModel(
                 state.copy(
                     isAuthenticated = true,
                     isGuestSession = false,
-                    isAdmin = matched.email.equals("adrian@animwatch.id", ignoreCase = true),
                     hasCompletedThemeSetup = false,
                     isEditingTheme = false,
                     authError = null,
@@ -866,8 +844,6 @@ class AnimWatchViewModel(
             state.copy(
                 isAuthenticated = true,
                 isGuestSession = true,
-                isAdmin = false,
-                adminSecretKey = "",
                 isGoogleAuthLoading = false,
                 hasCompletedThemeSetup = false,
                 isEditingTheme = false,
@@ -879,11 +855,6 @@ class AnimWatchViewModel(
                 userRatings = emptyMap(),
                 watchHistory = emptyList(),
                 reminders = emptySet(),
-                adminStats = null,
-                adminAnimes = emptyList(),
-                adminPlaylists = emptyList(),
-                adminComments = emptyList(),
-                adminUsers = emptyList(),
                 userProfile = UserProfile(
                     displayName = "Tamu Watcher",
                     handle = "@guest",
@@ -940,8 +911,6 @@ class AnimWatchViewModel(
             state.copy(
                 isAuthenticated = false,
                 isGuestSession = false,
-                isAdmin = false,
-                adminSecretKey = "",
                 isGoogleAuthLoading = false,
                 hasCompletedThemeSetup = false,
                 isEditingTheme = false,
@@ -954,11 +923,6 @@ class AnimWatchViewModel(
                 userRatings = emptyMap(),
                 watchHistory = emptyList(),
                 reminders = emptySet(),
-                adminStats = null,
-                adminAnimes = emptyList(),
-                adminPlaylists = emptyList(),
-                adminComments = emptyList(),
-                adminUsers = emptyList(),
                 preferredGenres = setOf("Action", "Fantasy", "Sci-Fi"),
                 settings = PlaybackSettings(),
                 notifications = repository.getInitialNotifications(),
@@ -3316,358 +3280,4 @@ class AnimWatchViewModel(
         } else byPreset
     }
 
-    // ====================
-    // Admin Panel CRUD Operations
-    // ====================
-
-    fun openAdminPanel() {
-        _uiState.update { state ->
-            val cleanStack = state.backStack.filterNot { it is AppRoute.AdminPanel }
-            state.copy(backStack = cleanStack + AppRoute.AdminPanel)
-        }
-        if (_uiState.value.isAdmin) {
-            loadAdminOverview(silent = true)
-        }
-    }
-
-    fun verifyAdminAccess(secret: String, onDone: (Boolean) -> Unit = {}) {
-        val cleanSecret = secret.trim()
-        val baseUrl = _uiState.value.apiConfig.baseUrl
-        val token = authToken
-        if (!cloudSyncEnabled || !_uiState.value.apiConfig.useLiveApi) {
-            emitMessage("Hubungkan ke API server untuk memverifikasi akses Admin")
-            onDone(false)
-            return
-        }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingAdmin = true) }
-            val res = remoteDataSource.verifyAdmin(baseUrl, token, cleanSecret)
-            res.onSuccess { resp ->
-                val verifiedUser = resp.user
-                _uiState.update { cur ->
-                    cur.copy(
-                        isAdmin = true,
-                        adminSecretKey = cleanSecret,
-                        isLoadingAdmin = false,
-                        userProfile = if (verifiedUser != null) {
-                            cur.userProfile.copy(
-                                displayName = verifiedUser.displayName?.ifBlank { null } ?: cur.userProfile.displayName,
-                                memberTier = verifiedUser.memberTier?.ifBlank { null } ?: "ADMIN"
-                            )
-                        } else cur.userProfile
-                    )
-                }
-                emitMessage("Akses Panel Admin aktif")
-                loadAdminOverview(silent = true)
-                onDone(true)
-            }.onFailure { err ->
-                _uiState.update { it.copy(isLoadingAdmin = false) }
-                emitMessage(err.message ?: "Verifikasi Admin gagal")
-                onDone(false)
-            }
-        }
-    }
-
-    fun loadAdminOverview(silent: Boolean = false) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        if (!state.isAdmin && secret == null) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingAdmin = true) }
-            val res = remoteDataSource.getAdminOverview(baseUrl, token, secret)
-            res.onSuccess { dto ->
-                _uiState.update { cur ->
-                    cur.copy(
-                        isLoadingAdmin = false,
-                        adminStats = dto.stats,
-                        adminAnimes = dto.adminAnimes.orEmpty(),
-                        adminPlaylists = dto.playlists.orEmpty(),
-                        adminComments = dto.recentComments.orEmpty(),
-                        adminUsers = dto.recentUsers.orEmpty()
-                    )
-                }
-                if (!silent) emitMessage("Data Panel Admin diperbarui")
-            }.onFailure { err ->
-                _uiState.update { it.copy(isLoadingAdmin = false) }
-                if (!silent) emitMessage(err.message ?: "Gagal memuat data Admin")
-            }
-        }
-    }
-
-    fun saveAdminAnime(
-        existingSlug: String?,
-        request: AdminSaveAnimeRequestDto,
-        onDone: (Boolean) -> Unit = {}
-    ) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSavingAdmin = true) }
-            val res = remoteDataSource.adminSaveAnime(baseUrl, token, secret, existingSlug, request)
-            res.onSuccess { saved ->
-                _uiState.update { cur ->
-                    val updatedAdminList = listOf(saved) + cur.adminAnimes.filterNot { it.slug == saved.slug }
-                    val updatedCatalog = if (saved.isHidden) {
-                        cur.allAnime.filterNot { it.id == saved.slug || it.slug == saved.slug }
-                    } else {
-                        val existing = cur.allAnime.find { it.id == saved.slug || it.slug == saved.slug }
-                        val mapped = mapAdminDtoToAnime(saved, existing)
-                        listOf(mapped) + cur.allAnime.filterNot { it.id == saved.slug || it.slug == saved.slug }
-                    }
-                    cur.copy(
-                        isSavingAdmin = false,
-                        adminAnimes = updatedAdminList,
-                        allAnime = updatedCatalog,
-                        genres = updatedCatalog.flatMap { it.genres }.distinct().ifEmpty { cur.genres }
-                    )
-                }
-                emitMessage("Anime '${saved.title}' berhasil disimpan")
-                loadAdminOverview(silent = true)
-                onDone(true)
-            }.onFailure { err ->
-                _uiState.update { it.copy(isSavingAdmin = false) }
-                emitMessage(err.message ?: "Gagal menyimpan anime")
-                onDone(false)
-            }
-        }
-    }
-
-    fun quickToggleCatalogAnimeHidden(anime: Anime, hide: Boolean) {
-        val req = AdminSaveAnimeRequestDto(
-            slug = anime.slug.ifBlank { anime.id },
-            title = anime.title,
-            japaneseTitle = anime.japaneseTitle,
-            poster = anime.posterUrl,
-            banner = anime.bannerUrl,
-            synopsis = anime.synopsis,
-            genres = anime.genres,
-            rating = anime.rating,
-            studio = anime.studio,
-            status = anime.status.name,
-            type = anime.type.label,
-            year = anime.year,
-            season = anime.season,
-            totalEpisodes = anime.totalEpisodes,
-            releasedEpisodes = anime.releasedEpisodes,
-            durationMinutes = anime.durationMinutes,
-            isOfficialFree = anime.isOfficialFree,
-            isDubIndo = anime.isDubIndo,
-            officialChannel = anime.officialChannel ?: "AnimWatch Admin",
-            isHidden = hide,
-            isFeatured = anime.isFeatured
-        )
-        saveAdminAnime(existingSlug = anime.slug.ifBlank { anime.id }, request = req)
-    }
-
-    fun deleteAdminAnime(slug: String) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSavingAdmin = true) }
-            val res = remoteDataSource.adminDeleteAnime(baseUrl, token, secret, slug)
-            res.onSuccess {
-                _uiState.update { cur ->
-                    cur.copy(
-                        isSavingAdmin = false,
-                        adminAnimes = cur.adminAnimes.filterNot { it.slug == slug },
-                        allAnime = cur.allAnime.filterNot { it.id == slug || it.slug == slug }
-                    )
-                }
-                emitMessage("Data anime dihapus dari CMS Admin")
-                syncKumanimeCatalog(silentIfOffline = true)
-                loadAdminOverview(silent = true)
-            }.onFailure { err ->
-                _uiState.update { it.copy(isSavingAdmin = false) }
-                emitMessage(err.message ?: "Gagal menghapus anime")
-            }
-        }
-    }
-
-    fun saveAdminPlaylist(
-        existingPlaylistId: String?,
-        request: AdminSavePlaylistRequestDto,
-        onDone: (Boolean) -> Unit = {}
-    ) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSavingAdmin = true) }
-            val res = remoteDataSource.adminSavePlaylist(baseUrl, token, secret, existingPlaylistId, request)
-            res.onSuccess { saved ->
-                _uiState.update { cur ->
-                    cur.copy(
-                        isSavingAdmin = false,
-                        adminPlaylists = listOf(saved) + cur.adminPlaylists.filterNot { it.playlistId == saved.playlistId }
-                    )
-                }
-                emitMessage("Playlist '${saved.cleanTitle.ifBlank { saved.title }}' disimpan")
-                syncKumanimeCatalog(silentIfOffline = true)
-                onDone(true)
-            }.onFailure { err ->
-                _uiState.update { it.copy(isSavingAdmin = false) }
-                emitMessage(err.message ?: "Gagal menyimpan playlist")
-                onDone(false)
-            }
-        }
-    }
-
-    fun deleteAdminPlaylist(playlistId: String) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSavingAdmin = true) }
-            val res = remoteDataSource.adminDeletePlaylist(baseUrl, token, secret, playlistId)
-            res.onSuccess {
-                _uiState.update { cur ->
-                    cur.copy(
-                        isSavingAdmin = false,
-                        adminPlaylists = cur.adminPlaylists.filterNot { it.playlistId == playlistId }
-                    )
-                }
-                emitMessage("Playlist dihapus dari database")
-                loadAdminOverview(silent = true)
-            }.onFailure { err ->
-                _uiState.update { it.copy(isSavingAdmin = false) }
-                emitMessage(err.message ?: "Gagal menghapus playlist")
-            }
-        }
-    }
-
-    fun adminDeleteComment(commentId: String) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        viewModelScope.launch {
-            val res = remoteDataSource.adminDeleteComment(baseUrl, token, secret, commentId)
-            res.onSuccess {
-                _uiState.update { cur ->
-                    cur.copy(
-                        adminComments = cur.adminComments.filterNot { it.id == commentId },
-                        comments = cur.comments.filterNot { it.id == commentId }
-                    )
-                }
-                emitMessage("Komentar dihapus oleh Admin")
-            }.onFailure { err ->
-                emitMessage(err.message ?: "Gagal menghapus komentar")
-            }
-        }
-    }
-
-    fun adminUpdateUserRole(userId: String, role: String, memberTier: String) {
-        val state = _uiState.value
-        val baseUrl = state.apiConfig.baseUrl
-        val token = authToken
-        val secret = state.adminSecretKey.ifBlank { null }
-        viewModelScope.launch {
-            val res = remoteDataSource.adminUpdateUser(baseUrl, token, secret, userId, role, memberTier)
-            res.onSuccess { updated ->
-                _uiState.update { cur ->
-                    cur.copy(
-                        adminUsers = cur.adminUsers.map { if (it.id == updated.id) updated else it }
-                    )
-                }
-                emitMessage("Pengguna ${updated.displayName} diperbarui ($role • $memberTier)")
-            }.onFailure { err ->
-                emitMessage(err.message ?: "Gagal memperbarui pengguna")
-            }
-        }
-    }
-
-    private fun mapAdminDtoToAnime(dto: AdminAnimeDto, fallback: Anime? = null): Anime {
-        val genres = dto.genres.ifEmpty { fallback?.genres ?: listOf("Anime") }
-        val finalGenres = if (dto.isDubIndo && genres.none { it.equals("Dub Indo", ignoreCase = true) }) {
-            genres + "Dub Indo"
-        } else genres
-        val mappedStatus = when {
-            dto.status.contains("COMPLET", ignoreCase = true) || dto.status.contains("FINISH", ignoreCase = true) -> AnimeStatus.COMPLETED
-            else -> AnimeStatus.ONGOING
-        }
-        val mappedType = when {
-            dto.type.contains("Movie", ignoreCase = true) -> AnimeType.MOVIE
-            dto.type.contains("OVA", ignoreCase = true) -> AnimeType.OVA
-            dto.type.contains("ONA", ignoreCase = true) -> AnimeType.ONA
-            else -> AnimeType.TV_SERIES
-        }
-        val episodes = if (dto.episodes.isNotEmpty()) {
-            dto.episodes.mapIndexed { index, ep ->
-                val epNum = ep.number ?: (index + 1)
-                val url = ep.streamUrl.orEmpty()
-                val sType = ep.streamType?.ifBlank { null }
-                    ?: if (url.isNotBlank()) "official_episode" else "info_only"
-                Episode(
-                    id = ep.epsSlug?.ifBlank { null } ?: "${dto.slug}-ep-$epNum",
-                    animeId = dto.slug,
-                    number = epNum,
-                    title = ep.epsTitle?.ifBlank { null } ?: "Episode $epNum",
-                    durationSeconds = dto.durationMinutes.coerceAtLeast(1) * 60,
-                    releaseDate = "Admin",
-                    synopsis = dto.synopsis.ifBlank { "${dto.title} Episode $epNum" },
-                    slug = ep.epsSlug?.ifBlank { null } ?: "${dto.slug}-ep-$epNum",
-                    streamUrl = url,
-                    streamType = sType,
-                    thumbnailUrl = ep.thumbnail?.ifBlank { null } ?: dto.poster
-                )
-            }
-        } else {
-            fallback?.episodes ?: emptyList()
-        }
-        val relCount = maxOf(dto.releasedEpisodes, episodes.size, 1)
-        val totCount = maxOf(dto.totalEpisodes, relCount, 1)
-        return Anime(
-            id = dto.slug,
-            slug = dto.slug,
-            title = dto.title,
-            japaneseTitle = dto.japaneseTitle.ifBlank { dto.officialChannel },
-            synopsis = dto.synopsis.ifBlank { fallback?.synopsis ?: "${dto.title} tersedia di AnimWatch." },
-            rating = dto.rating,
-            ratingCountLabel = dto.officialChannel.ifBlank { "Admin" },
-            totalEpisodes = totCount,
-            releasedEpisodes = relCount,
-            durationMinutes = dto.durationMinutes.coerceAtLeast(1),
-            year = dto.year,
-            season = dto.season.ifBlank { dto.year.toString() },
-            studio = dto.studio.ifBlank { "AnimWatch Admin" },
-            status = mappedStatus,
-            type = mappedType,
-            ageRating = "PG-13",
-            genres = finalGenres,
-            releaseDay = fallback?.releaseDay,
-            releaseTimeWib = fallback?.releaseTimeWib,
-            viewsLabel = "$relCount Ep",
-            popularityRank = if (dto.isFeatured) 1 else (fallback?.popularityRank ?: 50),
-            isFeatured = dto.isFeatured,
-            isTrending = dto.isFeatured || (fallback?.isTrending == true),
-            isNewRelease = dto.isFeatured || (fallback?.isNewRelease == true),
-            isOfficialFree = dto.isOfficialFree || episodes.any { it.streamUrl.isNotBlank() } || dto.playlistId.isNotBlank(),
-            isDubIndo = dto.isDubIndo,
-            isSubEng = !dto.isDubIndo && (dto.isSubEng || dto.slug.startsWith("suben-") || finalGenres.any { it.equals("Sub Eng", ignoreCase = true) }),
-            officialChannel = dto.officialChannel.ifBlank { "AnimWatch Admin" },
-            artTheme = fallback?.artTheme ?: AnimeArtTheme.CELESTIAL_ASTRAL,
-            posterTag = if (dto.isFeatured) "PILIHAN" else "KATALOG",
-            posterUrl = dto.poster.ifBlank { fallback?.posterUrl.orEmpty() },
-            bannerUrl = dto.banner.ifBlank { dto.poster.ifBlank { fallback?.bannerUrl.orEmpty() } },
-            isRemote = true,
-            latestEpisodeSlug = episodes.lastOrNull()?.slug ?: dto.slug,
-            lastAiredAtEpochSec = System.currentTimeMillis() / 1000L,
-            characters = fallback?.characters ?: emptyList(),
-            relatedIds = fallback?.relatedIds ?: emptyList(),
-            externalLinks = if (dto.playlistId.isNotBlank()) {
-                listOf(ExternalPlatformLink(dto.officialChannel.ifBlank { "YouTube" }, "https://www.youtube.com/playlist?list=${dto.playlistId}"))
-            } else {
-                fallback?.externalLinks ?: emptyList()
-            },
-            episodes = episodes
-        )
-    }
 }

@@ -279,7 +279,7 @@ class AnimWatchRepositoryAndViewModelTest {
     }
 
     @Test
-    fun multiPartSeasonSplittingAndAdminStateWorkProperly() {
+    fun multiPartSeasonSplittingWorksProperly() {
         val vm = AnimWatchViewModel()
         val template = vm.uiState.value.allAnime.first()
 
@@ -303,14 +303,6 @@ class AnimWatchRepositoryAndViewModelTest {
         assertEquals("Season 2 • Part 1", FranchiseSeasonHelper.formatSeasonShortLabel(dubS2P1, 0))
         assertEquals("Season 2 • Part 2", FranchiseSeasonHelper.formatSeasonShortLabel(dubS2P2, 1))
         assertEquals("dub-pl--s2p2", FranchiseSeasonHelper.findNextSeason(dubS2P1, listOf(dubS2P2, dubS2P1))?.id)
-
-        // 3. Admin route navigation and logout reset
-        vm.openAdminPanel()
-        assertTrue(vm.uiState.value.currentRoute is AppRoute.AdminPanel)
-        assertTrue(vm.navigateBack())
-        assertTrue(vm.uiState.value.currentRoute is AppRoute.TabsRoot)
-        vm.logout()
-        assertFalse(vm.uiState.value.isAdmin)
     }
 
     @Test
